@@ -4,7 +4,7 @@ import { fmtMoney } from "@/lib/format";
 import { PageHead, Pill, Button, Card } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
-export const metadata: Metadata = { title: "Orders · NOVA India" };
+export const metadata: Metadata = { title: "Orders · MNHA Financials" };
 
 const STATUS_TONE = {
   COMPLETE: "up",

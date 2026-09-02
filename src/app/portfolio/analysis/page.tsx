@@ -4,7 +4,7 @@ import { fmtMoney, fmtMoneySigned, toneText } from "@/lib/format";
 import { PageHead, StatTile, Card, CardHead, SymbolChip } from "@/components/ui";
 import PnlChart from "@/components/PnlChart";
 
-export const metadata: Metadata = { title: "Analysis · NOVA India" };
+export const metadata: Metadata = { title: "Analysis · MNHA Financials" };
 
 export default function AnalysisPage() {
   const gross = TRADES.reduce((s, t) => s + t.pnl, 0);

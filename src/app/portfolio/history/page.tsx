@@ -4,7 +4,7 @@ import { fmtMoney, fmtMoneySigned, fmtPct, toneText } from "@/lib/format";
 import { PageHead, StatTile, Pill, SymbolChip, Button } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
-export const metadata: Metadata = { title: "History · NOVA India" };
+export const metadata: Metadata = { title: "History · MNHA Financials" };
 
 function hold(mins: number): string {
   const h = Math.floor(mins / 60);

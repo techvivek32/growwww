@@ -4,7 +4,7 @@ import { fmtMoney, fmtMoneySigned, fmtPct, toneText } from "@/lib/format";
 import { PageHead, StatTile, Pill, Button, SymbolChip } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
-export const metadata: Metadata = { title: "Positions · NOVA India" };
+export const metadata: Metadata = { title: "Positions · MNHA Financials" };
 
 const PRODUCT_TONE = { MIS: "warn", CNC: "brand", NRML: "violet" } as const;
 

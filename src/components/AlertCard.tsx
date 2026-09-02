@@ -170,7 +170,9 @@ export function BestTrade({ a }: { a: StockAlert }) {
 export function AlertCard({ a }: { a: StockAlert }) {
   const up = a.last >= a.entry;
   return (
-    <Card>
+    // h-full + flex-col so every card in the grid is the same height and the
+    // Buy buttons line up regardless of how many reason tags a setup carries.
+    <Card className="flex h-full flex-col">
       <div className="flex items-start gap-3">
         <SymbolChip symbol={a.symbol} />
         <div className="min-w-0 flex-1">
@@ -199,7 +201,8 @@ export function AlertCard({ a }: { a: StockAlert }) {
         {a.rsi} · Vol {a.volX.toFixed(1)}x
       </p>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      {/* flex-1 absorbs the height difference between 1-line and 2-line tag sets */}
+      <div className="mt-3 flex flex-1 flex-wrap content-start gap-1.5">
         {a.tags.slice(0, 3).map((t) => (
           <Tag key={t}>{t}</Tag>
         ))}

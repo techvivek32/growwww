@@ -5,7 +5,7 @@ import { PageHead, Card, CardHead, Pill, Tag, Button } from "@/components/ui";
 import { TradeRail } from "@/components/AlertCard";
 import MarketMood from "@/components/MarketMood";
 
-export const metadata: Metadata = { title: "AI F&O Alerts · NOVA India" };
+export const metadata: Metadata = { title: "AI F&O Alerts · MNHA Financials" };
 
 export default function FnoAlertsPage() {
   return (
@@ -96,7 +96,7 @@ export default function FnoAlertsPage() {
             sub="Groww's API exposes MARKET, LIMIT, SL and SL_M only — there are no bracket or cover orders."
           />
           <p className="text-[13px] leading-relaxed text-ink2">
-            NOVA emulates the stop and target with a <strong className="font-semibold text-ink">GTT + OCO</strong> pair:
+            MNHA emulates the stop and target with a <strong className="font-semibold text-ink">GTT + OCO</strong> pair:
             two resting orders where the fill of one cancels the other. You will see both legs in the Orders tab, and
             cancelling either cancels the pair.
           </p>

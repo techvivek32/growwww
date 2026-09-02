@@ -4,7 +4,7 @@ import { fmtMoney, fmtPct, toneText } from "@/lib/format";
 import { PageHead, Pill, SymbolChip, Button, Card } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
-export const metadata: Metadata = { title: "Scanner · NOVA India" };
+export const metadata: Metadata = { title: "Scanner · MNHA Financials" };
 
 const FILTERS = ["All setups", "Breakout", "Trend pullback", "VWAP reclaim", "Momentum", "Base"];
 

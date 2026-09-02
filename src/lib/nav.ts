@@ -1,54 +1,31 @@
 /**
- * Three top-level sections, mirroring Groww's own Stocks / F&O / Mutual Funds
- * bar. Each opens a row of sub-tabs, again exactly as Groww does it.
+ * One flat rail in the top bar carrying every section, the way NOVA Terminal
+ * listed them — Groww's chrome, NOVA's feature set.
  */
 
-export interface SubTab {
+export interface NavItem {
   href: string;
   label: string;
+  /** Shorter label used once the rail has to scroll on small screens. */
+  short?: string;
+  group: "trading" | "system";
 }
 
-export interface Section {
-  key: string;
-  label: string;
-  href: string;
-  tabs: SubTab[];
-}
-
-export const SECTIONS: Section[] = [
-  {
-    key: "stocks",
-    label: "Stocks",
-    href: "/stocks/alerts",
-    tabs: [
-      { href: "/stocks/alerts", label: "AI Alerts" },
-      { href: "/stocks/scanner", label: "Scanner" },
-      { href: "/stocks/watchlist", label: "Watchlist" },
-    ],
-  },
-  {
-    key: "fno",
-    label: "F&O",
-    href: "/fno/alerts",
-    tabs: [
-      { href: "/fno/alerts", label: "AI F&O Alerts" },
-      { href: "/fno/chain", label: "Option Chain" },
-    ],
-  },
-  {
-    key: "portfolio",
-    label: "Portfolio",
-    href: "/portfolio/holdings",
-    tabs: [
-      { href: "/portfolio/holdings", label: "Holdings" },
-      { href: "/portfolio/positions", label: "Positions" },
-      { href: "/portfolio/orders", label: "Orders" },
-      { href: "/portfolio/history", label: "History" },
-      { href: "/portfolio/analysis", label: "Analysis" },
-    ],
-  },
+export const NAV_ITEMS: NavItem[] = [
+  { href: "/stocks/alerts", label: "AI Stock Alerts", short: "Alerts", group: "trading" },
+  { href: "/fno/alerts", label: "AI F&O Alerts", short: "F&O Alerts", group: "trading" },
+  { href: "/fno/chain", label: "F&O Options", short: "Options", group: "trading" },
+  { href: "/stocks/scanner", label: "Scanner", group: "trading" },
+  { href: "/stocks/watchlist", label: "Watchlist", group: "trading" },
+  { href: "/portfolio/holdings", label: "Portfolio", group: "trading" },
+  { href: "/portfolio/positions", label: "Positions", group: "trading" },
+  { href: "/portfolio/orders", label: "Orders", group: "trading" },
+  { href: "/portfolio/history", label: "History", group: "trading" },
+  { href: "/portfolio/analysis", label: "Analysis", group: "trading" },
+  { href: "/broker", label: "Broker", group: "system" },
+  { href: "/settings", label: "Settings", group: "system" },
 ];
 
-export function sectionForPath(pathname: string): Section | undefined {
-  return SECTIONS.find((s) => pathname.startsWith("/" + s.key));
+export function itemForPath(pathname: string): NavItem | undefined {
+  return NAV_ITEMS.find((i) => i.href === pathname);
 }

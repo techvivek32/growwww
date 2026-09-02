@@ -4,7 +4,7 @@ import { fmtNum, toneText } from "@/lib/format";
 import { PageHead, Pill, Card } from "@/components/ui";
 import { Th, Td } from "@/components/Table";
 
-export const metadata: Metadata = { title: "Option Chain · NOVA India" };
+export const metadata: Metadata = { title: "Option Chain · MNHA Financials" };
 
 /** The strike nearest spot — highlighted the way every Indian chain does it. */
 function atmStrike(): number {
@@ -131,7 +131,7 @@ export default function OptionChainPage() {
         <p className="text-[13px] leading-relaxed text-ink2">
           Open interest is in lakhs of contracts. One lot is{" "}
           <strong className="font-semibold text-ink">{CHAIN_LOT} qty</strong> — NSE lot sizes are revised
-          periodically by the exchange, so NOVA refreshes them from the instruments master rather than hard-coding
+          periodically by the exchange, so MNHA refreshes them from the instruments master rather than hard-coding
           them.
         </p>
       </Card>

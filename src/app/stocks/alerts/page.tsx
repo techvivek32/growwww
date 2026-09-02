@@ -4,7 +4,7 @@ import { BestTrade, AlertCard } from "@/components/AlertCard";
 import MarketMood from "@/components/MarketMood";
 import { PageHead, Pill } from "@/components/ui";
 
-export const metadata: Metadata = { title: "AI Stock Alerts · NOVA India" };
+export const metadata: Metadata = { title: "AI Stock Alerts · MNHA Financials" };
 
 export default function StockAlertsPage() {
   const [best, ...rest] = STOCK_ALERTS;

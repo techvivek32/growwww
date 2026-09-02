@@ -1,4 +1,4 @@
-# NOVA India
+# MNHA Financials
 
 An NSE trading terminal that sits on top of your own **Groww** account — AI stock and F&O
 alerts with entry, target and stop on every setup, plus a live order desk, positions, P&L and
@@ -37,19 +37,20 @@ src/
     stocks/{alerts,scanner,watchlist}      AI stock alerts, NSE scanner, watchlist
     fno/{alerts,chain}                     Index option setups, NIFTY option chain
     portfolio/{holdings,positions,orders,history,analysis}
-    settings/                              Groww connection + go-live checklist
+    broker/                                Groww connection + go-live checklist
+    settings/                              Alert thresholds, risk limits, notifications
   components/                              Shell, cards, tables, chart
   lib/
     format.ts                              en-IN money / lakh-crore grouping
     market.ts                              NSE session clock (Asia/Kolkata)
-    nav.ts                                 Section + sub-tab config
+    nav.ts                                 Top-bar section list
     mock.ts                                Phase-1 fixtures (deterministic)
 ```
 
 ## Design
 
-The visual language follows **Groww** — light-first, teal-green accent, thin borders, a top
-nav with sub-tabs, and the index ticker strip under it. The *features* come from NOVA
+The visual language follows **Groww** — light-first, teal-green accent, thin borders, and the
+index ticker strip under the header. The *feature set* and the flat section rail follow NOVA
 Terminal; the *look* deliberately does not.
 
 Themes are driven entirely by CSS variables (`:root` and `.dark`), surfaced to Tailwind via
@@ -111,6 +112,6 @@ Global `fetch()` must not be used on the order path — undici ignores `localAdd
 
 ## Disclaimer
 
-NOVA India is decision-support tooling, not investment advice. Setups are generated from price
+MNHA Financials is decision-support tooling, not investment advice. Setups are generated from price
 and volume data and can be wrong. Orders route to your own Groww account — you place them, you
 own them.

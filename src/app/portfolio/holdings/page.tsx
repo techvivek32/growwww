@@ -4,7 +4,7 @@ import { fmtMoney, fmtMoneySigned, fmtPct, toneText } from "@/lib/format";
 import { PageHead, StatTile, SymbolChip, Button } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
-export const metadata: Metadata = { title: "Holdings · NOVA India" };
+export const metadata: Metadata = { title: "Holdings · MNHA Financials" };
 
 export default function HoldingsPage() {
   const invested = HOLDINGS.reduce((s, h) => s + h.avg * h.qty, 0);

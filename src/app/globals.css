@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ============================================================
-   NOVA India — Groww-inspired design tokens
+   MNHA Financials — Groww-inspired design tokens
    Light is the primary theme (Groww is a light-first product).
    Dark flips the same variables so no `dark:` variants are needed.
    ============================================================ */
@@ -114,6 +114,13 @@
 * { border-color: var(--c-border); }
 
 html, body { height: 100%; }
+
+/* The header is sticky (brand row + section rail). Anchor jumps and
+   scroll-into-view must clear it, or headings land underneath it. */
+html { scroll-padding-top: 116px; }
+
+/* Nothing may push the page sideways; wide content scrolls inside itself. */
+body { overflow-x: clip; }
 
 body {
   background: var(--c-bg);

@@ -4,7 +4,7 @@ import { fmtMoney, fmtPct, toneText } from "@/lib/format";
 import { PageHead, SymbolChip, Sparkline, Button } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
-export const metadata: Metadata = { title: "Watchlist · NOVA India" };
+export const metadata: Metadata = { title: "Watchlist · MNHA Financials" };
 
 export default function WatchlistPage() {
   return (

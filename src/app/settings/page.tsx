@@ -1,106 +1,91 @@
 import type { Metadata } from "next";
-import { ACCOUNT } from "@/lib/mock";
-import { fmtMoney } from "@/lib/format";
-import { PageHead, Card, CardHead, Pill, Button } from "@/components/ui";
+import { PageHead, Card, CardHead, Pill } from "@/components/ui";
 
-export const metadata: Metadata = { title: "Broker & Settings · NOVA India" };
+export const metadata: Metadata = { title: "Settings · MNHA Financials" };
 
-interface Check {
+interface Row {
   label: string;
-  state: "done" | "pending" | "blocked";
   detail: string;
+  value: string;
+  tone?: "brand" | "warn" | "neutral";
 }
 
-const CHECKS: Check[] = [
-  {
-    label: "Groww API subscription",
-    state: "pending",
-    detail: "₹499 + GST per month. Unlocks orders, live data and historical candles.",
-  },
-  {
-    label: "Static IP whitelisted",
-    state: "pending",
-    detail:
-      "SEBI requires order placement from a registered static IP since 1 Apr 2026. Primary and secondary can be changed only once every 7 days.",
-  },
-  {
-    label: "TOTP credentials",
-    state: "pending",
-    detail:
-      "The TOTP flow lets the server mint its own access token. The access token still expires at 6:00 AM daily, so a pre-market refresh job runs at 08:30 IST.",
-  },
-  {
-    label: "Order gateway on VPS",
-    state: "pending",
-    detail:
-      "Orders must leave from the whitelisted IP, so they are placed by a gateway on the VPS — never from the browser and never from Vercel, whose egress IP is not fixed.",
-  },
-  {
-    label: "Paper trading store",
-    state: "done",
-    detail: "Phase 1 runs entirely on sample NSE data with a local paper book. No real money can move.",
-  },
+const ALERTS: Row[] = [
+  { label: "Minimum score", detail: "Setups below this are not published.", value: "75" },
+  { label: "Minimum risk / reward", detail: "Rejects setups whose target is too close to the stop.", value: "1.8" },
+  { label: "Scan interval", detail: "How often the NSE universe is re-scanned during market hours.", value: "10 min" },
+  { label: "Regime gate", detail: "Throttle long setups when NIFTY 50 is below its 20 EMA.", value: "On", tone: "brand" },
 ];
 
-const TONE = { done: "up", pending: "warn", blocked: "down" } as const;
-const WORD = { done: "Ready", pending: "Pending", blocked: "Blocked" } as const;
+const RISK: Row[] = [
+  { label: "Max risk per trade", detail: "Position size is derived from this and the stop distance.", value: "₹2,000" },
+  { label: "Max open positions", detail: "New entries are blocked once this many are working.", value: "5" },
+  { label: "Daily loss limit", detail: "Trading halts for the session once breached.", value: "₹6,000" },
+  { label: "Default product", detail: "Applied to equity orders unless overridden per trade.", value: "MIS" },
+];
+
+const NOTIFY: Row[] = [
+  { label: "Pre-market summary", detail: "Sent before the open with the regime call and watchlist.", value: "08:45 IST" },
+  { label: "Daily statement", detail: "Session P&L, fills and charges.", value: "15:45 IST" },
+  { label: "Monthly statement", detail: "Sent on the last trading day of each month.", value: "On", tone: "brand" },
+  { label: "Order failure alerts", detail: "Any non-success from the order endpoint pages you immediately.", value: "On", tone: "brand" },
+];
+
+function Group({ title, sub, rows }: { title: string; sub: string; rows: Row[] }) {
+  return (
+    <Card className="mb-5">
+      <CardHead title={title} sub={sub} />
+      <ul>
+        {rows.map((r) => (
+          <li key={r.label} className="flex items-center gap-4 border-b border-line py-3 first:pt-0 last:border-0 last:pb-0">
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-ink">{r.label}</p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-ink3">{r.detail}</p>
+            </div>
+            <div className="shrink-0">
+              {r.tone ? (
+                <Pill tone={r.tone}>{r.value}</Pill>
+              ) : (
+                <span className="tnum text-[13px] font-semibold text-ink">{r.value}</span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
 
 export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHead title="Broker & settings" sub="How NOVA India connects to your Groww account." />
+      <PageHead
+        title="Settings"
+        sub="Alert thresholds, risk limits and notification schedule. All times are IST."
+      />
 
-      <Card className="mb-5">
-        <CardHead
-          title="Groww"
-          sub={ACCOUNT.name}
-          right={<Pill tone="warn">Paper mode</Pill>}
-        />
-        <dl className="grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-3">
-          <div>
-            <dt className="text-[11px] tracking-wider text-ink3 uppercase">Balance</dt>
-            <dd className="tnum mt-1 text-[15px] font-semibold text-ink">{fmtMoney(ACCOUNT.balance)}</dd>
-          </div>
-          <div>
-            <dt className="text-[11px] tracking-wider text-ink3 uppercase">Exchange</dt>
-            <dd className="mt-1 text-[15px] font-semibold text-ink">NSE</dd>
-          </div>
-          <div>
-            <dt className="text-[11px] tracking-wider text-ink3 uppercase">Session</dt>
-            <dd className="mt-1 text-[15px] font-semibold text-ink">09:15–15:30 IST</dd>
-          </div>
-        </dl>
-      </Card>
-
-      <Card className="mb-5">
-        <CardHead
-          title="Go-live checklist"
-          sub="Everything that must be true before a real order can be placed."
-        />
-        <ul className="space-y-3">
-          {CHECKS.map((c) => (
-            <li key={c.label} className="flex gap-3 border-b border-line pb-3 last:border-0 last:pb-0">
-              <span className="mt-0.5 shrink-0">
-                <Pill tone={TONE[c.state]}>{WORD[c.state]}</Pill>
-              </span>
-              <div className="min-w-0">
-                <p className="text-[13px] font-semibold text-ink">{c.label}</p>
-                <p className="mt-0.5 text-[12px] leading-relaxed text-ink3">{c.detail}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </Card>
+      <Group
+        title="Alerts"
+        sub="What the engine is allowed to publish"
+        rows={ALERTS}
+      />
+      <Group
+        title="Risk"
+        sub="Hard limits the order desk enforces before anything is sent"
+        rows={RISK}
+      />
+      <Group
+        title="Notifications"
+        sub="Scheduled on the NSE calendar, not a fixed clock"
+        rows={NOTIFY}
+      />
 
       <Card>
-        <CardHead title="Trading mode" />
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" size="sm">Paper</Button>
-          <Button variant="ghost" size="sm">Live</Button>
-          <p className="text-[12px] text-ink3">
-            Live stays disabled until every item above reads Ready.
-          </p>
-        </div>
+        <CardHead title="Appearance" sub="Theme follows your system unless you pick one" />
+        <p className="text-[13px] leading-relaxed text-ink2">
+          Use the sun / moon control in the top bar. The choice is remembered in this browser only — it never leaves
+          your device.
+        </p>
       </Card>
     </div>
   );
