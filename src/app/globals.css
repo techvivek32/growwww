@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+/* ============================================================
+   NOVA India — Groww-inspired design tokens
+   Light is the primary theme (Groww is a light-first product).
+   Dark flips the same variables so no `dark:` variants are needed.
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+
+  --c-bg:            #f5f6f7;
+  --c-surface:       #ffffff;
+  --c-surface-2:     #fafbfc;
+  --c-surface-hover: #f4f6f8;
+
+  --c-border:        #e6e8ea;
+  --c-border-strong: #d3d7db;
+
+  --c-text:          #121212;
+  --c-text-2:        #44475b;
+  --c-text-3:        #7c7e8c;
+
+  /* Groww brand */
+  --c-brand:         #00d09c;
+  --c-brand-hover:   #00b386;
+  --c-brand-soft:    #e6faf4;
+  --c-brand-text:    #00875f;
+
+  /* Groww secondary (used for F&O / info accents) */
+  --c-violet:        #5367ff;
+  --c-violet-soft:   #eef0ff;
+
+  --c-up:            #00b386;
+  --c-up-soft:       #e7f7f1;
+  --c-down:          #eb5b3c;
+  --c-down-soft:     #fdeeea;
+
+  --c-warn:          #f5a623;
+  --c-warn-soft:     #fef5e6;
+
+  --shadow-card:     0 1px 2px rgba(18, 18, 18, 0.04);
+  --shadow-pop:      0 8px 24px rgba(18, 18, 18, 0.10);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --c-bg:            #0f1012;
+  --c-surface:       #17191c;
+  --c-surface-2:     #1c1f23;
+  --c-surface-hover: #22262b;
+
+  --c-border:        #2a2e34;
+  --c-border-strong: #3a3f47;
+
+  --c-text:          #eceef0;
+  --c-text-2:        #a8adb6;
+  --c-text-3:        #767d88;
+
+  --c-brand:         #00d09c;
+  --c-brand-hover:   #22e0b0;
+  --c-brand-soft:    #0d2c26;
+  --c-brand-text:    #22c79b;
+
+  --c-violet:        #7b8aff;
+  --c-violet-soft:   #1c2140;
+
+  --c-up:            #22c79b;
+  --c-up-soft:       #0d2c26;
+  --c-down:          #ff6b4d;
+  --c-down-soft:     #33170f;
+
+  --c-warn:          #f5a623;
+  --c-warn-soft:     #33260d;
+
+  --shadow-card:     0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-pop:      0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+@theme inline {
+  --color-bg:            var(--c-bg);
+  --color-surface:       var(--c-surface);
+  --color-surface2:      var(--c-surface-2);
+  --color-surfaceh:      var(--c-surface-hover);
+
+  --color-line:          var(--c-border);
+  --color-line2:         var(--c-border-strong);
+
+  --color-ink:           var(--c-text);
+  --color-ink2:          var(--c-text-2);
+  --color-ink3:          var(--c-text-3);
+
+  --color-brand:         var(--c-brand);
+  --color-brandh:        var(--c-brand-hover);
+  --color-brandsoft:     var(--c-brand-soft);
+  --color-brandtext:     var(--c-brand-text);
+
+  --color-violet:        var(--c-violet);
+  --color-violetsoft:    var(--c-violet-soft);
+
+  --color-up:            var(--c-up);
+  --color-upsoft:        var(--c-up-soft);
+  --color-down:          var(--c-down);
+  --color-downsoft:      var(--c-down-soft);
+
+  --color-warn:          var(--c-warn);
+  --color-warnsoft:      var(--c-warn-soft);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-mono-jb), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* { border-color: var(--c-border); }
+
+html, body { height: 100%; }
+
+body {
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular figures everywhere prices live — stops digits jittering on tick */
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+/* Thin, unobtrusive scrollbars (Groww keeps chrome quiet) */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--c-border-strong);
+  border-radius: 999px;
+  border: 3px solid var(--c-bg);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--c-text-3); }
+
+/* Horizontal scrollers (index strip, tab rails) hide their bar */
+.no-bar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-bar::-webkit-scrollbar { display: none; }
+
+@keyframes nova-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.live-dot { animation: nova-pulse 2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot { animation: none; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
