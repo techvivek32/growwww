@@ -13,6 +13,15 @@ export function fmtMoneySigned(n: number, decimals = 2): string {
   return (n >= 0 ? "+" : "-") + "₹" + inr(decimals).format(Math.abs(n));
 }
 
+/**
+ * Price for a compact tile. Paise stop being meaningful past four figures and
+ * start overflowing the entry/target/stop boxes, so ₹20,480 loses them while
+ * ₹417.85 keeps them.
+ */
+export function fmtPrice(n: number): string {
+  return "₹" + inr(Math.abs(n) >= 1000 ? 0 : 2).format(n);
+}
+
 /** Plain Indian-grouped integer: 3,41,30,323 */
 export function fmtNum(n: number, decimals = 0): string {
   return inr(decimals).format(n);

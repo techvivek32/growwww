@@ -7,6 +7,7 @@ import { ACCOUNT } from "@/lib/book";
 import { fmtMoney } from "@/lib/format";
 import ThemeToggle from "./ThemeToggle";
 import MarketClock from "./MarketClock";
+import { AutoTradeToggle } from "./AutoTrade";
 
 function Logo() {
   return (
@@ -73,8 +74,9 @@ export default function TopNav() {
           </label>
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-1 lg:ml-0">
+        <div className="ml-auto flex shrink-0 items-center gap-2 lg:ml-0">
           <MarketClock />
+          <AutoTradeToggle />
           <ThemeToggle />
           <button
             type="button"

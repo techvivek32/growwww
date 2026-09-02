@@ -1,5 +1,5 @@
 import type { StockAlert } from "@/lib/alerts";
-import { fmtMoney, fmtPct } from "@/lib/format";
+import { fmtMoney, fmtPrice, fmtPct } from "@/lib/format";
 import { Card, Pill, Tag, Button, SymbolChip, Sparkline } from "./ui";
 
 /* ------------------------------------------------------------------- rail */
@@ -61,22 +61,25 @@ export function TradeRail({
 function Levels({ a }: { a: StockAlert }) {
   const tgtPct = ((a.target - a.entry) / a.entry) * 100;
   const stopPct = ((a.stop - a.entry) / a.entry) * 100;
-  const cell = "rounded-lg border border-line bg-surface2 px-3 py-2.5 text-center";
+  // px-2 not px-3, and the value clamps to the tile: a five-figure NSE price
+  // like ₹20,480 has to fit a third of a card without pushing the box open.
+  const cell = "min-w-0 rounded-lg border border-line bg-surface2 px-2 py-2.5 text-center";
+  const value = "tnum mt-1 truncate text-[14px] font-semibold sm:text-[15px]";
 
   return (
     <div className="grid grid-cols-3 gap-2">
       <div className={cell}>
         <p className="text-[10px] font-semibold tracking-wider text-ink3 uppercase">Entry</p>
-        <p className="tnum mt-1 text-[15px] font-semibold text-ink">{fmtMoney(a.entry)}</p>
+        <p className={`${value} text-ink`}>{fmtPrice(a.entry)}</p>
       </div>
       <div className={cell}>
         <p className="text-[10px] font-semibold tracking-wider text-ink3 uppercase">Target</p>
-        <p className="tnum mt-1 text-[15px] font-semibold text-up">{fmtMoney(a.target)}</p>
+        <p className={`${value} text-up`}>{fmtPrice(a.target)}</p>
         <p className="tnum text-[10px] text-up">{fmtPct(tgtPct)}</p>
       </div>
       <div className={cell}>
         <p className="text-[10px] font-semibold tracking-wider text-ink3 uppercase">Stop</p>
-        <p className="tnum mt-1 text-[15px] font-semibold text-down">{fmtMoney(a.stop)}</p>
+        <p className={`${value} text-down`}>{fmtPrice(a.stop)}</p>
         <p className="tnum text-[10px] text-down">{fmtPct(stopPct)}</p>
       </div>
     </div>
