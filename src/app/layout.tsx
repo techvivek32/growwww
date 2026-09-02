@@ -57,7 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <p className="border-t border-line pt-5 text-[11px] leading-relaxed text-ink3">
             MNHA Financials is a decision-support terminal, not investment advice. Setups are generated from price
             and volume data and can be wrong. Orders route to your own Groww account — you place them, you own them.
-            Currently running in <strong className="font-semibold text-ink2">paper mode</strong> with sample NSE data.
+            Currently running in <strong className="font-semibold text-ink2">paper mode</strong> on real but delayed NSE prices.
           </p>
         </footer>
       </body>

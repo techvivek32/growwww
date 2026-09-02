@@ -6,8 +6,8 @@ a trade archive.
 
 > **Keep your broker, upgrade your terminal.**
 
-Currently **Phase 1: paper mode** — the whole UI runs on sample NSE data. No Groww key is
-required and no real money can move.
+Currently **Phase 1: paper mode** — the whole UI runs on **real NSE prices from Yahoo
+Finance** with a local paper book. No Groww key is required and no real money can move.
 
 ---
 
@@ -41,11 +41,49 @@ src/
     settings/                              Alert thresholds, risk limits, notifications
   components/                              Shell, cards, tables, chart
   lib/
+    api/yahoo.ts                           Live NSE quotes (.NS + indices), snapshot-backed
+    snapshot.ts                            Committed real-data fallback — npm run snapshot
+    alerts.ts                              Setups derived from real price/volume/trend
+    options.ts                             Chain + F&O setups priced off the live spot
+    book.ts                                THE trade book — one source for 4 screens
     format.ts                              en-IN money / lakh-crore grouping
     market.ts                              NSE session clock (Asia/Kolkata)
     nav.ts                                 Top-bar section list
-    mock.ts                                Phase-1 fixtures (deterministic)
 ```
+
+## Data
+
+**Prices are real.** `lib/api/yahoo.ts` pulls live NSE quotes from Yahoo's chart endpoint —
+`RELIANCE.NS`, `^NSEI`, `^NSEBANK`, `NIFTY_MID_SELECT.NS`, `NIFTY_FIN_SERVICE.NS` — with no key
+needed. Pages revalidate every 5 minutes. If Yahoo is unreachable the app falls back per-symbol
+to `snapshot.ts`, a committed capture of the same real data, so a build never fails and a page
+never blanks.
+
+Yahoo is **delayed**. That is fine for research and paper trading and not fine for execution;
+Phase 2 swaps in the Groww WebSocket behind the same signatures.
+
+Two things Yahoo gets wrong that the adapter corrects:
+
+- `chartPreviousClose` refers to the close before the *whole requested window*, so differencing
+  it reports a three-month move as "today's change". The adapter uses the second-last daily bar.
+- MIDCPNIFTY and FINNIFTY have gap-ridden daily history — July bars sitting next to today's. The
+  adapter detects gaps wider than a long weekend and falls back to a 1-month window, where
+  `chartPreviousClose` does resolve to the prior session.
+
+**Setups are derived, not written.** Score, stop distance, R/R and every reason tag in
+`alerts.ts` come from the day's real high–low range, real volume against its 20-session average,
+and the real 30-day close series. Change the market and the setups change.
+
+**Options are modelled.** Yahoo carries no Indian option chain, so `options.ts` prices strikes
+with Black-Scholes against the live index level, real strike spacing, real lot sizes and the
+real days to the next Tuesday expiry — internally consistent and market-linked, but a model
+rather than NSE's quotes.
+
+**The trade book is fixed.** `book.ts` holds twelve intraday round-trips across 31 Aug – 2 Sep
+2026, from ₹50,000 of opening capital. Orders, Positions, History and Analysis all derive from
+that one array, so those four screens cannot disagree. Every entry and exit traded inside its
+session's real high–low range, and each position sits inside Groww's ~5x MIS margin against the
+capital available that day.
 
 ## Design
 

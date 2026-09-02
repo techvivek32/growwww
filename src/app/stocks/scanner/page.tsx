@@ -1,19 +1,33 @@
 import type { Metadata } from "next";
-import { SCAN_ROWS } from "@/lib/mock";
+import { getUniverse } from "@/lib/api/yahoo";
+import { buildScanRows } from "@/lib/alerts";
 import { fmtMoney, fmtPct, toneText } from "@/lib/format";
-import { PageHead, Pill, SymbolChip, Button, Card } from "@/components/ui";
+import { PageHead, Pill, SymbolChip, Button, Card, Sparkline } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
 export const metadata: Metadata = { title: "Scanner · MNHA Financials" };
+export const revalidate = 300;
 
-const FILTERS = ["All setups", "Breakout", "Trend pullback", "VWAP reclaim", "Momentum", "Base"];
+const FILTERS = ["All setups", "Breakout", "Volume spike", "Trend pullback", "Base", "Below trend"];
 
-export default function ScannerPage() {
+const SETUP_TONE: Record<string, "up" | "warn" | "brand" | "down" | "neutral"> = {
+  Breakout: "up",
+  "Volume spike": "warn",
+  "Trend pullback": "brand",
+  "Below trend": "down",
+  Base: "neutral",
+  Watching: "neutral",
+};
+
+export default async function ScannerPage() {
+  const universe = await getUniverse();
+  const rows = buildScanRows(universe);
+
   return (
     <>
       <PageHead
         title="Scanner"
-        sub="The full NSE universe the alert engine watches, ranked by setup quality."
+        sub="The full NSE universe the alert engine watches, ranked by today's move."
         right={<Button variant="outline" size="sm">Export CSV</Button>}
       />
 
@@ -32,7 +46,7 @@ export default function ScannerPage() {
               {f}
             </button>
           ))}
-          <span className="ml-auto text-[12px] text-ink3">{SCAN_ROWS.length} matches</span>
+          <span className="ml-auto text-[12px] text-ink3">{rows.length} stocks</span>
         </div>
       </Card>
 
@@ -40,18 +54,18 @@ export default function ScannerPage() {
         <thead>
           <tr>
             <Th>Stock</Th>
+            <Th align="center">Trend</Th>
             <Th>Setup</Th>
-            <Th>Sector</Th>
             <Th align="right">LTP</Th>
             <Th align="right">Change</Th>
             <Th align="right">Vol</Th>
             <Th align="right">RSI</Th>
-            <Th align="right">ADX</Th>
+            <Th align="right">Score</Th>
             <Th align="right">Action</Th>
           </tr>
         </thead>
         <tbody>
-          {SCAN_ROWS.map((r) => (
+          {rows.map((r) => (
             <Tr key={r.symbol}>
               <Td>
                 <div className="flex items-center gap-3">
@@ -62,12 +76,14 @@ export default function ScannerPage() {
                   </div>
                 </div>
               </Td>
-              <Td>
-                <Pill tone={r.setup === "Breakout" ? "up" : r.setup === "Momentum" ? "warn" : "neutral"}>
-                  {r.setup}
-                </Pill>
+              <Td align="center">
+                <div className="flex justify-center">
+                  <Sparkline points={r.spark} up={r.change >= 0} w={72} h={22} />
+                </div>
               </Td>
-              <Td>{r.sector}</Td>
+              <Td>
+                <Pill tone={SETUP_TONE[r.setup] ?? "neutral"}>{r.setup}</Pill>
+              </Td>
               <Td align="right" className="tnum font-medium text-ink">
                 {fmtMoney(r.last)}
               </Td>
@@ -75,16 +91,16 @@ export default function ScannerPage() {
                 {fmtPct(r.changePct)}
               </Td>
               <Td align="right" className="tnum">
-                {r.volX.toFixed(1)}x
+                {r.volX === null ? "—" : `${r.volX.toFixed(1)}x`}
               </Td>
-              <Td align="right" className="tnum">
-                {r.rsi}
-              </Td>
-              <Td align="right" className="tnum">
-                {r.adx}
+              <Td align="right" className="tnum">{r.rsi}</Td>
+              <Td align="right" className="tnum font-semibold text-ink">
+                {r.score || "—"}
               </Td>
               <Td align="right">
-                <Button size="sm">Buy</Button>
+                <Button size="sm" variant={r.changePct >= 0 ? "primary" : "outline"}>
+                  {r.changePct >= 0 ? "Buy" : "View"}
+                </Button>
               </Td>
             </Tr>
           ))}

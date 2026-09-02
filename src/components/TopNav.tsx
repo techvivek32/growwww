@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "@/lib/nav";
-import { ACCOUNT } from "@/lib/mock";
+import { ACCOUNT } from "@/lib/book";
 import { fmtMoney } from "@/lib/format";
 import ThemeToggle from "./ThemeToggle";
 import MarketClock from "./MarketClock";

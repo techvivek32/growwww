@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { ACCOUNT } from "@/lib/mock";
-import { fmtMoney } from "@/lib/format";
+import { ACCOUNT, OPENING_CAPITAL, TOTAL_NET, RETURN_PCT } from "@/lib/book";
+import { fmtMoney, fmtMoneySigned, fmtPct } from "@/lib/format";
 import { PageHead, Card, CardHead, Pill, Button } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Broker · MNHA Financials" };
@@ -38,7 +38,7 @@ const CHECKS: Check[] = [
   {
     label: "Paper trading store",
     state: "done",
-    detail: "Phase 1 runs entirely on sample NSE data with a local paper book. No real money can move.",
+    detail: "Phase 1 runs on real delayed NSE prices from Yahoo with a local paper book. No real money can move.",
   },
 ];
 
@@ -69,8 +69,13 @@ export default function BrokerPage() {
             <dd className="tnum mt-1 text-[15px] font-semibold text-ink">{fmtMoney(ACCOUNT.balance)}</dd>
           </div>
           <div>
-            <dt className="text-[11px] tracking-wider text-ink3 uppercase">Margin used</dt>
-            <dd className="tnum mt-1 text-[15px] font-semibold text-ink">{fmtMoney(ACCOUNT.usedMargin, 0)}</dd>
+            <dt className="text-[11px] tracking-wider text-ink3 uppercase">Realised P&amp;L</dt>
+            <dd className="tnum mt-1 text-[15px] font-semibold text-up">
+              {fmtMoneySigned(TOTAL_NET, 0)}
+              <span className="block text-[11px] font-normal text-ink3">
+                {fmtMoney(OPENING_CAPITAL, 0)} start · {fmtPct(RETURN_PCT)}
+              </span>
+            </dd>
           </div>
           <div>
             <dt className="text-[11px] tracking-wider text-ink3 uppercase">Exchange</dt>

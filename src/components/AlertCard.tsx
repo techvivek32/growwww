@@ -1,4 +1,4 @@
-import type { StockAlert } from "@/lib/mock";
+import type { StockAlert } from "@/lib/alerts";
 import { fmtMoney, fmtPct } from "@/lib/format";
 import { Card, Pill, Tag, Button, SymbolChip, Sparkline } from "./ui";
 
@@ -92,20 +92,6 @@ function ScoreBadge({ score }: { score: number }) {
   );
 }
 
-function NewsLine({ news }: { news: NonNullable<StockAlert["news"]> }) {
-  return (
-    <div className="flex items-start gap-2 rounded-lg border border-line bg-surface2 px-3 py-2">
-      <Pill tone={news.tone === "Bullish" ? "up" : news.tone === "Bearish" ? "down" : "neutral"}>
-        {news.tone}
-      </Pill>
-      <p className="min-w-0 flex-1 text-[12px] leading-snug text-ink2">
-        {news.headline}
-        <span className="text-ink3"> · {news.source}</span>
-      </p>
-    </div>
-  );
-}
-
 /* -------------------------------------------------------------- hero card */
 
 export function BestTrade({ a }: { a: StockAlert }) {
@@ -128,7 +114,11 @@ export function BestTrade({ a }: { a: StockAlert }) {
             </div>
             <p className="mt-1 truncate text-[13px] text-ink3">{a.company}</p>
             <p className="tnum mt-2 text-[15px] font-semibold text-ink">
-              {fmtMoney(a.last)} <span className="text-[12px] font-normal text-ink3">LTP</span>
+              {fmtMoney(a.last)}{" "}
+              <span className={`text-[12px] font-medium ${a.changePct >= 0 ? "text-up" : "text-down"}`}>
+                {a.change >= 0 ? "+" : ""}
+                {a.change.toFixed(2)} ({fmtPct(a.changePct)})
+              </span>
             </p>
           </div>
         </div>
@@ -148,17 +138,12 @@ export function BestTrade({ a }: { a: StockAlert }) {
         ))}
       </div>
 
-      {a.news && (
-        <div className="mt-3">
-          <NewsLine news={a.news} />
-        </div>
-      )}
-
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button className="min-w-[140px]">Buy {a.symbol}</Button>
         <Button variant="outline">Add to watchlist</Button>
         <span className="tnum ml-auto text-[12px] text-ink3">
-          R/R {a.rr.toFixed(1)} · RSI {a.rsi} · Vol {a.volX.toFixed(1)}x
+          R/R {a.rr.toFixed(1)} · RSI {a.rsi}
+          {a.volX !== null && ` · Vol ${a.volX.toFixed(1)}x`}
         </span>
       </div>
     </Card>
@@ -168,7 +153,7 @@ export function BestTrade({ a }: { a: StockAlert }) {
 /* -------------------------------------------------------------- grid card */
 
 export function AlertCard({ a }: { a: StockAlert }) {
-  const up = a.last >= a.entry;
+  const up = a.changePct >= 0;
   return (
     // h-full + flex-col so every card in the grid is the same height and the
     // Buy buttons line up regardless of how many reason tags a setup carries.
@@ -198,7 +183,8 @@ export function AlertCard({ a }: { a: StockAlert }) {
 
       <p className="tnum mt-3 text-[12px] text-ink3">
         LTP <span className="font-semibold text-ink">{fmtMoney(a.last)}</span> · R/R {a.rr.toFixed(1)} · RSI{" "}
-        {a.rsi} · Vol {a.volX.toFixed(1)}x
+        {a.rsi}
+        {a.volX !== null && ` · Vol ${a.volX.toFixed(1)}x`}
       </p>
 
       {/* flex-1 absorbs the height difference between 1-line and 2-line tag sets */}
