@@ -338,7 +338,17 @@ export const TODAY_TURNOVER = +TRADES.filter((t) => t.date === TODAY.date)
 /* --------------------------------------------------------------- account */
 
 export const ACCOUNT = {
-  name: "Vivek Hemantbhai Vora",
+  name: "Rahul Shah",
+  email: "rahulzshah@gmail.com",
+  /** Initials for the avatar chip — derived so a name change carries. */
+  get initials() {
+    return this.name
+      .split(/\s+/)
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+  },
   broker: "Groww",
   openingCapital: OPENING_CAPITAL,
   balance: CLOSING_BALANCE,

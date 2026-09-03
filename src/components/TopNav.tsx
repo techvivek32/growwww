@@ -8,6 +8,7 @@ import { fmtMoney } from "@/lib/format";
 import ThemeToggle from "./ThemeToggle";
 import MarketClock from "./MarketClock";
 import { AutoTradeToggle } from "./AutoTrade";
+import ProfileMenu from "./ProfileMenu";
 
 function Logo() {
   return (
@@ -88,12 +89,7 @@ export default function TopNav() {
               <path d="M10.3 20a2 2 0 0 0 3.4 0" />
             </svg>
           </button>
-          <span
-            className="ml-1 grid h-9 w-9 place-items-center rounded-full bg-violetsoft text-[12px] font-semibold text-violet"
-            title={ACCOUNT.name}
-          >
-            VV
-          </span>
+          <ProfileMenu />
         </div>
       </div>
 
