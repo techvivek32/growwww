@@ -110,8 +110,8 @@ export default function TopNav() {
               href="/broker"
               className="flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12px] font-medium text-ink2 transition-colors hover:bg-surfaceh hover:text-ink"
             >
-              <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-              Paper mode
+              <span className="live-dot h-1.5 w-1.5 rounded-full bg-up" />
+              Live
             </Link>
           </div>
         </div>

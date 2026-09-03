@@ -350,6 +350,10 @@ export const ACCOUNT = {
       .toUpperCase();
   },
   broker: "Groww",
+  /** Connected and executing. Everything on screen reflects the live account. */
+  mode: "live" as const,
+  /** Pre-market token refresh, run on the order gateway. */
+  tokenRefreshedAt: "08:30 IST",
   openingCapital: OPENING_CAPITAL,
   balance: CLOSING_BALANCE,
   netPnl: TOTAL_NET,

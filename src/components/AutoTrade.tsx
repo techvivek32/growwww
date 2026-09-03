@@ -223,7 +223,7 @@ function AutoTradeCover() {
 
         <p className="mt-3 text-[11px] text-ink3">
           Press <kbd className="rounded border border-line bg-surface2 px-1 py-0.5 font-medium">Esc</kbd> to stop ·
-          Paper mode — no real money can move
+          Orders route to your Groww account
         </p>
       </div>
     </div>

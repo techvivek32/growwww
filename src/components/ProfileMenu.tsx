@@ -74,7 +74,7 @@ export default function ProfileMenu() {
             </div>
             <div className="flex items-baseline justify-between gap-3">
               <dt className="text-[12px] text-ink3">Broker</dt>
-              <dd className="text-[12.5px] font-medium text-ink">{ACCOUNT.broker} · paper</dd>
+              <dd className="text-[12.5px] font-medium text-ink">{ACCOUNT.broker} · connected</dd>
             </div>
           </dl>
 

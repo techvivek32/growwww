@@ -6,8 +6,8 @@ a trade archive.
 
 > **Keep your broker, upgrade your terminal.**
 
-Currently **Phase 1: paper mode** — the whole UI runs on **real NSE prices from Yahoo
-Finance** with a local paper book. No Groww key is required and no real money can move.
+The UI is complete and runs on **real NSE prices from Yahoo Finance**. The Groww order
+adapter is the remaining piece — see [Phase 2](#phase-2--going-live-on-groww).
 
 ---
 
@@ -37,8 +37,9 @@ src/
     stocks/{alerts,scanner,watchlist}      AI stock alerts, NSE scanner, watchlist
     fno/{alerts,chain}                     Index option setups, NIFTY option chain
     portfolio/{holdings,positions,orders,history,analysis}
-    broker/                                Groww connection + go-live checklist
+    broker/                                Groww connection, execution stats, API limits
     settings/                              Alert thresholds, risk limits, notifications
+    login/                                 Sign-in (outside the (app) route group)
   components/                              Shell, cards, tables, chart
   lib/
     api/yahoo.ts                           Live NSE quotes (.NS + indices), snapshot-backed
@@ -59,8 +60,8 @@ needed. Pages revalidate every 5 minutes. If Yahoo is unreachable the app falls 
 to `snapshot.ts`, a committed capture of the same real data, so a build never fails and a page
 never blanks.
 
-Yahoo is **delayed**. That is fine for research and paper trading and not fine for execution;
-Phase 2 swaps in the Groww WebSocket behind the same signatures.
+Yahoo is **delayed**. That is fine for research, screening and back-checking, and not fine for
+execution timing; Phase 2 swaps in the Groww WebSocket behind the same signatures.
 
 Two things Yahoo gets wrong that the adapter corrects:
 
@@ -136,15 +137,17 @@ Global `fetch()` must not be used on the order path — undici ignores `localAdd
 
 ### Roadmap
 
-- [x] Groww-themed UI shell, all screens, paper fixtures
-- [ ] `src/lib/api/groww.ts` — quotes and candles from Yahoo `.NS`, local paper book
+- [x] Groww-themed UI shell, every screen, on real NSE data
+- [x] Sign-in — HMAC-signed httpOnly session verified in `proxy.ts`
+- [x] `npm run audit` — every published figure reconciled from `book.ts`
+- [ ] `src/lib/api/groww.ts` — the order adapter, IBKR-identical signatures
 - [ ] Full NSE symbol universe
 - [ ] TradeScope fork — NSE universe, NIFTY 50 regime gate, IST schedule
 - [ ] Supabase project + `groww_trades` table
 - [ ] VPS order gateway: TOTP → access token, 08:30 IST refresh job, rate-limit guards
 - [ ] Live order placement + post-submit verification
 - [ ] Groww WebSocket replacing Yahoo for real-time
-- [ ] Paper → live toggle with confirmations
+- [ ] Live-account confirmations and safety rails
 
 ---
 

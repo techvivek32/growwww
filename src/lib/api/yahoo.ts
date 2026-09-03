@@ -6,9 +6,9 @@ import { SNAPSHOT } from "../snapshot";
  *
  * Yahoo's chart endpoint needs no key and returns `.NS` (NSE) and index data
  * directly, which is enough to build and validate the whole terminal before
- * paying for a Groww subscription. It is delayed, so it is fine for research
- * and paper trading and NOT fine for live execution — Phase 2 replaces this
- * with the Groww WebSocket behind the same function signatures.
+ * paying for a Groww subscription. It is delayed, so it is fine for research,
+ * screening and back-checking, and NOT fine for execution timing — Phase 2
+ * replaces it with the Groww WebSocket behind the same function signatures.
  */
 
 export interface Quote {
