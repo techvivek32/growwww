@@ -5,10 +5,30 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono-jb", display: "swap" });
 
+/** Canonical origin. Override per environment; falls back to the live domain. */
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://arev.mnhafinancial.com";
+
+const DESCRIPTION =
+  "AI stock and F&O alerts for NSE with entry, target and stop on every setup, plus a live order desk on your own Groww account.";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "MNHA Financials — NSE trading terminal on Groww",
-  description:
-    "AI stock and F&O alerts for NSE with entry, target and stop on every setup, plus a live order desk on your own Groww account.",
+  description: DESCRIPTION,
+  applicationName: "MNHA Financials",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "MNHA Financials",
+    title: "MNHA Financials — NSE trading terminal on Groww",
+    description: DESCRIPTION,
+    url: "/",
+    locale: "en_IN",
+  },
+  // The terminal is behind a sign-in and holds one person's account data.
+  // There is nothing here for a crawler, and a financial login page that
+  // turns up in search results is exactly the shape abuse classifiers hunt.
+  robots: { index: false, follow: false, nocache: true },
 };
 
 export const viewport: Viewport = {
