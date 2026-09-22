@@ -6,7 +6,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono-jb", display: "swap" });
 
 /** Canonical origin. Override per environment; falls back to the live domain. */
-export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://arev.mnhafinancial.com";
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://mnha.in";
 
 const DESCRIPTION =
   "AI stock and F&O alerts for NSE with entry, target and stop on every setup, plus a live order desk on your own Groww account.";
