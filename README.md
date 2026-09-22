@@ -19,7 +19,7 @@ adapter is the remaining piece — see [Phase 2](#phase-2--going-live-on-groww).
 | Styling | Tailwind CSS v4, tokens in `src/app/globals.css` |
 | Language | TypeScript (strict) |
 | Deploy | Vercel — every push to `main` ships |
-| Domain | [mnha.in](https://mnha.in) |
+| Domain | [visionmarket.in](https://visionmarket.in) |
 
 ## Running locally
 
