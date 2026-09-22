@@ -49,7 +49,7 @@ export default async function WatchlistPage() {
               </Td>
               <Td align="center">
                 <div className="flex justify-center">
-                  <Sparkline points={w.spark} up={w.change >= 0} w={84} h={24} />
+                  <Sparkline points={w.spark} up={w.change >= 0} baseline={w.prevClose} w={84} h={24} />
                 </div>
               </Td>
               <Td align="right" className="tnum font-medium text-ink">{fmtMoney(w.last)}</Td>

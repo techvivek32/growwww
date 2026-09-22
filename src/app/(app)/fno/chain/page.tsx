@@ -28,8 +28,7 @@ export default async function OptionChainPage() {
       />
 
       <div
-        className="overflow-x-auto rounded-xl border border-line bg-surface"
-        style={{ boxShadow: "var(--shadow-card)" }}
+        className="overflow-x-auto rounded-lg border border-line bg-surface"
       >
         <table className="w-full min-w-[880px] border-collapse text-left">
           <thead>

@@ -29,7 +29,7 @@ export default async function MarketMood() {
                 <p className="truncate text-[11px] text-ink3">{ix.name}</p>
               </div>
               {ix.spark.length >= 3 && (
-                <Sparkline points={ix.spark} up={ix.change >= 0} w={56} h={20} />
+                <Sparkline points={ix.spark} up={ix.change >= 0} baseline={ix.prevClose} w={56} h={20} />
               )}
               <div className="w-[108px] text-right">
                 <p className="tnum text-[13px] font-semibold text-ink">{fmtNum(ix.last, 2)}</p>

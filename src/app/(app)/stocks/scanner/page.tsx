@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { getUniverse } from "@/lib/api/yahoo";
 import { buildScanRows } from "@/lib/alerts";
 import { fmtMoney, fmtPct, toneText } from "@/lib/format";
-import { PageHead, Pill, SymbolChip, Button, Card, Sparkline } from "@/components/ui";
+import { PageHead, Pill, SymbolChip, Button, Chip, Sparkline } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
 export const metadata: Metadata = { title: "Scanner · MNHA Financials" };
@@ -31,24 +31,14 @@ export default async function ScannerPage() {
         right={<Button variant="outline" size="sm">Export CSV</Button>}
       />
 
-      <Card className="mb-4">
-        <div className="flex flex-wrap items-center gap-2">
-          {FILTERS.map((f, i) => (
-            <button
-              key={f}
-              type="button"
-              className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
-                i === 0
-                  ? "bg-brand text-white"
-                  : "border border-line text-ink2 hover:bg-surfaceh hover:text-ink"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-          <span className="ml-auto text-[12px] text-ink3">{rows.length} stocks</span>
-        </div>
-      </Card>
+      <div className="mb-5 flex flex-wrap items-center gap-2.5">
+        {FILTERS.map((f, i) => (
+          <Chip key={f} active={i === 0}>
+            {f}
+          </Chip>
+        ))}
+        <span className="ml-auto text-[13px] text-ink3">{rows.length} stocks</span>
+      </div>
 
       <TableWrap>
         <thead>
@@ -78,7 +68,7 @@ export default async function ScannerPage() {
               </Td>
               <Td align="center">
                 <div className="flex justify-center">
-                  <Sparkline points={r.spark} up={r.change >= 0} w={72} h={22} />
+                  <Sparkline points={r.spark} up={r.change >= 0} baseline={r.last - r.change} w={72} h={22} />
                 </div>
               </Td>
               <Td>

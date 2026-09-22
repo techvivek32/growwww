@@ -9,13 +9,15 @@
 :root {
   color-scheme: light;
 
-  --c-bg:            #f5f6f7;
+  /* Groww is white-on-white: the page and the cards are both white, and a
+     hairline border does the separating. No grey canvas, no drop shadows. */
+  --c-bg:            #ffffff;
   --c-surface:       #ffffff;
-  --c-surface-2:     #fafbfc;
-  --c-surface-hover: #f4f6f8;
+  --c-surface-2:     #f8f9fa;
+  --c-surface-hover: #f5f6f7;
 
-  --c-border:        #e6e8ea;
-  --c-border-strong: #d3d7db;
+  --c-border:        #ededed;
+  --c-border-strong: #dcdcdc;
 
   --c-text:          #121212;
   --c-text-2:        #44475b;
@@ -39,17 +41,18 @@
   --c-warn:          #f5a623;
   --c-warn-soft:     #fef5e6;
 
-  --shadow-card:     0 1px 2px rgba(18, 18, 18, 0.04);
-  --shadow-pop:      0 8px 24px rgba(18, 18, 18, 0.10);
+  /* Cards carry a border, not a shadow. Only floating layers get one. */
+  --shadow-card:     none;
+  --shadow-pop:      0 6px 28px rgba(18, 18, 18, 0.14);
 }
 
 .dark {
   color-scheme: dark;
 
-  --c-bg:            #0f1012;
-  --c-surface:       #17191c;
-  --c-surface-2:     #1c1f23;
-  --c-surface-hover: #22262b;
+  --c-bg:            #131417;
+  --c-surface:       #131417;
+  --c-surface-2:     #1b1d21;
+  --c-surface-hover: #202328;
 
   --c-border:        #2a2e34;
   --c-border-strong: #3a3f47;
@@ -74,8 +77,8 @@
   --c-warn:          #f5a623;
   --c-warn-soft:     #33260d;
 
-  --shadow-card:     0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-pop:      0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-card:     none;
+  --shadow-pop:      0 6px 28px rgba(0, 0, 0, 0.55);
 }
 
 @theme inline {
