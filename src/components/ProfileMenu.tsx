@@ -1,18 +1,27 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ACCOUNT } from "@/lib/book";
-import { fmtMoney, fmtMoneySigned, fmtPct } from "@/lib/format";
+import type { Account } from "@/lib/types";
 import { logout } from "@/app/login/actions";
 
 /**
- * Avatar with a small popover: who is signed in, the account line, and the
- * way out. Sign-out posts to a Server Action so the httpOnly cookie is
- * cleared server-side — there is nothing for client JS to clear.
+ * Avatar with a small popover: who is signed in, which broker, and the way
+ * out. Sign-out posts to a Server Action so the httpOnly cookie is cleared
+ * server-side — there is nothing for client JS to clear.
+ *
+ * Balances are deliberately absent until a broker is connected. An em dash is
+ * honest; a zero would not be.
  */
-export default function ProfileMenu() {
+export default function ProfileMenu({ account }: { account: Account }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
+
+  const initials = account.name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 
   useEffect(() => {
     if (!open) return;
@@ -39,10 +48,10 @@ export default function ProfileMenu() {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Account — ${ACCOUNT.name}`}
+        aria-label={`Account — ${account.name}`}
         className="ml-1 grid h-9 w-9 place-items-center rounded-full bg-violetsoft text-[12px] font-semibold text-violet transition-opacity hover:opacity-85"
       >
-        {ACCOUNT.initials}
+        {initials}
       </button>
 
       {open && (
@@ -53,28 +62,24 @@ export default function ProfileMenu() {
         >
           <div className="flex items-center gap-3 border-b border-line px-4 py-3.5">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-violetsoft text-[13px] font-semibold text-violet">
-              {ACCOUNT.initials}
+              {initials}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-[13.5px] font-semibold text-ink">{ACCOUNT.name}</p>
-              <p className="truncate text-[11.5px] text-ink3">{ACCOUNT.email}</p>
+              <p className="truncate text-[13.5px] font-semibold text-ink">{account.name}</p>
+              <p className="truncate text-[11.5px] text-ink3">{account.email}</p>
             </div>
           </div>
 
           <dl className="space-y-2 border-b border-line px-4 py-3">
             <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-[12px] text-ink3">Balance</dt>
-              <dd className="tnum text-[12.5px] font-semibold text-ink">{fmtMoney(ACCOUNT.balance)}</dd>
+              <dt className="text-[12.5px] text-ink3">Broker</dt>
+              <dd className="text-[12.5px] font-medium text-ink">{account.broker}</dd>
             </div>
             <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-[12px] text-ink3">Realised P&amp;L</dt>
-              <dd className="tnum text-[12.5px] font-semibold text-up">
-                {fmtMoneySigned(ACCOUNT.netPnl, 0)} ({fmtPct(ACCOUNT.returnPct)})
+              <dt className="text-[12.5px] text-ink3">Balance</dt>
+              <dd className="tnum text-[12.5px] font-medium text-ink3">
+                {account.balance === null ? "—" : account.balance}
               </dd>
-            </div>
-            <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-[12px] text-ink3">Broker</dt>
-              <dd className="text-[12.5px] font-medium text-ink">{ACCOUNT.broker} · connected</dd>
             </div>
           </dl>
 
@@ -82,7 +87,7 @@ export default function ProfileMenu() {
             <button
               type="submit"
               role="menuitem"
-              className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-[13px] font-medium text-ink2 transition-colors hover:bg-surfaceh hover:text-ink"
+              className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-[13.5px] font-medium text-ink2 transition-colors hover:bg-surfaceh hover:text-ink"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />

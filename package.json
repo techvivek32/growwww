@@ -7,8 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "snapshot": "node scripts/snapshot.mjs",
-    "audit": "node audit.mts"
+    "snapshot": "node scripts/snapshot.mjs"
   },
   "dependencies": {
     "next": "16.3.4",

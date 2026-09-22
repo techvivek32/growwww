@@ -46,8 +46,8 @@ src/
     api/yahoo.ts                           Live NSE quotes (.NS + indices), snapshot-backed
     snapshot.ts                            Committed real-data fallback — npm run snapshot
     alerts.ts                              Setups derived from real price/volume/trend
-    options.ts                             Chain + F&O setups priced off the live spot
-    book.ts                                THE trade book — one source for 4 screens
+    api/broker.ts                          Broker adapter — empty until a gateway is set
+    types.ts                               Account/order/position/trade contract
     format.ts                              en-IN money / lakh-crore grouping
     market.ts                              NSE session clock (Asia/Kolkata)
     nav.ts                                 Top-bar section list
@@ -76,16 +76,14 @@ Two things Yahoo gets wrong that the adapter corrects:
 `alerts.ts` come from the day's real high–low range, real volume against its 20-session average,
 and the real 30-day close series. Change the market and the setups change.
 
-**Options are modelled.** Yahoo carries no Indian option chain, so `options.ts` prices strikes
-with Black-Scholes against the live index level, real strike spacing, real lot sizes and the
-real days to the next Tuesday expiry — internally consistent and market-linked, but a model
-rather than NSE's quotes.
+**Options come from the broker.** Yahoo carries no Indian option chain, so the chain and the
+F&O setups stay empty until Groww provides them. Modelling strikes locally would put numbers on
+screen that no exchange ever printed.
 
-**The trade book is fixed.** `book.ts` holds twelve intraday round-trips across 31 Aug – 2 Sep
-2026, from ₹50,000 of opening capital. Orders, Positions, History and Analysis all derive from
-that one array, so those four screens cannot disagree. Every entry and exit traded inside its
-session's real high–low range, and each position sits inside Groww's ~5x MIS margin against the
-capital available that day.
+**Account data is not invented.** Holdings, positions, orders, trade history and the option
+chain all come from `lib/api/broker.ts`. Until `BROKER_API_URL` points at a gateway it returns
+empty and those screens say so, because a zero balance and an absent balance are different
+facts and only one of them is true.
 
 ## Design
 
@@ -140,7 +138,6 @@ Global `fetch()` must not be used on the order path — undici ignores `localAdd
 
 - [x] Groww-themed UI shell, every screen, on real NSE data
 - [x] Sign-in — HMAC-signed httpOnly session verified in `proxy.ts`
-- [x] `npm run audit` — every published figure reconciled from `book.ts`
 - [ ] `src/lib/api/groww.ts` — the order adapter, IBKR-identical signatures
 - [ ] Full NSE symbol universe
 - [ ] TradeScope fork — NSE universe, NIFTY 50 regime gate, IST schedule

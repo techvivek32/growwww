@@ -9,8 +9,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ACCOUNT } from "@/lib/book";
-import { fmtMoney } from "@/lib/format";
 
 /**
  * Auto-trade mode.
@@ -87,17 +85,15 @@ export function AutoTradeToggle() {
 
 /** What the engine narrates while it runs. Cycles so the screen is never dead. */
 const STEPS = [
-  "Scanning 32 NSE symbols…",
-  "NIFTY 50 checked against its 20 DMA — regime gate open",
-  "COALINDIA cleared the volume filter at 4.4x average",
-  "Sizing against the ₹2,000 per-trade risk limit",
-  "Placing LIMIT BUY 600 COALINDIA @ ₹408.50 · MIS",
-  "Order accepted — read back from the broker and verified",
-  "GTT + OCO armed · stop ₹402.10 · target ₹421.00",
-  "TATAPOWER breaking out — queued behind the open-position cap",
-  "Monitoring 3 working positions…",
-  "Trailing the stop on ADANIGREEN to ₹1,262.00",
-  "Re-scan in 4 min · nothing else passed the filter",
+  "Scanning the NSE universe…",
+  "Checking NIFTY 50 against its 20 DMA — regime gate",
+  "Filtering on volume against the 20-session average",
+  "Ranking survivors by trend strength",
+  "Sizing candidates against the per-trade risk limit",
+  "Checking the open-position cap before entering",
+  "Arming GTT + OCO on anything filled",
+  "Monitoring working orders…",
+  "Waiting for the next scan window",
 ];
 
 function AutoTradeCover() {
@@ -198,12 +194,12 @@ function AutoTradeCover() {
 
         <dl className="mt-4 grid grid-cols-3 gap-2">
           {[
-            { k: "Balance", v: fmtMoney(ACCOUNT.balance, 0) },
             { k: "Risk / trade", v: "₹2,000" },
             { k: "Max positions", v: "5" },
+            { k: "Scan window", v: "10 min" },
           ].map((x) => (
             <div key={x.k} className="rounded-lg border border-line bg-surface2 px-2 py-2">
-              <dt className="text-[10px] tracking-wider text-ink3 uppercase">{x.k}</dt>
+              <dt className="text-[11px] text-ink3">{x.k}</dt>
               <dd className="tnum mt-0.5 text-[13px] font-semibold text-ink">{x.v}</dd>
             </div>
           ))}

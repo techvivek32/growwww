@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "@/lib/nav";
-import { ACCOUNT } from "@/lib/book";
-import { fmtMoney } from "@/lib/format";
+import type { Account } from "@/lib/types";
 import ThemeToggle from "./ThemeToggle";
 import MarketClock from "./MarketClock";
 import { AutoTradeToggle } from "./AutoTrade";
@@ -29,7 +28,7 @@ function Logo() {
   );
 }
 
-export default function TopNav() {
+export default function TopNav({ account }: { account: Account }) {
   const pathname = usePathname();
   const trading = NAV_ITEMS.filter((i) => i.group === "trading");
   const system = NAV_ITEMS.filter((i) => i.group === "system");
@@ -89,7 +88,7 @@ export default function TopNav() {
               <path d="M10.3 20a2 2 0 0 0 3.4 0" />
             </svg>
           </button>
-          <ProfileMenu />
+          <ProfileMenu account={account} />
         </div>
       </div>
 
@@ -102,16 +101,13 @@ export default function TopNav() {
             {system.map((i) => tab(i, true))}
           </nav>
 
-          <div className="hidden shrink-0 items-center gap-3 xl:flex">
-            <span className="tnum text-[12.5px] text-ink3">
-              Balance <strong className="font-semibold text-ink">{fmtMoney(ACCOUNT.balance)}</strong>
-            </span>
+          <div className="hidden shrink-0 items-center xl:flex">
             <Link
               href="/broker"
               className="flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12px] font-medium text-ink2 transition-colors hover:bg-surfaceh hover:text-ink"
             >
-              <span className="live-dot h-1.5 w-1.5 rounded-full bg-up" />
-              Live
+              <span className="h-1.5 w-1.5 rounded-full bg-ink3" />
+              {account.broker}
             </Link>
           </div>
         </div>

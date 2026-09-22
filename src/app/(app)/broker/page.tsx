@@ -1,67 +1,57 @@
 import type { Metadata } from "next";
-import {
-  ACCOUNT,
-  OPENING_CAPITAL,
-  TOTAL_NET,
-  TOTAL_CHARGES,
-  RETURN_PCT,
-  TRADES,
-  ORDERS,
-  SESSIONS,
-} from "@/lib/book";
-import { fmtMoney, fmtMoneySigned, fmtPct, fmtNum } from "@/lib/format";
-import { PageHead, Card, CardHead, Pill } from "@/components/ui";
+import { getAccount, isConnected } from "@/lib/api/broker";
+import { PageHead, Card, CardHead, Pill, Button } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Broker · MNHA Financials" };
 
-function Check() {
+function Dot({ on }: { on: boolean }) {
   return (
-    <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-upsoft text-up">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-        <path d="m5 12.5 4.5 4.5L19 7" />
-      </svg>
+    <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-surface2 text-ink3">
+      {on ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--c-up)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m5 12.5 4.5 4.5L19 7" />
+        </svg>
+      ) : (
+        <span className="h-1.5 w-1.5 rounded-full bg-ink3" />
+      )}
     </span>
   );
 }
 
-const CONNECTION = [
+const STEPS = [
   {
-    label: "Order placement",
+    label: "Trading API subscription",
+    detail: "₹499 + GST per month on the Groww Cloud console. Unlocks order placement, the live feed and historical candles.",
+  },
+  {
+    label: "Static IP registered",
     detail:
-      "MARKET, LIMIT, SL and SL_M across CNC, MIS and NRML. Every submission is read back from the broker and verified before it is shown as placed.",
+      "SEBI has required order placement from a registered IP since 1 Apr 2026. It can be changed only once every 7 days, so the address is verified on the host before it is registered.",
   },
   {
-    label: "Real-time NSE data",
-    detail: "Quotes and depth streaming over the WebSocket feed, up to 1,000 instruments at once.",
-  },
-  {
-    label: "Registered static IP",
+    label: "TOTP credentials",
     detail:
-      "Orders leave from the gateway address registered with Groww, as SEBI requires for API trading — never from the browser.",
+      "The TOTP flow lets the gateway mint its own access token. Tokens expire at 06:00 IST daily and are re-minted pre-market, so nothing needs a human at 6 AM.",
   },
   {
-    label: "Automatic token refresh",
-    detail: `Access tokens expire at 06:00 IST daily and are re-minted from the TOTP secret on the gateway. Last refresh ${ACCOUNT.tokenRefreshedAt}.`,
-  },
-  {
-    label: "Stop and target on every fill",
+    label: "Order gateway reachable",
     detail:
-      "Groww has no bracket orders, so each entry is paired with a GTT + OCO stop and target. Filling one cancels the other.",
+      "Orders must leave from the registered IP, so a gateway on that host places them — never the browser, and never a serverless function whose egress IP is not fixed.",
   },
 ];
 
 const LIMITS = [
   { k: "Order types", v: "MARKET · LIMIT · SL · SL_M" },
   { k: "Products", v: "CNC · MIS · NRML" },
-  { k: "Stop + target", v: "GTT + OCO pair" },
+  { k: "Stop + target", v: "GTT + OCO pair (no bracket orders)" },
   { k: "Order rate limit", v: "10/s · 250/min" },
   { k: "Data rate limit", v: "10/s · 300/min" },
   { k: "Streaming", v: "Up to 1,000 instruments" },
 ];
 
-export default function BrokerPage() {
-  const filled = ORDERS.filter((o) => o.status === "COMPLETE").length;
-  const turnover = TRADES.reduce((s, t) => s + (t.entry + t.exit) * t.qty, 0);
+export default async function BrokerPage() {
+  const account = await getAccount();
+  const connected = isConnected();
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -70,86 +60,64 @@ export default function BrokerPage() {
       <Card className="mb-5">
         <CardHead
           title="Groww"
-          sub={ACCOUNT.name}
-          right={
-            <Pill tone="up">
-              <span className="live-dot mr-0.5 h-1.5 w-1.5 rounded-full bg-up" />
-              Live
-            </Pill>
-          }
+          sub={account.email}
+          right={<Pill tone={connected ? "up" : "neutral"}>{connected ? "Connected" : "Not connected"}</Pill>}
         />
 
         <dl className="grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-4">
           <div>
-            <dt className="text-[11px] tracking-wider text-ink3 uppercase">Balance</dt>
-            <dd className="tnum mt-1 text-[15px] font-semibold text-ink">{fmtMoney(ACCOUNT.balance)}</dd>
+            <dt className="text-[12px] text-ink3">Account</dt>
+            <dd className="mt-1 text-[14.5px] font-semibold text-ink">{account.name}</dd>
           </div>
           <div>
-            <dt className="text-[11px] tracking-wider text-ink3 uppercase">Realised P&amp;L</dt>
-            <dd className="tnum mt-1 text-[15px] font-semibold text-up">
-              {fmtMoneySigned(TOTAL_NET, 0)}
-              <span className="block text-[11px] font-normal text-ink3">
-                {fmtMoney(OPENING_CAPITAL, 0)} start · {fmtPct(RETURN_PCT)}
-              </span>
+            <dt className="text-[12px] text-ink3">Balance</dt>
+            <dd className="tnum mt-1 text-[14.5px] font-semibold text-ink3">
+              {account.balance === null ? "—" : account.balance}
             </dd>
           </div>
           <div>
-            <dt className="text-[11px] tracking-wider text-ink3 uppercase">Exchange</dt>
-            <dd className="mt-1 text-[15px] font-semibold text-ink">NSE</dd>
+            <dt className="text-[12px] text-ink3">Exchange</dt>
+            <dd className="mt-1 text-[14.5px] font-semibold text-ink">NSE</dd>
           </div>
           <div>
-            <dt className="text-[11px] tracking-wider text-ink3 uppercase">Session</dt>
-            <dd className="mt-1 text-[15px] font-semibold text-ink">09:15–15:30</dd>
+            <dt className="text-[12px] text-ink3">Session</dt>
+            <dd className="mt-1 text-[14.5px] font-semibold text-ink">09:15–15:30</dd>
           </div>
         </dl>
+
+        {!connected && (
+          <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-5">
+            <Button>Connect Groww account</Button>
+            <p className="text-[12.5px] leading-relaxed text-ink3">
+              Balances, holdings, positions and orders all read from Groww. Until then those screens stay empty
+              rather than showing a number nobody can stand behind.
+            </p>
+          </div>
+        )}
       </Card>
 
       <Card className="mb-5">
-        <CardHead title="Connection" sub="Everything the order desk needs is up" />
+        <CardHead title="What connecting needs" sub="Four things, in this order" />
         <ul className="space-y-3.5">
-          {CONNECTION.map((r) => (
-            <li key={r.label} className="flex gap-3">
-              <Check />
+          {STEPS.map((s) => (
+            <li key={s.label} className="flex gap-3">
+              <Dot on={connected} />
               <div className="min-w-0">
-                <p className="text-[13px] font-semibold text-ink">{r.label}</p>
-                <p className="mt-0.5 text-[12px] leading-relaxed text-ink3">{r.detail}</p>
+                <p className="text-[13.5px] font-semibold text-ink">{s.label}</p>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink3">{s.detail}</p>
               </div>
             </li>
           ))}
         </ul>
       </Card>
 
-      <Card className="mb-5">
-        <CardHead
-          title="Execution so far"
-          sub={`${SESSIONS.length} sessions · ${ACCOUNT.windowLabel}`}
-        />
-        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {[
-            { k: "Orders filled", v: fmtNum(filled) },
-            { k: "Round-trips", v: fmtNum(TRADES.length) },
-            { k: "Turnover", v: fmtMoney(turnover, 0) },
-            { k: "Charges", v: fmtMoney(TOTAL_CHARGES, 0) },
-          ].map((x) => (
-            <div key={x.k}>
-              <dt className="text-[11px] tracking-wider text-ink3 uppercase">{x.k}</dt>
-              <dd className="tnum mt-1 text-[15px] font-semibold text-ink">{x.v}</dd>
-            </div>
-          ))}
-        </dl>
-        <p className="mt-4 border-t border-line pt-4 text-[12px] leading-relaxed text-ink3">
-          Charges are brokerage, STT, exchange fees, GST, SEBI turnover fees and stamp duty, deducted
-          by Groww. Realised P&amp;L above is net of all of them.
-        </p>
-      </Card>
-
       <Card>
-        <CardHead title="API limits" sub="What the order desk paces itself against" />
+        <CardHead title="How the Groww API works" sub="The constraints the order desk is built around" />
         <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
           {LIMITS.map((c) => (
             <div key={c.k} className="border-b border-line pb-3 last:border-0">
-              <dt className="text-[11px] tracking-wider text-ink3 uppercase">{c.k}</dt>
-              <dd className="mt-0.5 text-[13px] font-medium text-ink">{c.v}</dd>
+              <dt className="text-[12px] text-ink3">{c.k}</dt>
+              <dd className="mt-0.5 text-[13.5px] font-medium text-ink">{c.v}</dd>
             </div>
           ))}
         </dl>
