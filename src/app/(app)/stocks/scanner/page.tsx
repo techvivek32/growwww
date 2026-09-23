@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { getUniverse } from "@/lib/api/yahoo";
 import { buildScanRows } from "@/lib/alerts";
+import { canTrade } from "@/lib/api/broker";
 import { fmtMoney, fmtPct, toneText } from "@/lib/format";
 import { PageHead, Pill, SymbolChip, Sparkline } from "@/components/ui";
+import OrderTicket from "@/components/OrderTicket";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
 export const metadata: Metadata = { title: "Scanner · MNHA Financials" };
@@ -20,6 +22,7 @@ const SETUP_TONE: Record<string, "up" | "warn" | "brand" | "down" | "neutral"> =
 export default async function ScannerPage() {
   const universe = await getUniverse();
   const rows = buildScanRows(universe);
+  const tradable = canTrade();
 
   return (
     <>
@@ -41,6 +44,7 @@ export default async function ScannerPage() {
             <Th align="right">Vol</Th>
             <Th align="right">RSI</Th>
             <Th align="right">Score</Th>
+            <Th align="right">Trade</Th>
           </tr>
         </thead>
         <tbody>
@@ -78,6 +82,16 @@ export default async function ScannerPage() {
               <Td align="right" className="tnum">{r.rsi === null ? "—" : r.rsi}</Td>
               <Td align="right" className="tnum font-semibold text-ink">
                 {r.score ?? "—"}
+              </Td>
+              <Td align="right">
+                <OrderTicket
+                  symbol={r.symbol}
+                  company={r.company}
+                  ltp={r.last}
+                  suggestedPrice={r.last}
+                  trigger={{ label: "Buy", variant: "outline" }}
+                  disabledReason={tradable ? undefined : "Order placement is disabled on this server"}
+                />
               </Td>
             </Tr>
           ))}

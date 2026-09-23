@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { getQuotes } from "@/lib/api/yahoo";
+import { canTrade } from "@/lib/api/broker";
 import { fmtMoney, fmtPct, toneText } from "@/lib/format";
-import { PageHead, SymbolChip, Sparkline, Button } from "@/components/ui";
+import { PageHead, SymbolChip, Sparkline } from "@/components/ui";
+import OrderTicket from "@/components/OrderTicket";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
 export const metadata: Metadata = { title: "Watchlist · MNHA Financials" };
@@ -14,6 +16,7 @@ const WATCHED = [
 
 export default async function WatchlistPage() {
   const rows = await getQuotes(WATCHED);
+  const tradable = canTrade();
 
   return (
     <>
@@ -59,7 +62,14 @@ export default async function WatchlistPage() {
                 {fmtPct(w.changePct)}
               </Td>
               <Td align="right">
-                <Button size="sm" variant="outline" disabled title="Order placement is not enabled — place in Groww">Trade</Button>
+                <OrderTicket
+                  symbol={w.symbol}
+                  company={w.name}
+                  ltp={w.last}
+                  suggestedPrice={w.last}
+                  trigger={{ label: "Buy", variant: "outline" }}
+                  disabledReason={tradable ? undefined : "Order placement is disabled on this server"}
+                />
               </Td>
             </Tr>
           ))}

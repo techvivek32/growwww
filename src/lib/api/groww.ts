@@ -173,6 +173,27 @@ async function get<T>(path: string): Promise<T | null> {
   return res.body.payload ?? null;
 }
 
+/** Same envelope, for writes. Returns the full body so callers can read
+ *  Groww's own error message rather than a bare null. */
+async function post<T>(
+  path: string,
+  json: unknown,
+): Promise<{ ok: boolean; payload: T | null; message: string | null }> {
+  const token = await accessToken();
+  const res = await request<{
+    status?: string;
+    payload?: T;
+    error?: { message?: string; code?: string };
+  }>(path, { method: "POST", token, json });
+
+  const ok = res.status === 200 && res.body?.status === "SUCCESS";
+  return {
+    ok,
+    payload: res.body?.payload ?? null,
+    message: res.body?.error?.message ?? (ok ? null : `HTTP ${res.status}`),
+  };
+}
+
 /* ------------------------------------------------------------ user detail */
 
 export interface UserDetail {
@@ -399,6 +420,102 @@ export async function getOrders(): Promise<Order[]> {
         note: o.remark || undefined,
       };
     });
+}
+
+/* ------------------------------------------------------------ placing an order */
+
+export interface PlaceOrderInput {
+  symbol: string;
+  side: Side;
+  qty: number;
+  type: OrderType;
+  product: Product;
+  /** Required for LIMIT and SL; ignored otherwise. */
+  price?: number | null;
+  /** Required for SL and SL_M; ignored otherwise. */
+  triggerPrice?: number | null;
+  segment?: "CASH" | "FNO";
+}
+
+export interface PlaceOrderResult {
+  ok: boolean;
+  orderId: string | null;
+  status: string | null;
+  /** Groww's own message on rejection — shown to the user verbatim. */
+  message: string | null;
+  /** The reference we sent, so the order can be found again if a reply is lost. */
+  referenceId: string;
+}
+
+/**
+ * A client-side reference Groww echoes back. If the response never arrives —
+ * a timeout, a dropped connection — this is how the order is identified in
+ * the order book rather than being blind-retried into a double fill.
+ */
+function referenceId(): string {
+  return `mnha-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResult> {
+  const segment = input.segment ?? "CASH";
+  const ref = referenceId();
+
+  const body: Record<string, unknown> = {
+    trading_symbol: input.symbol,
+    quantity: input.qty,
+    validity: "DAY",
+    exchange: "NSE",
+    segment,
+    product: input.product,
+    order_type: input.type,
+    transaction_type: input.side,
+    order_reference_id: ref,
+  };
+
+  // Only send the fields the order type actually uses — a stray price on a
+  // MARKET order is the kind of thing a broker rejects the whole ticket for.
+  if (input.type === "LIMIT" || input.type === "SL") body.price = input.price;
+  if (input.type === "SL" || input.type === "SL_M") body.trigger_price = input.triggerPrice;
+
+  const res = await post<{ groww_order_id?: string; order_status?: string; remark?: string }>(
+    "/v1/order/create",
+    body,
+  );
+
+  return {
+    ok: res.ok,
+    orderId: res.payload?.groww_order_id ?? null,
+    status: res.payload?.order_status ?? null,
+    message: res.payload?.remark ?? res.message,
+    referenceId: ref,
+  };
+}
+
+export async function cancelOrder(
+  orderId: string,
+  segment: "CASH" | "FNO" = "CASH",
+): Promise<{ ok: boolean; message: string | null }> {
+  const res = await post<{ order_status?: string }>("/v1/order/cancel", {
+    segment,
+    groww_order_id: orderId,
+  });
+  return { ok: res.ok, message: res.message };
+}
+
+/** Read an order back after submitting — never trust the write alone. */
+export async function getOrderStatus(
+  orderId: string,
+  segment: "CASH" | "FNO" = "CASH",
+): Promise<{ status: string | null; filled: number | null; remark: string | null } | null> {
+  const p = await get<{ order_status?: string; filled_quantity?: number; remark?: string }>(
+    `/v1/order/status/${encodeURIComponent(orderId)}?segment=${segment}`,
+  );
+  if (!p) return null;
+  return {
+    status: p.order_status ?? null,
+    filled: typeof p.filled_quantity === "number" ? p.filled_quantity : null,
+    remark: p.remark ?? null,
+  };
 }
 
 /* -------------------------------------------------------------- live data */

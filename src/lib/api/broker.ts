@@ -178,6 +178,101 @@ export async function getTrades(): Promise<Trade[]> {
   return trades;
 }
 
+/* ------------------------------------------------------------------ writes */
+
+/**
+ * Order placement is a separate switch from reading. Set TRADING_ENABLED=false
+ * to make the terminal read-only without pulling the credentials — useful when
+ * you want the screens live but nobody placing anything.
+ */
+export function canTrade(): boolean {
+  return groww.hasCredentials() && process.env.TRADING_ENABLED !== "false";
+}
+
+export interface PlacedOrder {
+  ok: boolean;
+  orderId: string | null;
+  /** Status read BACK from the broker, not the one the write echoed. */
+  status: string | null;
+  filled: number | null;
+  message: string | null;
+  referenceId: string | null;
+}
+
+/**
+ * Place an order, then read it back.
+ *
+ * The write's own reply is not taken as proof: a submission can be accepted
+ * and then rejected at the exchange moments later, so the status shown comes
+ * from a fresh read of the order. If that read fails the order id is still
+ * returned — an order that exists but cannot be described is very different
+ * from one that was never placed, and the UI says so.
+ */
+export async function placeOrder(input: groww.PlaceOrderInput): Promise<PlacedOrder> {
+  if (!canTrade()) {
+    return {
+      ok: false,
+      orderId: null,
+      status: null,
+      filled: null,
+      message: "Order placement is disabled on this server.",
+      referenceId: null,
+    };
+  }
+
+  let res: groww.PlaceOrderResult;
+  try {
+    res = await groww.placeOrder(input);
+  } catch (err) {
+    console.error("[broker] placeOrder failed:", err instanceof Error ? err.message : err);
+    return {
+      ok: false,
+      orderId: null,
+      status: null,
+      filled: null,
+      message:
+        "The order request did not complete. Check the order book in Groww before retrying — it may still have reached the exchange.",
+      referenceId: null,
+    };
+  }
+
+  if (!res.ok || !res.orderId) {
+    return {
+      ok: false,
+      orderId: res.orderId,
+      status: res.status,
+      filled: null,
+      message: res.message ?? "Groww rejected the order.",
+      referenceId: res.referenceId,
+    };
+  }
+
+  const segment = input.segment ?? "CASH";
+  const readBack = await safe("order-status", () => groww.getOrderStatus(res.orderId as string, segment), null);
+
+  return {
+    ok: true,
+    orderId: res.orderId,
+    status: readBack?.status ?? res.status,
+    filled: readBack?.filled ?? null,
+    message: readBack?.remark ?? res.message,
+    referenceId: res.referenceId,
+  };
+}
+
+export async function cancelOrder(
+  orderId: string,
+  segment: "CASH" | "FNO" = "CASH",
+): Promise<{ ok: boolean; message: string | null }> {
+  if (!canTrade()) return { ok: false, message: "Order placement is disabled on this server." };
+  try {
+    return await groww.cancelOrder(orderId, segment);
+  } catch (err) {
+    console.error("[broker] cancelOrder failed:", err instanceof Error ? err.message : err);
+    return { ok: false, message: "The cancel request did not complete. Check Groww." };
+  }
+}
+
 /**
  * NSE option chains are not in the free price feed, and Groww's REST surface
  * exposes quotes per instrument rather than a whole chain. Nothing builds one

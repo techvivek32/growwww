@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { getPositions, isConnected } from "@/lib/api/broker";
+import { getPositions, isConnected, canTrade } from "@/lib/api/broker";
 import { fmtMoney, fmtMoneySigned, fmtPct, toneText } from "@/lib/format";
-import { PageHead, StatTile, Pill, Button, SymbolChip } from "@/components/ui";
+import { PageHead, StatTile, Pill, SymbolChip } from "@/components/ui";
+import OrderTicket from "@/components/OrderTicket";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 import NotConnected from "@/components/NotConnected";
 
@@ -14,6 +15,7 @@ const PRODUCT_TONE = { MIS: "warn", CNC: "brand", NRML: "violet" } as const;
 
 export default async function PositionsPage() {
   const positions = await getPositions();
+  const tradable = canTrade();
 
   if (positions.length === 0) {
     return (
@@ -49,11 +51,6 @@ export default async function PositionsPage() {
       <PageHead
         title="Positions"
         sub="Open intraday and F&O positions. MIS legs are auto-squared off by Groww before close."
-        right={
-          <Button variant="danger" size="sm" disabled title="Order placement is not enabled — square off in Groww">
-            Square off all
-          </Button>
-        }
       />
 
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -119,9 +116,14 @@ export default async function PositionsPage() {
                   )}
                 </Td>
                 <Td align="right">
-                  <Button size="sm" variant="outline" disabled title="Order placement is not enabled — exit in Groww">
-                    Exit
-                  </Button>
+                  <OrderTicket
+                    symbol={p.symbol.replace(/\s.*/, "")}
+                    ltp={p.ltp}
+                    side="SELL"
+                    suggestedPrice={p.ltp}
+                    trigger={{ label: "Exit", variant: "outline" }}
+                    disabledReason={tradable ? undefined : "Order placement is disabled on this server"}
+                  />
                 </Td>
               </Tr>
             );

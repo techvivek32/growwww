@@ -1,6 +1,9 @@
 import type { StockAlert } from "@/lib/alerts";
 import { fmtMoney, fmtPct } from "@/lib/format";
-import { Card, Pill, Tag, Button, SymbolChip, Sparkline } from "./ui";
+import { Card, Pill, Tag, SymbolChip, Sparkline } from "./ui";
+import OrderTicket from "./OrderTicket";
+
+const NO_TRADE = "Order placement is disabled on this server";
 
 /* ------------------------------------------------------------ level tiles */
 
@@ -64,11 +67,9 @@ function Metrics({ a, ltp = false }: { a: StockAlert; ltp?: boolean }) {
   );
 }
 
-const BUY_DISABLED = "Order placement is not enabled — place the order in Groww";
-
 /* -------------------------------------------------------------- hero card */
 
-export function BestTrade({ a }: { a: StockAlert }) {
+export function BestTrade({ a, canTrade }: { a: StockAlert; canTrade: boolean }) {
   return (
     <Card className="border-brand/40">
       <div className="mb-4 flex items-center gap-2">
@@ -109,9 +110,14 @@ export function BestTrade({ a }: { a: StockAlert }) {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Button className="min-w-[140px]" disabled title={BUY_DISABLED}>
-          Buy {a.symbol}
-        </Button>
+        <OrderTicket
+          symbol={a.symbol}
+          company={a.company}
+          ltp={a.last}
+          suggestedPrice={a.entry}
+          trigger={{ label: `Buy ${a.symbol}` }}
+          disabledReason={canTrade ? undefined : NO_TRADE}
+        />
         <span className="ml-auto">
           <Metrics a={a} />
         </span>
@@ -122,7 +128,7 @@ export function BestTrade({ a }: { a: StockAlert }) {
 
 /* -------------------------------------------------------------- grid card */
 
-export function AlertCard({ a }: { a: StockAlert }) {
+export function AlertCard({ a, canTrade }: { a: StockAlert; canTrade: boolean }) {
   const up = a.changePct >= 0;
   return (
     // h-full + flex-col so every card in the grid is the same height and the
@@ -159,9 +165,14 @@ export function AlertCard({ a }: { a: StockAlert }) {
       </div>
 
       <div className="mt-4">
-        <Button className="w-full" disabled title={BUY_DISABLED}>
-          Buy
-        </Button>
+        <OrderTicket
+          symbol={a.symbol}
+          company={a.company}
+          ltp={a.last}
+          suggestedPrice={a.entry}
+          trigger={{ label: "Buy", full: true }}
+          disabledReason={canTrade ? undefined : NO_TRADE}
+        />
       </div>
     </Card>
   );

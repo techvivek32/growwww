@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { getHoldings, isConnected } from "@/lib/api/broker";
+import { getHoldings, isConnected, canTrade } from "@/lib/api/broker";
 import { fmtMoney, fmtMoneySigned, fmtPct, toneText } from "@/lib/format";
-import { PageHead, StatTile, SymbolChip, Button } from "@/components/ui";
+import { PageHead, StatTile, SymbolChip } from "@/components/ui";
+import OrderTicket from "@/components/OrderTicket";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 import NotConnected from "@/components/NotConnected";
 
@@ -12,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 export default async function HoldingsPage() {
   const holdings = await getHoldings();
+  const tradable = canTrade();
 
   if (holdings.length === 0) {
     return (
@@ -117,9 +119,14 @@ export default async function HoldingsPage() {
                   {h.dayPct === null ? "—" : fmtPct(h.dayPct)}
                 </Td>
                 <Td align="right">
-                  <Button size="sm" variant="outline" disabled title="Order placement is not enabled — place in Groww">
-                    Exit
-                  </Button>
+                  <OrderTicket
+                    symbol={h.symbol.replace(/\s.*/, "")}
+                    ltp={h.ltp}
+                    side="SELL"
+                    suggestedPrice={h.ltp}
+                    trigger={{ label: "Exit", variant: "outline" }}
+                    disabledReason={tradable ? undefined : "Order placement is disabled on this server"}
+                  />
                 </Td>
               </Tr>
             );
