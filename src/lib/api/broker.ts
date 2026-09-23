@@ -30,17 +30,29 @@ async function safe<T>(what: string, run: () => Promise<T>, fallback: T): Promis
 
 export async function getAccount(): Promise<Account> {
   const base: Account = {
-    name: process.env.ACCOUNT_NAME ?? "Rahul Shah",
-    email: process.env.AUTH_EMAIL ?? "rahulzshah@gmail.com",
+    // The API carries no display name, so it comes from config; everything
+    // else on the account is read from Groww.
+    name: process.env.ACCOUNT_NAME ?? "Groww account",
+    email: process.env.AUTH_EMAIL ?? "",
     broker: "Groww",
     balance: null,
     usedMargin: null,
+    ucc: null,
+    segments: [],
   };
 
-  const margin = await safe("margin", () => groww.getMargin(), null);
-  if (!margin) return base;
+  const [margin, detail] = await Promise.all([
+    safe("margin", () => groww.getMargin(), null),
+    safe("user-detail", () => groww.getUserDetail(), null),
+  ]);
 
-  return { ...base, balance: margin.clearCash, usedMargin: margin.marginUsed };
+  return {
+    ...base,
+    balance: margin ? margin.clearCash : null,
+    usedMargin: margin ? margin.marginUsed : null,
+    ucc: detail?.ucc ?? null,
+    segments: detail?.segments ?? [],
+  };
 }
 
 export async function getHoldings(): Promise<Holding[]> {

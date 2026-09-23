@@ -68,7 +68,7 @@ export default async function BrokerPage() {
           right={<Pill tone={connected ? "up" : "neutral"}>{connected ? "Connected" : "Not connected"}</Pill>}
         />
 
-        <dl className="grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-3 lg:grid-cols-5">
+        <dl className="grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-3 lg:grid-cols-6">
           <div>
             <dt className="text-[12px] text-ink3">Account</dt>
             <dd className="mt-1 text-[14.5px] font-semibold text-ink">{account.name}</dd>
@@ -86,8 +86,16 @@ export default async function BrokerPage() {
             </dd>
           </div>
           <div>
-            <dt className="text-[12px] text-ink3">Exchange</dt>
-            <dd className="mt-1 text-[14.5px] font-semibold text-ink">NSE</dd>
+            <dt className="text-[12px] text-ink3">Client code</dt>
+            <dd className={`tnum mt-1 text-[14.5px] font-semibold ${account.ucc === null ? "text-ink3" : "text-ink"}`}>
+              {account.ucc ?? "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[12px] text-ink3">Segments</dt>
+            <dd className="mt-1 text-[14.5px] font-semibold text-ink">
+              {account.segments.length ? account.segments.join(" · ") : "—"}
+            </dd>
           </div>
           <div>
             <dt className="text-[12px] text-ink3">Session</dt>

@@ -25,6 +25,10 @@ export interface Account {
   balance: number | null;
   /** Margin currently blocked. null when unknown. */
   usedMargin: number | null;
+  /** Exchange client code, straight from the broker. null until connected. */
+  ucc: string | null;
+  /** Segments the account can trade, e.g. ["CASH", "FNO"]. */
+  segments: string[];
 }
 
 export interface Holding {

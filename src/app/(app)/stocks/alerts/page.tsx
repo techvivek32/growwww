@@ -6,7 +6,6 @@ import MarketMood from "@/components/MarketMood";
 import { PageHead, Pill, Card, Empty, SectionHead, MoreLink } from "@/components/ui";
 
 export const metadata: Metadata = { title: "AI Stock Alerts · MNHA Financials" };
-export const revalidate = 300;
 
 export default async function StockAlertsPage() {
   const universe = await getUniverse();

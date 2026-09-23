@@ -173,6 +173,31 @@ async function get<T>(path: string): Promise<T | null> {
   return res.body.payload ?? null;
 }
 
+/* ------------------------------------------------------------ user detail */
+
+export interface UserDetail {
+  ucc: string | null;
+  nseEnabled: boolean;
+  bseEnabled: boolean;
+  segments: string[];
+}
+
+export async function getUserDetail(): Promise<UserDetail | null> {
+  const p = await get<{
+    ucc?: string;
+    nse_enabled?: boolean;
+    bse_enabled?: boolean;
+    active_segments?: string[];
+  }>("/v1/user/detail");
+  if (!p) return null;
+  return {
+    ucc: p.ucc ?? null,
+    nseEnabled: Boolean(p.nse_enabled),
+    bseEnabled: Boolean(p.bse_enabled),
+    segments: p.active_segments ?? [],
+  };
+}
+
 /* ---------------------------------------------------------------- margins */
 
 export interface Margin {
@@ -359,6 +384,13 @@ export async function getOrders(): Promise<Order[]> {
 export async function getLtp(symbols: string[]): Promise<Record<string, number>> {
   if (symbols.length === 0) return {};
 
+  // Short-lived cache: several screens render per request and each wants the
+  // same batch. 15 seconds keeps the strip visibly live while staying far
+  // inside the 300/min live-data budget.
+  const key = [...symbols].sort().join(",");
+  const hit = ltpCache.get(key);
+  if (hit && Date.now() - hit.at < 15_000) return hit.data;
+
   const out: Record<string, number> = {};
   // Keep each request well inside the URL length and rate limits.
   for (let i = 0; i < symbols.length; i += 40) {
@@ -372,5 +404,41 @@ export async function getLtp(symbols: string[]): Promise<Record<string, number>>
       if (typeof v === "number") out[k.replace(/^NSE_/, "")] = v;
     }
   }
+  ltpCache.set(key, { at: Date.now(), data: out });
+  return out;
+}
+
+const ltpCache = new Map<string, { at: number; data: Record<string, number> }>();
+
+/**
+ * Live index levels. Groww spells these its own way — NSE_NIFTYMIDSELECT for
+ * the midcap select index, SENSEX on the BSE prefix — so the mapping lives
+ * here and callers speak the app's symbols.
+ */
+const INDEX_WIRE: Record<string, string> = {
+  NIFTY: "NSE_NIFTY",
+  SENSEX: "BSE_SENSEX",
+  BANKNIFTY: "NSE_BANKNIFTY",
+  MIDCPNIFTY: "NSE_NIFTYMIDSELECT",
+  FINNIFTY: "NSE_FINNIFTY",
+};
+
+export async function getIndexLtp(): Promise<Record<string, number>> {
+  const key = "indices";
+  const hit = ltpCache.get(key);
+  if (hit && Date.now() - hit.at < 15_000) return hit.data;
+
+  const q = Object.values(INDEX_WIRE).join(",");
+  const p = await get<Record<string, number>>(
+    `/v1/live-data/ltp?segment=CASH&exchange_symbols=${encodeURIComponent(q)}`,
+  );
+  const out: Record<string, number> = {};
+  if (p) {
+    for (const [ours, wire] of Object.entries(INDEX_WIRE)) {
+      const v = p[wire];
+      if (typeof v === "number") out[ours] = v;
+    }
+  }
+  ltpCache.set(key, { at: Date.now(), data: out });
   return out;
 }

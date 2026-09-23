@@ -6,7 +6,6 @@ import { PageHead, Pill, SymbolChip, Button, Chip, Sparkline } from "@/component
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
 export const metadata: Metadata = { title: "Scanner · MNHA Financials" };
-export const revalidate = 300;
 
 const FILTERS = ["All setups", "Breakout", "Volume spike", "Trend pullback", "Base", "Below trend"];
 

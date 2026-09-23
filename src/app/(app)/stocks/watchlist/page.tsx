@@ -5,7 +5,6 @@ import { PageHead, SymbolChip, Sparkline, Button } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
 export const metadata: Metadata = { title: "Watchlist · MNHA Financials" };
-export const revalidate = 300;
 
 /** The names carried through the current trading window, plus the large caps. */
 const WATCHED = [

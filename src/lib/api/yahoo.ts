@@ -1,14 +1,13 @@
 import "server-only";
 import { SNAPSHOT } from "../snapshot";
+import * as groww from "./groww";
 
 /**
- * Phase-1 market data: real NSE prices from Yahoo Finance.
- *
- * Yahoo's chart endpoint needs no key and returns `.NS` (NSE) and index data
- * directly, which is enough to build and validate the whole terminal before
- * paying for a Groww subscription. It is delayed, so it is fine for research,
- * screening and back-checking, and NOT fine for execution timing — Phase 2
- * replaces it with the Groww WebSocket behind the same function signatures.
+ * Market data. Yahoo supplies the daily HISTORY — sparks, previous closes,
+ * volume baselines — which needs no key and moves once a day. The live last
+ * price on top of it comes from Groww's real-time feed when credentials
+ * exist (see overlayLive below), so during market hours the screen prints
+ * the exchange tick, not Yahoo's delayed one.
  */
 
 export interface Quote {
@@ -33,8 +32,13 @@ export interface Quote {
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
 
-/** Cache window in seconds. NSE is delayed anyway; this keeps us well clear of throttling. */
-const REVALIDATE = 300;
+/**
+ * Cache window in seconds — for the daily HISTORY only (sparks, previous
+ * close, volume baselines), which moves once a day. The live last price is
+ * overlaid from Groww's real-time feed below, so this can stay comfortably
+ * inside Yahoo's rate limits without making the screen feel stale.
+ */
+const REVALIDATE = 60;
 
 interface YahooBar {
   d: string;
@@ -159,7 +163,8 @@ export async function getIndices(): Promise<Quote[]> {
   const results = await Promise.all(
     INDEX_TICKERS.map((t) => fetchOne(t.symbol, t.yahoo, t.name)),
   );
-  return results.map((q, i) => q ?? SNAPSHOT.indices[i]).filter(Boolean);
+  const quotes = results.map((q, i) => q ?? SNAPSHOT.indices[i]).filter(Boolean);
+  return overlayLive(quotes, () => groww.getIndexLtp());
 }
 
 /** Live equity quotes by NSE symbol, snapshot-backed the same way. */
@@ -169,7 +174,39 @@ export async function getQuotes(symbols: string[]): Promise<Quote[]> {
     .filter((x): x is Quote => Boolean(x));
 
   const results = await Promise.all(wanted.map((s) => fetchOne(s.symbol, s.yahoo, s.name)));
-  return results.map((q, i) => q ?? wanted[i]);
+  const quotes = results.map((q, i) => q ?? wanted[i]);
+  return overlayLive(quotes, () => groww.getLtp(quotes.map((q) => q.symbol)));
+}
+
+/**
+ * Replace each quote's last price with Groww's real-time tick and recompute
+ * the day change against the same previous close. Yahoo's feed is delayed;
+ * Groww's is the exchange tick, so when credentials exist the screen shows
+ * the number the market is actually printing. Any failure falls back to the
+ * Yahoo price — market data must never blank because the broker blipped.
+ */
+async function overlayLive(
+  quotes: Quote[],
+  fetchLtp: () => Promise<Record<string, number>>,
+): Promise<Quote[]> {
+  if (!groww.hasCredentials()) return quotes;
+  try {
+    const live = await fetchLtp();
+    return quotes.map((q) => {
+      const ltp = live[q.symbol];
+      if (typeof ltp !== "number" || !Number.isFinite(ltp) || q.prevClose <= 0) return q;
+      const change = ltp - q.prevClose;
+      return {
+        ...q,
+        last: +ltp.toFixed(2),
+        change: +change.toFixed(2),
+        changePct: +((change / q.prevClose) * 100).toFixed(2),
+      };
+    });
+  } catch (err) {
+    console.error("[yahoo] live overlay failed:", err instanceof Error ? err.message : err);
+    return quotes;
+  }
 }
 
 /** Every equity the app knows about. */
