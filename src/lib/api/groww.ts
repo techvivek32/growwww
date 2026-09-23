@@ -422,6 +422,100 @@ export async function getOrders(): Promise<Order[]> {
     });
 }
 
+/* --------------------------------------------------------------- FNO data */
+
+export interface FnoQuote {
+  ltp: number;
+  prevClose: number | null;
+  changePct: number | null;
+  oi: number | null;
+  prevOi: number | null;
+  volume: number | null;
+}
+
+/** Batched last prices for FNO trading symbols (options, futures). */
+export async function getFnoLtp(tradingSymbols: string[]): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (let i = 0; i < tradingSymbols.length; i += 40) {
+    const batch = tradingSymbols.slice(i, i + 40);
+    const q = batch.map((t) => `NSE_${t}`).join(",");
+    const p = await get<Record<string, number>>(
+      `/v1/live-data/ltp?segment=FNO&exchange_symbols=${encodeURIComponent(q)}`,
+    );
+    if (!p) continue;
+    for (const t of batch) {
+      const v = p[`NSE_${t}`];
+      if (typeof v === "number") out[t] = v;
+    }
+  }
+  return out;
+}
+
+const fnoQuoteCache = new Map<string, { at: number; q: FnoQuote }>();
+
+/** OI and previous close move slowly next to the price; 45s is plenty. */
+const FNO_QUOTE_TTL_MS = 45_000;
+
+async function fnoQuoteOnce(tradingSymbol: string): Promise<FnoQuote | null> {
+  const p = await get<{
+    last_price?: number;
+    day_change_perc?: number;
+    open_interest?: number;
+    previous_open_interest?: number;
+    volume?: number;
+    ohlc?: { close?: number };
+  }>(`/v1/live-data/quote?exchange=NSE&segment=FNO&trading_symbol=${encodeURIComponent(tradingSymbol)}`);
+  if (!p || typeof p.last_price !== "number") return null;
+  return {
+    ltp: p.last_price,
+    prevClose: typeof p.ohlc?.close === "number" ? p.ohlc.close : null,
+    changePct: typeof p.day_change_perc === "number" ? +p.day_change_perc.toFixed(2) : null,
+    oi: typeof p.open_interest === "number" ? p.open_interest : null,
+    prevOi: typeof p.previous_open_interest === "number" ? p.previous_open_interest : null,
+    volume: typeof p.volume === "number" ? p.volume : null,
+  };
+}
+
+/**
+ * Full FNO quotes for a set of trading symbols, cached and pooled. A chain of
+ * 21 strikes is 42 legs; at a 45-second cache that is well inside the
+ * live-data budget alongside the tick hub.
+ */
+export async function getFnoQuotes(tradingSymbols: string[]): Promise<Record<string, FnoQuote>> {
+  const now = Date.now();
+  const out: Record<string, FnoQuote> = {};
+  const due: string[] = [];
+
+  for (const t of tradingSymbols) {
+    const hit = fnoQuoteCache.get(t);
+    if (hit && now - hit.at < FNO_QUOTE_TTL_MS) out[t] = hit.q;
+    else due.push(t);
+  }
+
+  if (due.length) {
+    const fresh = await pool(due, 6, (t) => fnoQuoteOnce(t).catch(() => null));
+    fresh.forEach((q, i) => {
+      if (q) {
+        fnoQuoteCache.set(due[i], { at: now, q });
+        out[due[i]] = q;
+      }
+    });
+  }
+
+  // Overlay the freshest LTP in one batched call — the quote cache may be up
+  // to 45s old on price, which is the one field that must not be.
+  try {
+    const live = await getFnoLtp(tradingSymbols.filter((t) => out[t]));
+    for (const [t, ltp] of Object.entries(live)) {
+      if (out[t]) out[t] = { ...out[t], ltp };
+    }
+  } catch {
+    /* cached prices stand */
+  }
+
+  return out;
+}
+
 /* ------------------------------------------------------------ placing an order */
 
 export interface PlaceOrderInput {

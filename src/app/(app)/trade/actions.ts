@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { placeOrder, cancelOrder, canTrade } from "@/lib/api/broker";
+import { lotSizeOf } from "@/lib/instruments";
 import { SESSION_COOKIE, verifyToken } from "@/lib/auth";
 import type { OrderType, Product, Side } from "@/lib/types";
 
@@ -48,6 +49,7 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
   if (!canTrade()) return fail("Order placement is disabled on this server.");
 
   const symbol = String(form.get("symbol") ?? "").trim().toUpperCase();
+  const segment = String(form.get("segment") ?? "CASH") === "FNO" ? ("FNO" as const) : ("CASH" as const);
   const side = String(form.get("side") ?? "") as Side;
   const type = String(form.get("type") ?? "") as OrderType;
   const product = String(form.get("product") ?? "") as Product;
@@ -59,8 +61,17 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
   if (!SIDES.includes(side)) return fail("Invalid side.");
   if (!TYPES.includes(type)) return fail("Invalid order type.");
   if (!PRODUCTS.includes(product)) return fail("Invalid product.");
+  if (segment === "FNO" && product === "CNC") return fail("FNO orders settle NRML or MIS, not CNC.");
   if (!Number.isInteger(qty) || qty < 1) return fail("Quantity must be a whole number of at least 1.");
   if (qty > MAX_QTY) return fail(`Quantity is capped at ${MAX_QTY.toLocaleString("en-IN")} per order.`);
+
+  if (segment === "FNO") {
+    // The exchange only accepts whole lots; the lot size comes from the same
+    // instrument master the chain was built from, not from the form.
+    const lot = await lotSizeOf(symbol);
+    if (lot === null) return fail("That contract is not in the instrument master.");
+    if (qty % lot !== 0) return fail(`Quantity must be a multiple of the lot size (${lot}).`);
+  }
 
   let price: number | null = null;
   if (type === "LIMIT" || type === "SL") {
@@ -76,7 +87,7 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
     }
   }
 
-  const result = await placeOrder({ symbol, side, qty, type, product, price, triggerPrice });
+  const result = await placeOrder({ symbol, side, qty, type, product, price, triggerPrice, segment });
 
   // The order book changed either way — a rejection belongs on screen too.
   revalidatePath("/portfolio/orders");

@@ -27,8 +27,13 @@ const TYPES: { value: OrderType; label: string }[] = [
   { value: "SL_M", label: "Stop-loss market" },
 ];
 
-const PRODUCTS: { value: Product; label: string; hint: string }[] = [
+const CASH_PRODUCTS: { value: Product; label: string; hint: string }[] = [
   { value: "CNC", label: "Delivery", hint: "CNC — settled to your demat" },
+  { value: "MIS", label: "Intraday", hint: "MIS — auto-squared off before close" },
+];
+
+const FNO_PRODUCTS: { value: Product; label: string; hint: string }[] = [
+  { value: "NRML", label: "Normal", hint: "NRML — carry until expiry" },
   { value: "MIS", label: "Intraday", hint: "MIS — auto-squared off before close" },
 ];
 
@@ -57,6 +62,8 @@ export default function OrderTicket({
   suggestedPrice,
   trigger,
   disabledReason,
+  segment = "CASH",
+  lotSize = 1,
 }: {
   symbol: string;
   company?: string;
@@ -68,12 +75,18 @@ export default function OrderTicket({
   trigger: { label: string; variant?: "primary" | "outline" | "danger"; full?: boolean };
   /** When set, the button is disabled and this explains why. */
   disabledReason?: string;
+  /** FNO instruments trade in whole lots and settle NRML/MIS. */
+  segment?: "CASH" | "FNO";
+  lotSize?: number;
 }) {
+  const fno = segment === "FNO";
+  const PRODUCTS = fno ? FNO_PRODUCTS : CASH_PRODUCTS;
   const [open, setOpen] = useState(false);
   const [review, setReview] = useState(false);
   const [type, setType] = useState<OrderType>("MARKET");
-  const [product, setProduct] = useState<Product>("CNC");
+  const [product, setProduct] = useState<Product>(fno ? "NRML" : "CNC");
   const [qty, setQty] = useState("");
+  const [lots, setLots] = useState("1");
   const [price, setPrice] = useState(suggestedPrice ? String(suggestedPrice) : "");
   const [triggerPrice, setTriggerPrice] = useState("");
   const [state, action] = useActionState<OrderState, FormData>(submitOrder, { status: "idle" });
@@ -93,7 +106,8 @@ export default function OrderTicket({
     };
   }, [open]);
 
-  const qtyNum = Number(qty);
+  const lotsNum = Number(lots);
+  const qtyNum = fno ? (Number.isInteger(lotsNum) && lotsNum >= 1 ? lotsNum * lotSize : NaN) : Number(qty);
   const needsPrice = type === "LIMIT" || type === "SL";
   const needsTrigger = type === "SL" || type === "SL_M";
   const effectivePrice = needsPrice ? Number(price) : ltp;
@@ -204,7 +218,8 @@ export default function OrderTicket({
                 <input type="hidden" name="side" value={side} />
                 <input type="hidden" name="type" value={type} />
                 <input type="hidden" name="product" value={product} />
-                <input type="hidden" name="qty" value={qty} />
+                <input type="hidden" name="qty" value={fno ? String(qtyNum || "") : qty} />
+                <input type="hidden" name="segment" value={segment} />
                 <input type="hidden" name="price" value={needsPrice ? price : ""} />
                 <input type="hidden" name="trigger" value={needsTrigger ? triggerPrice : ""} />
 
@@ -212,16 +227,50 @@ export default function OrderTicket({
                   <>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className={labelCls} htmlFor="ot-qty">Quantity</label>
-                        <input
-                          id="ot-qty"
-                          inputMode="numeric"
-                          autoComplete="off"
-                          placeholder="e.g. 10"
-                          value={qty}
-                          onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ""))}
-                          className={field}
-                        />
+                        <label className={labelCls} htmlFor="ot-qty">
+                          {fno ? `Lots (× ${lotSize})` : "Quantity"}
+                        </label>
+                        {fno ? (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              aria-label="One lot fewer"
+                              onClick={() => setLots((v) => String(Math.max(1, Number(v) - 1 || 1)))}
+                              className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-line text-[18px] text-ink2 hover:bg-surfaceh"
+                            >
+                              −
+                            </button>
+                            <input
+                              id="ot-qty"
+                              inputMode="numeric"
+                              autoComplete="off"
+                              value={lots}
+                              onChange={(e) => setLots(e.target.value.replace(/[^0-9]/g, ""))}
+                              className={`${field} text-center`}
+                            />
+                            <button
+                              type="button"
+                              aria-label="One lot more"
+                              onClick={() => setLots((v) => String((Number(v) || 0) + 1))}
+                              className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-line text-[18px] text-ink2 hover:bg-surfaceh"
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : (
+                          <input
+                            id="ot-qty"
+                            inputMode="numeric"
+                            autoComplete="off"
+                            placeholder="e.g. 10"
+                            value={qty}
+                            onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ""))}
+                            className={field}
+                          />
+                        )}
+                        {fno && Number.isFinite(qtyNum) && qtyNum > 0 && (
+                          <p className="mt-1 text-[11px] text-ink3">= {qtyNum} qty</p>
+                        )}
                       </div>
                       <div>
                         <label className={labelCls} htmlFor="ot-type">Order type</label>
@@ -314,8 +363,10 @@ export default function OrderTicket({
                   <>
                     <p className="rounded-lg border border-line bg-surface2 px-4 py-3.5 text-[14px] leading-relaxed text-ink">
                       {side === "BUY" ? "Buy" : "Sell"}{" "}
-                      <strong className="font-semibold">{qtyNum}</strong> of{" "}
-                      <strong className="font-semibold">{symbol}</strong> on NSE as{" "}
+                      <strong className="font-semibold">
+                        {fno ? `${lotsNum} lot${lotsNum > 1 ? "s" : ""} (${qtyNum} qty)` : qtyNum}
+                      </strong>{" "}
+                      of <strong className="font-semibold">{symbol}</strong> on NSE as{" "}
                       <strong className="font-semibold">
                         {PRODUCTS.find((p) => p.value === product)?.label.toLowerCase()}
                       </strong>

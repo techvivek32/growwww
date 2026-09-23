@@ -1,5 +1,6 @@
 import "server-only";
 import * as groww from "./groww";
+import { CHAIN_UNDERLYINGS, getExpiries, getStrikesAround } from "../instruments";
 import type { Account, Holding, Order, OptionChain, Position, Trade } from "../types";
 
 /**
@@ -274,10 +275,70 @@ export async function cancelOrder(
 }
 
 /**
- * NSE option chains are not in the free price feed, and Groww's REST surface
- * exposes quotes per instrument rather than a whole chain. Nothing builds one
- * yet, so this is null for everyone — including a fully connected account.
+ * A real option chain, assembled the only way Groww's API allows: the strike
+ * grid and lot size come from the instrument master, the per-leg numbers from
+ * live FNO quotes. OI change is today's open interest against the previous
+ * session's, from the same payload.
  */
-export async function getOptionChain(): Promise<OptionChain | null> {
-  return null;
+export async function getOptionChain(
+  underlying = "NIFTY",
+  expiry?: string,
+): Promise<OptionChain | null> {
+  if (!groww.hasCredentials()) return null;
+
+  const u = (CHAIN_UNDERLYINGS as readonly string[]).includes(underlying) ? underlying : "NIFTY";
+
+  try {
+    const expiries = await getExpiries(u);
+    if (expiries.length === 0) return null;
+    const e = expiry && expiries.includes(expiry) ? expiry : expiries[0];
+
+    // The ATM anchor: the underlying's live level.
+    const ticks = await groww.getTicks([u]);
+    const spot = ticks[u]?.last;
+    if (!spot) return null;
+
+    const { strikes, lotSize } = await getStrikesAround(u, e, spot, 10);
+    if (strikes.length === 0) return null;
+
+    const symbols = strikes
+      .flatMap((s) => [s.CE?.tradingSymbol, s.PE?.tradingSymbol])
+      .filter((t): t is string => Boolean(t));
+    const quotes = await groww.getFnoQuotes(symbols);
+
+    const leg = (t?: string) => {
+      if (!t) return null;
+      const q = quotes[t];
+      if (!q) return { tradingSymbol: t, ltp: null, changePct: null, oi: null, oiChgPct: null, volume: null };
+      const oiChgPct =
+        q.oi !== null && q.prevOi !== null && q.prevOi > 0
+          ? +(((q.oi - q.prevOi) / q.prevOi) * 100).toFixed(1)
+          : null;
+      return {
+        tradingSymbol: t,
+        ltp: q.ltp,
+        changePct: q.changePct,
+        oi: q.oi,
+        oiChgPct,
+        volume: q.volume,
+      };
+    };
+
+    return {
+      underlying: u,
+      underlyings: [...CHAIN_UNDERLYINGS],
+      spot,
+      expiry: e,
+      expiries: expiries.slice(0, 8),
+      lotSize,
+      rows: strikes.map((s) => ({
+        strike: s.strike,
+        ce: leg(s.CE?.tradingSymbol),
+        pe: leg(s.PE?.tradingSymbol),
+      })),
+    };
+  } catch (err) {
+    console.error("[broker] option chain failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
 }

@@ -91,25 +91,30 @@ export interface Trade {
   charges: number | null;
 }
 
-/** One strike's two legs, as an exchange publishes them. */
+/** One leg of a strike, with everything needed to display and to order it. */
+export interface ChainLeg {
+  tradingSymbol: string;
+  ltp: number | null;
+  /** Day change percent, from the exchange. */
+  changePct: number | null;
+  oi: number | null;
+  /** OI change vs the previous session, percent. */
+  oiChgPct: number | null;
+  volume: number | null;
+}
+
 export interface ChainRow {
   strike: number;
-  ceOi: number;
-  ceOiChg: number;
-  ceIv: number;
-  ceLtp: number;
-  ceChg: number;
-  peOi: number;
-  peOiChg: number;
-  peIv: number;
-  peLtp: number;
-  peChg: number;
+  ce: ChainLeg | null;
+  pe: ChainLeg | null;
 }
 
 export interface OptionChain {
   underlying: string;
+  underlyings: string[];
   spot: number;
   expiry: string;
+  expiries: string[];
   lotSize: number;
   rows: ChainRow[];
 }
