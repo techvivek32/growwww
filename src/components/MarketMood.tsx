@@ -1,6 +1,7 @@
 import { getIndices } from "@/lib/api/yahoo";
 import { fmtNum, toneText } from "@/lib/format";
 import { Card, CardHead, Sparkline, Pill } from "./ui";
+import { LivePrice, LiveChange } from "./Live";
 
 /**
  * Market mood. The regime read is exactly what it says: NIFTY against its own
@@ -36,11 +37,23 @@ export default async function MarketMood() {
               {ix.spark.length >= 3 && (
                 <Sparkline points={ix.spark} up={ix.change >= 0} baseline={ix.prevClose} w={56} h={20} />
               )}
-              <div className="w-[108px] text-right">
-                <p className="tnum text-[13px] font-semibold text-ink">{fmtNum(ix.last, 2)}</p>
-                <p className={`tnum text-[11px] ${toneText(ix.change)}`}>
-                  {ix.change >= 0 ? "+" : ""}
-                  {ix.change.toFixed(2)} ({Math.abs(ix.changePct).toFixed(2)}%)
+              <div className="w-[116px] text-right">
+                <p className="text-[13px] font-semibold text-ink">
+                  {ix.stale ? (
+                    <span className="tnum">{fmtNum(ix.last, 2)}</span>
+                  ) : (
+                    <LivePrice symbol={ix.symbol} initial={ix.last} plain />
+                  )}
+                </p>
+                <p className="text-[11px]">
+                  {ix.stale ? (
+                    <span className={`tnum ${toneText(ix.change)}`}>
+                      {ix.change >= 0 ? "+" : ""}
+                      {ix.change.toFixed(2)}
+                    </span>
+                  ) : (
+                    <LiveChange symbol={ix.symbol} initialChange={ix.change} initialPct={ix.changePct} />
+                  )}
                 </p>
               </div>
             </li>

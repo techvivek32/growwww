@@ -2,6 +2,7 @@ import type { StockAlert } from "@/lib/alerts";
 import { fmtMoney, fmtPct } from "@/lib/format";
 import { Card, Pill, Tag, SymbolChip, Sparkline } from "./ui";
 import OrderTicket from "./OrderTicket";
+import { LivePrice, LiveChange } from "./Live";
 
 const NO_TRADE = "Order placement is disabled on this server";
 
@@ -59,7 +60,7 @@ function Metrics({ a, ltp = false }: { a: StockAlert; ltp?: boolean }) {
     <span className="tnum text-[12px] text-ink3">
       {ltp && (
         <>
-          LTP <span className="font-semibold text-ink">{fmtMoney(a.last)}</span> ·{" "}
+          LTP <LivePrice symbol={a.symbol} initial={a.last} className="font-semibold text-ink" /> ·{" "}
         </>
       )}
       {bits.join(" · ")}
@@ -88,12 +89,14 @@ export function BestTrade({ a, canTrade }: { a: StockAlert; canTrade: boolean })
               <span className="text-[12px] text-ink3">{a.timeframe}</span>
             </div>
             <p className="mt-1 truncate text-[13px] text-ink3">{a.company}</p>
-            <p className="tnum mt-2 text-[15px] font-semibold text-ink">
-              {fmtMoney(a.last)}{" "}
-              <span className={`text-[12px] font-medium ${a.changePct >= 0 ? "text-up" : "text-down"}`}>
-                {a.change >= 0 ? "+" : ""}
-                {a.change.toFixed(2)} ({fmtPct(a.changePct)})
-              </span>
+            <p className="mt-2 text-[15px] font-semibold text-ink">
+              <LivePrice symbol={a.symbol} initial={a.last} />{" "}
+              <LiveChange
+                symbol={a.symbol}
+                initialChange={a.change}
+                initialPct={a.changePct}
+                className="text-[12px] font-medium"
+              />
             </p>
           </div>
         </div>

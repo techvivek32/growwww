@@ -39,7 +39,7 @@ interface Ctx {
 
 const LiveCtx = createContext<Ctx>({ ticks: {}, watch: () => () => {} });
 
-const POLL_MS = 4000;
+const POLL_MS = 3000;
 
 export function LiveTicksProvider({ children }: { children: ReactNode }) {
   const [ticks, setTicks] = useState<Record<string, Tick>>({});
@@ -90,7 +90,9 @@ export function LiveTicksProvider({ children }: { children: ReactNode }) {
       if (!cancelled) timer = setTimeout(tick, POLL_MS);
     };
 
-    timer = setTimeout(tick, POLL_MS);
+    // First poll right away — a screen that only moves after the first
+    // interval reads as frozen for exactly that long.
+    void tick();
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);

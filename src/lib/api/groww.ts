@@ -647,53 +647,82 @@ async function pool<T, R>(items: T[], size: number, run: (t: T) => Promise<R>): 
 
 const quoteCache = new Map<string, { at: number; tick: Tick }>();
 
-/** How long a full quote is reused. Short, so the screen actually moves. */
-const QUOTE_TTL_MS = 3_000;
-
 /**
- * Live ticks for a set of symbols, cached briefly so several components
- * rendering in one request share one round-trip.
+ * The session-stable half of a quote — previous close, day high/low — moves
+ * rarely, so full quotes are refreshed on a slow cycle while the last price
+ * rides the batched LTP endpoint every poll. That keeps a 3-second cadence
+ * across ~40 on-screen symbols at roughly one LTP request per poll plus a
+ * trickle of quote refreshes: comfortably inside the 300/min budget, where
+ * per-symbol full quotes every poll would blow straight through it.
  */
-export async function getTicks(symbols: string[]): Promise<Record<string, Tick>> {
-  const now = Date.now();
-  const out: Record<string, Tick> = {};
-  const stale: string[] = [];
+const QUOTE_TTL_MS = 60_000;
 
-  for (const sym of symbols) {
-    const hit = quoteCache.get(sym);
-    if (hit && now - hit.at < QUOTE_TTL_MS) out[sym] = hit.tick;
-    else stale.push(sym);
+/** Wire spelling for the batched LTP endpoint. */
+function ltpWire(symbol: string): string {
+  return INDEX_WIRE[symbol] ?? `NSE_${symbol}`;
+}
+
+async function ltpBatch(symbols: string[]): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (let i = 0; i < symbols.length; i += 40) {
+    const batch = symbols.slice(i, i + 40);
+    const q = batch.map(ltpWire).join(",");
+    const p = await get<Record<string, number>>(
+      `/v1/live-data/ltp?segment=CASH&exchange_symbols=${encodeURIComponent(q)}`,
+    );
+    if (!p) continue;
+    for (const sym of batch) {
+      const v = p[ltpWire(sym)];
+      if (typeof v === "number") out[sym] = v;
+    }
   }
-
-  if (stale.length) {
-    const fresh = await pool(stale, 6, (sym) => getQuote(sym).catch(() => null));
-    fresh.forEach((tick, i) => {
-      if (tick) {
-        quoteCache.set(stale[i], { at: now, tick });
-        out[stale[i]] = tick;
-      }
-    });
-  }
-
   return out;
 }
 
-export async function getIndexLtp(): Promise<Record<string, number>> {
-  const key = "indices";
-  const hit = ltpCache.get(key);
-  if (hit && Date.now() - hit.at < 3_000) return hit.data;
+/**
+ * Live ticks for a set of symbols.
+ *
+ * Change is last price minus the exchange's own previous close (from the
+ * full quote's ohlc) — same source, same session, never a third party's
+ * history. When a symbol's quote has not loaded yet its tick is simply
+ * absent this round rather than guessed.
+ */
+export async function getTicks(symbols: string[]): Promise<Record<string, Tick>> {
+  if (symbols.length === 0) return {};
+  const now = Date.now();
 
-  const q = Object.values(INDEX_WIRE).join(",");
-  const p = await get<Record<string, number>>(
-    `/v1/live-data/ltp?segment=CASH&exchange_symbols=${encodeURIComponent(q)}`,
-  );
-  const out: Record<string, number> = {};
-  if (p) {
-    for (const [ours, wire] of Object.entries(INDEX_WIRE)) {
-      const v = p[wire];
-      if (typeof v === "number") out[ours] = v;
-    }
+  // Refresh the slow half for whoever needs it, a few at a time.
+  const due = symbols.filter((sym) => {
+    const hit = quoteCache.get(sym);
+    return !hit || now - hit.at >= QUOTE_TTL_MS;
+  });
+  if (due.length) {
+    const fresh = await pool(due, 6, (sym) => getQuote(sym).catch(() => null));
+    fresh.forEach((tick, i) => {
+      if (tick) quoteCache.set(due[i], { at: now, tick });
+    });
   }
-  ltpCache.set(key, { at: Date.now(), data: out });
+
+  // The fast half: one batched request for every last price.
+  let live: Record<string, number> = {};
+  try {
+    live = await ltpBatch(symbols);
+  } catch {
+    // The cached quotes still carry a usable last price.
+  }
+
+  const out: Record<string, Tick> = {};
+  for (const sym of symbols) {
+    const base = quoteCache.get(sym)?.tick;
+    if (!base) continue;
+    const last = live[sym] ?? base.last;
+    const change = last - base.prevClose;
+    out[sym] = {
+      ...base,
+      last: +last.toFixed(2),
+      change: +change.toFixed(2),
+      changePct: +((change / base.prevClose) * 100).toFixed(2),
+    };
+  }
   return out;
 }

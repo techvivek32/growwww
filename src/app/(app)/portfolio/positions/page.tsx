@@ -3,6 +3,7 @@ import { getPositions, isConnected, canTrade } from "@/lib/api/broker";
 import { fmtMoney, fmtMoneySigned, fmtPct, toneText } from "@/lib/format";
 import { PageHead, StatTile, Pill, SymbolChip } from "@/components/ui";
 import OrderTicket from "@/components/OrderTicket";
+import { LivePrice } from "@/components/Live";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 import NotConnected from "@/components/NotConnected";
 
@@ -97,8 +98,12 @@ export default async function PositionsPage() {
                 <Td align="center"><Pill tone={p.side === "BUY" ? "up" : "down"}>{p.side}</Pill></Td>
                 <Td align="right" className="tnum">{p.qty}</Td>
                 <Td align="right" className="tnum">{fmtMoney(p.avg)}</Td>
-                <Td align="right" className="tnum font-medium text-ink">
-                  {p.ltp === null ? "—" : fmtMoney(p.ltp)}
+                <Td align="right" className="font-medium text-ink">
+                  {p.ltp === null ? (
+                    "—"
+                  ) : (
+                    <LivePrice symbol={p.symbol.replace(/\s.*/, "")} initial={p.ltp} />
+                  )}
                 </Td>
                 <Td
                   align="right"

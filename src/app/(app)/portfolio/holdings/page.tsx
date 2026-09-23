@@ -3,6 +3,7 @@ import { getHoldings, isConnected, canTrade } from "@/lib/api/broker";
 import { fmtMoney, fmtMoneySigned, fmtPct, toneText } from "@/lib/format";
 import { PageHead, StatTile, SymbolChip } from "@/components/ui";
 import OrderTicket from "@/components/OrderTicket";
+import { LivePrice } from "@/components/Live";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 import NotConnected from "@/components/NotConnected";
 
@@ -94,8 +95,12 @@ export default async function HoldingsPage() {
                 </Td>
                 <Td align="right" className="tnum">{h.qty}</Td>
                 <Td align="right" className="tnum">{fmtMoney(h.avg)}</Td>
-                <Td align="right" className="tnum font-medium text-ink">
-                  {h.ltp === null ? "—" : fmtMoney(h.ltp)}
+                <Td align="right" className="font-medium text-ink">
+                  {h.ltp === null ? (
+                    "—"
+                  ) : (
+                    <LivePrice symbol={h.symbol.replace(/\s.*/, "")} initial={h.ltp} />
+                  )}
                 </Td>
                 <Td align="right" className="tnum font-medium text-ink">
                   {value === null ? "—" : fmtMoney(value, 0)}

@@ -4,6 +4,7 @@ import { canTrade } from "@/lib/api/broker";
 import { fmtMoney, fmtPct, toneText } from "@/lib/format";
 import { PageHead, SymbolChip, Sparkline } from "@/components/ui";
 import OrderTicket from "@/components/OrderTicket";
+import { LivePrice, LiveChange } from "@/components/Live";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
 export const metadata: Metadata = { title: "Watchlist · MNHA Financials" };
@@ -32,7 +33,6 @@ export default async function WatchlistPage() {
             <Th align="center">30-day trend</Th>
             <Th align="right">LTP</Th>
             <Th align="right">Change</Th>
-            <Th align="right">Change %</Th>
             <Th align="right">Action</Th>
           </tr>
         </thead>
@@ -53,13 +53,18 @@ export default async function WatchlistPage() {
                   <Sparkline points={w.spark} up={w.change >= 0} baseline={w.prevClose} w={84} h={24} />
                 </div>
               </Td>
-              <Td align="right" className="tnum font-medium text-ink">{fmtMoney(w.last)}</Td>
-              <Td align="right" className={`tnum ${toneText(w.change)}`}>
-                {w.change >= 0 ? "+" : ""}
-                {w.change.toFixed(2)}
+              <Td align="right" className="font-medium text-ink">
+                {w.stale ? <span className="tnum">{fmtMoney(w.last)}</span> : <LivePrice symbol={w.symbol} initial={w.last} />}
               </Td>
-              <Td align="right" className={`tnum font-medium ${toneText(w.changePct)}`}>
-                {fmtPct(w.changePct)}
+              <Td align="right" className="font-medium">
+                {w.stale ? (
+                  <span className={`tnum ${toneText(w.change)}`}>
+                    {w.change >= 0 ? "+" : ""}
+                    {w.change.toFixed(2)} ({fmtPct(w.changePct)})
+                  </span>
+                ) : (
+                  <LiveChange symbol={w.symbol} initialChange={w.change} initialPct={w.changePct} />
+                )}
               </Td>
               <Td align="right">
                 <OrderTicket

@@ -5,6 +5,7 @@ import { canTrade } from "@/lib/api/broker";
 import { fmtMoney, fmtPct, toneText } from "@/lib/format";
 import { PageHead, Pill, SymbolChip, Sparkline } from "@/components/ui";
 import OrderTicket from "@/components/OrderTicket";
+import { LivePrice, LivePct } from "@/components/Live";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
 export const metadata: Metadata = { title: "Scanner · MNHA Financials" };
@@ -70,11 +71,15 @@ export default async function ScannerPage() {
               <Td>
                 <Pill tone={SETUP_TONE[r.setup] ?? "neutral"}>{r.setup}</Pill>
               </Td>
-              <Td align="right" className="tnum font-medium text-ink">
-                {fmtMoney(r.last)}
+              <Td align="right" className="font-medium text-ink">
+                {r.stale ? <span className="tnum">{fmtMoney(r.last)}</span> : <LivePrice symbol={r.symbol} initial={r.last} />}
               </Td>
-              <Td align="right" className={`tnum font-medium ${toneText(r.changePct)}`}>
-                {fmtPct(r.changePct)}
+              <Td align="right" className="font-medium">
+                {r.stale ? (
+                  <span className={`tnum ${toneText(r.changePct)}`}>{fmtPct(r.changePct)}</span>
+                ) : (
+                  <LivePct symbol={r.symbol} initial={r.changePct} />
+                )}
               </Td>
               <Td align="right" className="tnum">
                 {r.volX === null ? "—" : `${r.volX.toFixed(1)}x`}
