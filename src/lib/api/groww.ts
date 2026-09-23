@@ -533,7 +533,7 @@ export async function getLtp(symbols: string[]): Promise<Record<string, number>>
   // inside the 300/min live-data budget.
   const key = [...symbols].sort().join(",");
   const hit = ltpCache.get(key);
-  if (hit && Date.now() - hit.at < 15_000) return hit.data;
+  if (hit && Date.now() - hit.at < 3_000) return hit.data;
 
   const out: Record<string, number> = {};
   // Keep each request well inside the URL length and rate limits.
@@ -554,10 +554,31 @@ export async function getLtp(symbols: string[]): Promise<Record<string, number>>
 
 const ltpCache = new Map<string, { at: number; data: Record<string, number> }>();
 
+/* ------------------------------------------------------------ full quotes */
+
+export interface Tick {
+  symbol: string;
+  last: number;
+  /** Previous session's close, from the exchange — not derived. */
+  prevClose: number;
+  change: number;
+  changePct: number;
+  dayHigh: number | null;
+  dayLow: number | null;
+  volume: number | null;
+}
+
+interface GrowwQuote {
+  last_price?: number;
+  day_change?: number;
+  day_change_perc?: number;
+  volume?: number;
+  ohlc?: { open?: number; high?: number; low?: number; close?: number };
+}
+
 /**
- * Live index levels. Groww spells these its own way — NSE_NIFTYMIDSELECT for
- * the midcap select index, SENSEX on the BSE prefix — so the mapping lives
- * here and callers speak the app's symbols.
+ * Groww spells the indices its own way; equities are just the symbol.
+ * `NIFTY` and friends still live in the CASH segment.
  */
 const INDEX_WIRE: Record<string, string> = {
   NIFTY: "NSE_NIFTY",
@@ -567,10 +588,100 @@ const INDEX_WIRE: Record<string, string> = {
   FINNIFTY: "NSE_FINNIFTY",
 };
 
+const QUOTE_SYMBOL: Record<string, string> = {
+  MIDCPNIFTY: "NIFTYMIDSELECT",
+};
+
+/** Exchange for the quote endpoint — SENSEX is BSE, everything else NSE. */
+function exchangeOf(symbol: string): string {
+  return symbol === "SENSEX" ? "BSE" : "NSE";
+}
+
+/**
+ * One symbol's full quote. This is the honest source for a day change:
+ * Groww returns the exchange's own `day_change` and the previous close in
+ * `ohlc.close`, so nothing has to be differenced against a third party's
+ * history — which is exactly where the old numbers went wrong, because
+ * Yahoo's daily series can silently omit a whole session.
+ */
+export async function getQuote(symbol: string): Promise<Tick | null> {
+  const wire = QUOTE_SYMBOL[symbol] ?? symbol;
+  const p = await get<GrowwQuote>(
+    `/v1/live-data/quote?exchange=${exchangeOf(symbol)}&segment=CASH&trading_symbol=${encodeURIComponent(wire)}`,
+  );
+
+  const last = p?.last_price;
+  const prevClose = p?.ohlc?.close;
+  if (typeof last !== "number" || typeof prevClose !== "number" || prevClose <= 0) return null;
+
+  const change = typeof p?.day_change === "number" ? p.day_change : last - prevClose;
+  const changePct =
+    typeof p?.day_change_perc === "number" ? p.day_change_perc : (change / prevClose) * 100;
+
+  return {
+    symbol,
+    last: +last.toFixed(2),
+    prevClose: +prevClose.toFixed(2),
+    change: +change.toFixed(2),
+    changePct: +changePct.toFixed(2),
+    dayHigh: typeof p?.ohlc?.high === "number" ? p.ohlc.high : null,
+    dayLow: typeof p?.ohlc?.low === "number" ? p.ohlc.low : null,
+    volume: typeof p?.volume === "number" ? p.volume : null,
+  };
+}
+
+/** Bounded concurrency — the live-data budget is 10/s, 300/min. */
+async function pool<T, R>(items: T[], size: number, run: (t: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(size, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await run(items[i]);
+      }
+    }),
+  );
+  return out;
+}
+
+const quoteCache = new Map<string, { at: number; tick: Tick }>();
+
+/** How long a full quote is reused. Short, so the screen actually moves. */
+const QUOTE_TTL_MS = 3_000;
+
+/**
+ * Live ticks for a set of symbols, cached briefly so several components
+ * rendering in one request share one round-trip.
+ */
+export async function getTicks(symbols: string[]): Promise<Record<string, Tick>> {
+  const now = Date.now();
+  const out: Record<string, Tick> = {};
+  const stale: string[] = [];
+
+  for (const sym of symbols) {
+    const hit = quoteCache.get(sym);
+    if (hit && now - hit.at < QUOTE_TTL_MS) out[sym] = hit.tick;
+    else stale.push(sym);
+  }
+
+  if (stale.length) {
+    const fresh = await pool(stale, 6, (sym) => getQuote(sym).catch(() => null));
+    fresh.forEach((tick, i) => {
+      if (tick) {
+        quoteCache.set(stale[i], { at: now, tick });
+        out[stale[i]] = tick;
+      }
+    });
+  }
+
+  return out;
+}
+
 export async function getIndexLtp(): Promise<Record<string, number>> {
   const key = "indices";
   const hit = ltpCache.get(key);
-  if (hit && Date.now() - hit.at < 15_000) return hit.data;
+  if (hit && Date.now() - hit.at < 3_000) return hit.data;
 
   const q = Object.values(INDEX_WIRE).join(",");
   const p = await get<Record<string, number>>(

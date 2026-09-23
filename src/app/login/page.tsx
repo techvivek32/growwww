@@ -62,8 +62,8 @@ export default function LoginPage() {
         </div>
 
         <p className="max-w-md text-[11px] leading-relaxed text-white/70">
-          MNHA Financials is decision-support tooling, not investment advice. It reads your Groww
-          account; it does not place orders.
+          MNHA Financials is decision-support tooling, not investment advice. Orders you confirm are
+          placed on your own Groww account.
         </p>
       </section>
 

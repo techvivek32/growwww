@@ -170,7 +170,7 @@ export async function getIndices(): Promise<Quote[]> {
   const quotes = results
     .map((q, i) => q ?? markStale(SNAPSHOT.indices[i]))
     .filter((q): q is Quote => Boolean(q));
-  return overlayLive(quotes, () => groww.getIndexLtp());
+  return overlayLive(quotes);
 }
 
 /** Live equity quotes by NSE symbol, snapshot-backed the same way. */
@@ -186,7 +186,7 @@ export async function getQuotes(symbols: string[]): Promise<Quote[]> {
   const quotes = results
     .map((q, i) => q ?? markStale(wanted[i].snap))
     .filter((q): q is Quote => Boolean(q));
-  return overlayLive(quotes, () => groww.getLtp(quotes.map((q) => q.symbol)));
+  return overlayLive(quotes);
 }
 
 /** A snapshot substitute carries its vintage so no screen prints it as today. */
@@ -196,31 +196,35 @@ function markStale(snap: Quote | undefined): Quote | null {
 }
 
 /**
- * Replace each quote's last price with Groww's real-time tick and recompute
- * the day change against the same previous close. Yahoo's feed is delayed;
- * Groww's is the exchange tick, so when credentials exist the screen shows
- * the number the market is actually printing. Any failure falls back to the
- * Yahoo price — market data must never blank because the broker blipped.
+ * Replace price AND day change with the exchange's own numbers.
+ *
+ * Yahoo supplies the daily history — sparklines, volume baselines — but its
+ * series can silently omit a whole session, and differencing against the
+ * wrong bar reports a two-day move as today's change. Groww returns
+ * `day_change` and the previous close directly, so when credentials exist
+ * nothing is derived from a third party's history at all.
+ *
+ * A stale snapshot quote is left alone: its history belongs to another day,
+ * and pairing it with a live tick would be the same mistake in reverse. Any
+ * failure falls back to the Yahoo values — market data must never blank
+ * because the broker blipped.
  */
-async function overlayLive(
-  quotes: Quote[],
-  fetchLtp: () => Promise<Record<string, number>>,
-): Promise<Quote[]> {
+async function overlayLive(quotes: Quote[]): Promise<Quote[]> {
   if (!groww.hasCredentials()) return quotes;
   try {
-    const live = await fetchLtp();
+    const live = await groww.getTicks(quotes.filter((q) => !q.stale).map((q) => q.symbol));
     return quotes.map((q) => {
-      // A stale quote's previous close is from another day; differencing a
-      // live tick against it would print a multi-day move as today's change.
-      if (q.stale) return q;
-      const ltp = live[q.symbol];
-      if (typeof ltp !== "number" || !Number.isFinite(ltp) || q.prevClose <= 0) return q;
-      const change = ltp - q.prevClose;
+      const t = live[q.symbol];
+      if (q.stale || !t) return q;
       return {
         ...q,
-        last: +ltp.toFixed(2),
-        change: +change.toFixed(2),
-        changePct: +((change / q.prevClose) * 100).toFixed(2),
+        last: t.last,
+        prevClose: t.prevClose,
+        change: t.change,
+        changePct: t.changePct,
+        dayHigh: t.dayHigh ?? q.dayHigh,
+        dayLow: t.dayLow ?? q.dayLow,
+        volume: t.volume ?? q.volume,
       };
     });
   } catch (err) {

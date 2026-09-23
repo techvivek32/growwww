@@ -2,6 +2,7 @@ import { getAccount } from "@/lib/api/broker";
 import TopNav from "@/components/TopNav";
 import IndexStrip from "@/components/IndexStrip";
 import { AutoTradeProvider } from "@/components/AutoTrade";
+import { LiveTicksProvider } from "@/components/LiveTicks";
 
 // The nav shows live account state.
 export const dynamic = "force-dynamic";
@@ -18,16 +19,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AutoTradeProvider>
+      <LiveTicksProvider>
       <TopNav account={account} connected={account.balance !== null} />
       <IndexStrip />
       <main className="mx-auto max-w-[1360px] px-4 py-6 lg:px-6 lg:py-8">{children}</main>
       <footer className="mx-auto max-w-[1360px] px-4 pb-10 lg:px-6">
         <p className="border-t border-line pt-5 text-[11.5px] leading-relaxed text-ink3">
           MNHA Financials is a decision-support terminal, not investment advice. Setups are generated from price and
-          volume data and can be wrong. It reads your Groww account; it does not place orders — place them in Groww
-          yourself.
+          volume data and can be wrong. Orders you confirm here are placed on your own Groww account — you place
+          them, you own them.
         </p>
       </footer>
+      </LiveTicksProvider>
     </AutoTradeProvider>
   );
 }
