@@ -11,16 +11,17 @@ import {
 } from "react";
 
 /**
- * Keeps prices moving after the server render.
+ * Live prices for the whole app.
  *
- * Pages render with whatever was current at request time; this polls
- * /api/ticks and hands fresher numbers to any component that asks for a
- * symbol. Components fall back to their server-rendered values, so a failed
- * poll leaves the last known price on screen rather than blanking it.
+ * Primary transport is an SSE stream: the server's tick hub polls Groww at
+ * its own fixed cadence and PUSHES — the browser does no timed polling, so a
+ * tick reaches the screen as soon as the server has it. If the stream cannot
+ * hold (old proxy, flaky network), the provider degrades to plain polling of
+ * /api/ticks and keeps working.
  *
- * Polling pauses when the tab is hidden — nobody needs ticks for a window
- * they are not looking at, and it keeps the request budget for the tab that
- * is actually in front of someone.
+ * Components fall back to their server-rendered values until the first tick,
+ * so nothing ever blanks while the feed warms up. The stream closes when the
+ * tab is hidden — nobody needs ticks for a window they are not looking at.
  */
 
 export interface Tick {
@@ -33,13 +34,17 @@ export interface Tick {
 
 interface Ctx {
   ticks: Record<string, Tick>;
-  /** Registers a symbol for polling; returns a cleanup. */
+  /** Registers symbols for streaming; returns a cleanup. */
   watch: (symbols: string[]) => () => void;
 }
 
 const LiveCtx = createContext<Ctx>({ ticks: {}, watch: () => () => {} });
 
-const POLL_MS = 3000;
+/** Fallback polling cadence when SSE is unavailable. */
+const POLL_MS = 2000;
+
+/** How long to wait after a symbol-set change before reconnecting the stream. */
+const RESUBSCRIBE_DEBOUNCE_MS = 250;
 
 export function LiveTicksProvider({ children }: { children: ReactNode }) {
   const [ticks, setTicks] = useState<Record<string, Tick>>({});
@@ -64,13 +69,28 @@ export function LiveTicksProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let closed = false;
+    let source: EventSource | null = null;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let openTimer: ReturnType<typeof setTimeout> | null = null;
+    let sseFailures = 0;
 
-    const tick = async () => {
-      if (cancelled) return;
+    const symbols = [...counts.current.keys()];
 
-      const symbols = [...counts.current.keys()];
+    const apply = (incoming: Record<string, Tick>) => {
+      if (!closed && Object.keys(incoming).length > 0) {
+        setTicks((prev) => ({ ...prev, ...incoming }));
+      }
+    };
+
+    const stopStream = () => {
+      source?.close();
+      source = null;
+    };
+
+    /* ------------------------------ fallback: poll ------------------------ */
+    const poll = async () => {
+      if (closed) return;
       if (symbols.length > 0 && document.visibilityState === "visible") {
         try {
           const res = await fetch(`/api/ticks?symbols=${encodeURIComponent(symbols.join(","))}`, {
@@ -78,24 +98,68 @@ export function LiveTicksProvider({ children }: { children: ReactNode }) {
           });
           if (res.ok) {
             const body = (await res.json()) as { ticks?: Record<string, Tick> };
-            if (!cancelled && body.ticks && Object.keys(body.ticks).length > 0) {
-              setTicks((prev) => ({ ...prev, ...body.ticks }));
-            }
+            apply(body.ticks ?? {});
           }
         } catch {
-          // Keep the last values; the next poll will try again.
+          /* next poll retries */
         }
       }
-
-      if (!cancelled) timer = setTimeout(tick, POLL_MS);
+      if (!closed) pollTimer = setTimeout(() => void poll(), POLL_MS);
     };
 
-    // First poll right away — a screen that only moves after the first
-    // interval reads as frozen for exactly that long.
-    void tick();
+    /* ------------------------------ primary: SSE -------------------------- */
+    const openStream = () => {
+      if (closed || symbols.length === 0) return;
+      if (document.visibilityState !== "visible") return;
+
+      stopStream();
+      source = new EventSource(`/api/stream?symbols=${encodeURIComponent(symbols.join(","))}`);
+
+      source.onopen = () => {
+        sseFailures = 0;
+      };
+      source.onmessage = (e) => {
+        try {
+          const body = JSON.parse(e.data) as { ticks?: Record<string, Tick> };
+          apply(body.ticks ?? {});
+        } catch {
+          /* a malformed frame is dropped, the stream continues */
+        }
+      };
+      source.onerror = () => {
+        sseFailures += 1;
+        // EventSource retries on its own; only after repeated failures does
+        // the transport give way to polling.
+        if (sseFailures >= 3) {
+          stopStream();
+          void poll();
+        }
+      };
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        if (!source && !pollTimer) openStream();
+      } else {
+        stopStream();
+        if (pollTimer) {
+          clearTimeout(pollTimer);
+          pollTimer = null;
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    // Debounced: page mounts register several watchers back to back, and one
+    // connection with the final set beats five short-lived ones.
+    openTimer = setTimeout(openStream, RESUBSCRIBE_DEBOUNCE_MS);
+
     return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
+      closed = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (openTimer) clearTimeout(openTimer);
+      if (pollTimer) clearTimeout(pollTimer);
+      stopStream();
     };
   }, [version]);
 
