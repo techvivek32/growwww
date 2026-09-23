@@ -2,6 +2,7 @@ import "server-only";
 import crypto from "node:crypto";
 import https from "node:https";
 import type { Holding, Order, OrderStatus, OrderType, Position, Product, Side } from "../types";
+import * as feed from "./growwFeed";
 
 /**
  * Groww Trading API adapter.
@@ -163,6 +164,12 @@ async function accessToken(): Promise<string> {
     inFlight = null;
   });
   return inFlight;
+}
+
+/** The live REST JWT, for subsystems that authenticate against other Groww
+ *  surfaces — the socket-token mint is the one caller. */
+export async function getAccessToken(): Promise<string> {
+  return accessToken();
 }
 
 /** Envelope unwrap: Groww wraps everything in { status, payload }. */
@@ -660,6 +667,16 @@ export interface Tick {
   dayHigh: number | null;
   dayLow: number | null;
   volume: number | null;
+  dayOpen: number | null;
+  week52High: number | null;
+  week52Low: number | null;
+  upperCircuit: number | null;
+  lowerCircuit: number | null;
+}
+
+interface DepthLevel {
+  price?: number;
+  quantity?: number;
 }
 
 interface GrowwQuote {
@@ -667,6 +684,13 @@ interface GrowwQuote {
   day_change?: number;
   day_change_perc?: number;
   volume?: number;
+  week_52_high?: number;
+  week_52_low?: number;
+  upper_circuit_limit?: number;
+  lower_circuit_limit?: number;
+  total_buy_quantity?: number;
+  total_sell_quantity?: number;
+  depth?: { buy?: DepthLevel[]; sell?: DepthLevel[] };
   ohlc?: { open?: number; high?: number; low?: number; close?: number };
 }
 
@@ -721,6 +745,70 @@ export async function getQuote(symbol: string): Promise<Tick | null> {
     dayHigh: typeof p?.ohlc?.high === "number" ? p.ohlc.high : null,
     dayLow: typeof p?.ohlc?.low === "number" ? p.ohlc.low : null,
     volume: typeof p?.volume === "number" ? p.volume : null,
+    dayOpen: typeof p?.ohlc?.open === "number" ? p.ohlc.open : null,
+    week52High: typeof p?.week_52_high === "number" ? p.week_52_high : null,
+    week52Low: typeof p?.week_52_low === "number" ? p.week_52_low : null,
+    upperCircuit: typeof p?.upper_circuit_limit === "number" ? p.upper_circuit_limit : null,
+    lowerCircuit: typeof p?.lower_circuit_limit === "number" ? p.lower_circuit_limit : null,
+  };
+}
+
+/* ---------------------------------------------------------------- snapshot */
+
+export interface DepthRow {
+  price: number;
+  qty: number;
+}
+
+export interface StockSnapshot extends Tick {
+  buyBook: DepthRow[];
+  sellBook: DepthRow[];
+  totalBuyQty: number | null;
+  totalSellQty: number | null;
+}
+
+/**
+ * Everything the detail page needs about one instrument, in one live call —
+ * the tick fields plus the five-level order book. Never cached: depth is the
+ * one thing that is stale the moment it is printed.
+ */
+export async function getStockSnapshot(symbol: string): Promise<StockSnapshot | null> {
+  const wire = QUOTE_SYMBOL[symbol] ?? symbol;
+  const p = await get<GrowwQuote>(
+    `/v1/live-data/quote?exchange=${exchangeOf(symbol)}&segment=CASH&trading_symbol=${encodeURIComponent(wire)}`,
+  );
+  const last = p?.last_price;
+  const prevClose = p?.ohlc?.close;
+  if (typeof last !== "number" || typeof prevClose !== "number" || prevClose <= 0) return null;
+
+  const book = (levels?: DepthLevel[]): DepthRow[] =>
+    (levels ?? [])
+      .filter((l) => typeof l.price === "number" && typeof l.quantity === "number" && l.price! > 0)
+      .slice(0, 5)
+      .map((l) => ({ price: l.price as number, qty: l.quantity as number }));
+
+  const change = typeof p?.day_change === "number" ? p.day_change : last - prevClose;
+  return {
+    symbol,
+    last: +last.toFixed(2),
+    prevClose: +prevClose.toFixed(2),
+    change: +change.toFixed(2),
+    changePct:
+      typeof p?.day_change_perc === "number"
+        ? +p.day_change_perc.toFixed(2)
+        : +(((change) / prevClose) * 100).toFixed(2),
+    dayHigh: typeof p?.ohlc?.high === "number" ? p.ohlc.high : null,
+    dayLow: typeof p?.ohlc?.low === "number" ? p.ohlc.low : null,
+    volume: typeof p?.volume === "number" ? p.volume : null,
+    dayOpen: typeof p?.ohlc?.open === "number" ? p.ohlc.open : null,
+    week52High: typeof p?.week_52_high === "number" ? p.week_52_high : null,
+    week52Low: typeof p?.week_52_low === "number" ? p.week_52_low : null,
+    upperCircuit: typeof p?.upper_circuit_limit === "number" ? p.upper_circuit_limit : null,
+    lowerCircuit: typeof p?.lower_circuit_limit === "number" ? p.lower_circuit_limit : null,
+    buyBook: book(p?.depth?.buy),
+    sellBook: book(p?.depth?.sell),
+    totalBuyQty: typeof p?.total_buy_quantity === "number" ? p.total_buy_quantity : null,
+    totalSellQty: typeof p?.total_sell_quantity === "number" ? p.total_sell_quantity : null,
   };
 }
 
@@ -785,6 +873,14 @@ export async function getTicks(symbols: string[]): Promise<Record<string, Tick>>
   if (symbols.length === 0) return {};
   const now = Date.now();
 
+  // Ask the push feed to carry these symbols; it answers on future cycles.
+  // Never awaited — the socket must not sit on the request path.
+  try {
+    feed.want(symbols);
+  } catch {
+    /* feed is an accelerator, not a dependency */
+  }
+
   // Refresh the slow half for whoever needs it, a few at a time.
   const due = symbols.filter((sym) => {
     const hit = quoteCache.get(sym);
@@ -797,12 +893,22 @@ export async function getTicks(symbols: string[]): Promise<Record<string, Tick>>
     });
   }
 
-  // The fast half: one batched request for every last price.
+  // The fast half: push-feed ticks where they are fresh, one batched REST
+  // request for whatever the feed does not carry yet.
   let live: Record<string, number> = {};
   try {
-    live = await ltpBatch(symbols);
+    live = feed.latest(symbols);
   } catch {
-    // The cached quotes still carry a usable last price.
+    /* fall through to REST */
+  }
+  const missing = symbols.filter((s) => live[s] === undefined);
+  if (missing.length) {
+    try {
+      const rest = await ltpBatch(missing);
+      live = { ...live, ...rest };
+    } catch {
+      // The cached quotes still carry a usable last price.
+    }
   }
 
   const out: Record<string, Tick> = {};

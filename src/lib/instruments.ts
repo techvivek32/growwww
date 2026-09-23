@@ -22,6 +22,8 @@ export interface OptionInstrument {
 export interface EquityInstrument {
   tradingSymbol: string;
   name: string;
+  /** NSE exchange token — the id the live feed keys ticks by. */
+  token: string;
 }
 
 interface Master {
@@ -32,6 +34,8 @@ interface Master {
   expiries: Map<string, string[]>;
   /** NSE cash equities, for search and lot-free orders. */
   equities: EquityInstrument[];
+  /** underlying index -> its NSE exchange token, from the FNO rows. */
+  indexTokens: Map<string, string>;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -50,6 +54,7 @@ async function load(): Promise<Master> {
   const options: Master["options"] = new Map();
   const expirySets = new Map<string, Set<string>>();
   const equities: EquityInstrument[] = [];
+  const indexTokens = new Map<string, string>();
   const wanted = new Set<string>(CHAIN_UNDERLYINGS);
 
   const lines = text.split("\n");
@@ -63,7 +68,7 @@ async function load(): Promise<Master> {
     if (segment === "CASH") {
       // Series EQ only — the tradable common stock, not bonds or rights.
       if (cols[7] === "EQ" && cols[2]) {
-        equities.push({ tradingSymbol: cols[2], name: cols[4] || cols[2] });
+        equities.push({ tradingSymbol: cols[2], name: cols[4] || cols[2], token: cols[1] });
       }
       continue;
     }
@@ -73,6 +78,7 @@ async function load(): Promise<Master> {
     if (right !== "CE" && right !== "PE") continue;
     const underlying = cols[9];
     if (!wanted.has(underlying)) continue;
+    if (cols[10] && !indexTokens.has(underlying)) indexTokens.set(underlying, cols[10]);
 
     const expiry = cols[11];
     const strike = Number(cols[12]);
@@ -95,7 +101,7 @@ async function load(): Promise<Master> {
   const expiries = new Map<string, string[]>();
   for (const [u, set] of expirySets) expiries.set(u, [...set].sort());
 
-  return { loadedAt: Date.now(), options, expiries, equities };
+  return { loadedAt: Date.now(), options, expiries, equities, indexTokens };
 }
 
 async function master(): Promise<Master> {
@@ -166,6 +172,36 @@ export async function lotSizeOf(tradingSymbol: string): Promise<number | null> {
     }
   }
   return null;
+}
+
+/**
+ * Feed token map for a set of app symbols: equities by their NSE exchange
+ * token, the chain indices by the underlying token the FNO rows carry.
+ * Symbols with no NSE token (SENSEX is BSE) are simply absent.
+ */
+export async function feedTokensFor(
+  symbols: string[],
+): Promise<{ symbol: string; token: string; kind: "eq" | "index" }[]> {
+  const m = await master();
+  const bySym = new Map(m.equities.map((e) => [e.tradingSymbol, e.token]));
+  const out: { symbol: string; token: string; kind: "eq" | "index" }[] = [];
+  for (const sym of symbols) {
+    const idx = m.indexTokens.get(sym);
+    if (idx) {
+      out.push({ symbol: sym, token: idx, kind: "index" });
+      continue;
+    }
+    const eq = bySym.get(sym);
+    if (eq) out.push({ symbol: sym, token: eq, kind: "eq" });
+  }
+  return out;
+}
+
+/** The display name for one NSE equity symbol; null when not listed. */
+export async function equityName(symbol: string): Promise<string | null> {
+  const m = await master();
+  const hit = m.equities.find((e) => e.tradingSymbol === symbol);
+  return hit ? hit.name || hit.tradingSymbol : null;
 }
 
 /** Case-insensitive search over NSE equities, best-prefix first. */

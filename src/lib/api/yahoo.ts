@@ -238,6 +238,79 @@ export async function getUniverse(): Promise<Quote[]> {
   return getQuotes(SNAPSHOT.stocks.map((s) => s.symbol));
 }
 
+/* ------------------------------------------------------------------ charts */
+
+export type ChartRange = "1D" | "1W" | "1M" | "3M" | "6M" | "1Y" | "5Y";
+
+/** Yahoo's (range, interval) pairing per tab — intraday under a week. */
+const RANGE_MAP: Record<ChartRange, { range: string; interval: string }> = {
+  "1D": { range: "1d", interval: "1m" },
+  "1W": { range: "5d", interval: "15m" },
+  "1M": { range: "1mo", interval: "1h" },
+  "3M": { range: "3mo", interval: "1d" },
+  "6M": { range: "6mo", interval: "1d" },
+  "1Y": { range: "1y", interval: "1d" },
+  "5Y": { range: "5y", interval: "1wk" },
+};
+
+export interface ChartSeries {
+  range: ChartRange;
+  /** Epoch millis per point. */
+  t: number[];
+  c: number[];
+  prevClose: number | null;
+}
+
+/** The Yahoo ticker for any app symbol — index map first, then `SYMBOL.NS`. */
+export function yahooTickerOf(symbol: string): string {
+  const idx = INDEX_TICKERS.find((t) => t.symbol === symbol);
+  if (idx) return idx.yahoo;
+  const snap = SNAPSHOT.stocks.find((x) => x.symbol === symbol);
+  return snap?.yahoo ?? `${symbol}.NS`;
+}
+
+export async function getChartSeries(symbol: string, range: ChartRange): Promise<ChartSeries | null> {
+  const cfg = RANGE_MAP[range];
+  if (!cfg) return null;
+
+  const url =
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooTickerOf(symbol))}` +
+    `?interval=${cfg.interval}&range=${cfg.range}`;
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA },
+      // Intraday moves constantly; history barely does.
+      next: { revalidate: range === "1D" ? 30 : 300 },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { chart?: { result?: ChartResult[] } };
+    const r = json?.chart?.result?.[0];
+    if (!r) return null;
+
+    const ts = r.timestamp ?? [];
+    const closes = r.indicators?.quote?.[0]?.close ?? [];
+    const t: number[] = [];
+    const c: number[] = [];
+    for (let i = 0; i < ts.length; i++) {
+      const v = closes[i];
+      if (typeof v === "number" && Number.isFinite(v)) {
+        t.push(ts[i] * 1000);
+        c.push(+v.toFixed(2));
+      }
+    }
+    if (c.length < 2) return null;
+
+    return {
+      range,
+      t,
+      c,
+      prevClose: r.meta.chartPreviousClose ?? r.meta.previousClose ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function snapshotTakenAt(): string {
   return SNAPSHOT.fetchedAt;
 }

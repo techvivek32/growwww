@@ -3,6 +3,7 @@ import { getHoldings, isConnected, canTrade } from "@/lib/api/broker";
 import { fmtMoney, fmtMoneySigned, fmtPct, toneText } from "@/lib/format";
 import { PageHead, StatTile, SymbolChip } from "@/components/ui";
 import OrderTicket from "@/components/OrderTicket";
+import Link from "next/link";
 import { LivePrice } from "@/components/Live";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 import NotConnected from "@/components/NotConnected";
@@ -85,13 +86,13 @@ export default async function HoldingsPage() {
             return (
               <Tr key={h.symbol}>
                 <Td>
-                  <div className="flex items-center gap-3">
+                  <Link href={`/stock/${h.symbol}`} className="flex items-center gap-3 hover:opacity-80">
                     <SymbolChip symbol={h.symbol} size={36} />
                     <div className="min-w-0">
                       <p className="text-[13.5px] font-semibold text-ink">{h.symbol}</p>
                       <p className="truncate text-[12px] text-ink3">{h.company}</p>
                     </div>
-                  </div>
+                  </Link>
                 </Td>
                 <Td align="right" className="tnum">{h.qty}</Td>
                 <Td align="right" className="tnum">{fmtMoney(h.avg)}</Td>

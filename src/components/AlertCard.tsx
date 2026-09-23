@@ -1,6 +1,7 @@
 import type { StockAlert } from "@/lib/alerts";
 import { fmtMoney, fmtPct } from "@/lib/format";
 import { Card, Pill, Tag, SymbolChip, Sparkline } from "./ui";
+import Link from "next/link";
 import OrderTicket from "./OrderTicket";
 import { LivePrice, LiveChange } from "./Live";
 
@@ -84,7 +85,12 @@ export function BestTrade({ a, canTrade }: { a: StockAlert; canTrade: boolean })
           <SymbolChip symbol={a.symbol} size={44} />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-[20px] leading-none font-bold tracking-tight text-ink">{a.symbol}</h3>
+              <Link
+                href={`/stock/${a.symbol}`}
+                className="text-[20px] leading-none font-bold tracking-tight text-ink hover:opacity-75"
+              >
+                {a.symbol}
+              </Link>
               <ScoreBadge score={a.score} />
               <span className="text-[12px] text-ink3">{a.timeframe}</span>
             </div>
@@ -141,7 +147,12 @@ export function AlertCard({ a, canTrade }: { a: StockAlert; canTrade: boolean })
         <SymbolChip symbol={a.symbol} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-[15px] font-bold tracking-tight text-ink">{a.symbol}</h3>
+            <Link
+              href={`/stock/${a.symbol}`}
+              className="truncate text-[15px] font-bold tracking-tight text-ink hover:opacity-75"
+            >
+              {a.symbol}
+            </Link>
             <span className="text-[11px] text-ink3">{a.timeframe}</span>
           </div>
           <p className="truncate text-[12px] text-ink3">{a.company}</p>

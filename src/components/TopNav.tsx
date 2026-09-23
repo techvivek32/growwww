@@ -8,6 +8,7 @@ import ThemeToggle from "./ThemeToggle";
 import MarketClock from "./MarketClock";
 import { AutoTradeToggle } from "./AutoTrade";
 import ProfileMenu from "./ProfileMenu";
+import SearchBox from "./SearchBox";
 
 function Logo() {
   return (
@@ -58,7 +59,11 @@ export default function TopNav({ account, connected }: { account: Account; conne
         <Logo />
 
 
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="ml-auto hidden min-w-0 flex-1 justify-center lg:flex">
+          <SearchBox />
+        </div>
+
+        <div className="ml-auto flex shrink-0 items-center gap-2 lg:ml-0">
           <MarketClock />
           <AutoTradeToggle />
           <ThemeToggle />

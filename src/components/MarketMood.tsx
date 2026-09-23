@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getIndices } from "@/lib/api/yahoo";
 import { fmtNum, toneText } from "@/lib/format";
 import { Card, CardHead, Sparkline, Pill } from "./ui";
@@ -27,13 +28,13 @@ export default async function MarketMood() {
         <ul className="space-y-3">
           {indices.map((ix) => (
             <li key={ix.symbol} className="flex items-center gap-3">
-              <div className="min-w-0 flex-1">
+              <Link href={`/stock/${ix.symbol}`} className="min-w-0 flex-1 hover:opacity-80">
                 <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
                   {ix.symbol}
                   {ix.stale && <Pill tone="warn">Snap {ix.asOf}</Pill>}
                 </p>
                 <p className="truncate text-[11px] text-ink3">{ix.name}</p>
-              </div>
+              </Link>
               {ix.spark.length >= 3 && (
                 <Sparkline points={ix.spark} up={ix.change >= 0} baseline={ix.prevClose} w={56} h={20} />
               )}

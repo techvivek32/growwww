@@ -5,6 +5,7 @@ import { canTrade } from "@/lib/api/broker";
 import { fmtMoney, fmtPct, toneText } from "@/lib/format";
 import { PageHead, Pill, SymbolChip, Sparkline } from "@/components/ui";
 import OrderTicket from "@/components/OrderTicket";
+import Link from "next/link";
 import { LivePrice, LivePct } from "@/components/Live";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
@@ -52,7 +53,7 @@ export default async function ScannerPage() {
           {rows.map((r) => (
             <Tr key={r.symbol}>
               <Td>
-                <div className="flex items-center gap-3">
+                <Link href={`/stock/${r.symbol}`} className="flex items-center gap-3 hover:opacity-80">
                   <SymbolChip symbol={r.symbol} size={32} />
                   <div className="min-w-0">
                     <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
@@ -61,7 +62,7 @@ export default async function ScannerPage() {
                     </p>
                     <p className="truncate text-[11px] text-ink3">{r.company}</p>
                   </div>
-                </div>
+                </Link>
               </Td>
               <Td align="center">
                 <div className="flex justify-center">

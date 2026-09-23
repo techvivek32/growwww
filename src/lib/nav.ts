@@ -17,11 +17,13 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/fno/chain", label: "Option Chain", short: "Chain", group: "trading" },
   { href: "/stocks/scanner", label: "Scanner", group: "trading" },
   { href: "/stocks/watchlist", label: "Watchlist", group: "trading" },
+  { href: "/indices", label: "Indices", group: "trading" },
   { href: "/portfolio/holdings", label: "Portfolio", group: "trading" },
   { href: "/portfolio/positions", label: "Positions", group: "trading" },
   { href: "/portfolio/orders", label: "Orders", group: "trading" },
   { href: "/portfolio/history", label: "History", group: "trading" },
   { href: "/portfolio/analysis", label: "Analysis", group: "trading" },
+  { href: "/terminal", label: "Terminal", group: "trading" },
   { href: "/broker", label: "Broker", group: "system" },
   { href: "/settings", label: "Settings", group: "system" },
 ];

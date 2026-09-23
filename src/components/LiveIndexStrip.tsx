@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { fmtNum, toneText } from "@/lib/format";
+import Link from "next/link";
 import { useTicks } from "./LiveTicks";
 
 export interface StripRow {
@@ -33,7 +34,9 @@ function Cell({ row }: { row: StripRow }) {
 
   return (
     <div className="flex shrink-0 items-baseline gap-2 whitespace-nowrap">
-      <span className="text-[12px] font-semibold text-ink">{row.symbol}</span>
+      <Link href={`/stock/${row.symbol}`} className="text-[12px] font-semibold text-ink hover:text-brandtext">
+        {row.symbol}
+      </Link>
       {row.stale && (
         <span className="rounded bg-warnsoft px-1 py-0.5 text-[9px] font-semibold text-warn">
           snap {row.asOf}

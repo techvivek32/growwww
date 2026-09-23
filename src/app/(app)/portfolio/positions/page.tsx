@@ -3,6 +3,7 @@ import { getPositions, isConnected, canTrade } from "@/lib/api/broker";
 import { fmtMoney, fmtMoneySigned, fmtPct, toneText } from "@/lib/format";
 import { PageHead, StatTile, Pill, SymbolChip } from "@/components/ui";
 import OrderTicket from "@/components/OrderTicket";
+import Link from "next/link";
 import { LivePrice } from "@/components/Live";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 import NotConnected from "@/components/NotConnected";
@@ -89,10 +90,13 @@ export default async function PositionsPage() {
             return (
               <Tr key={p.symbol}>
                 <Td>
-                  <div className="flex items-center gap-3">
+                  <Link
+                    href={`/stock/${p.symbol.replace(/\s.*/, "")}`}
+                    className="flex items-center gap-3 hover:opacity-80"
+                  >
                     <SymbolChip symbol={p.symbol.replace(/\s.*/, "")} size={36} />
                     <span className="text-[13.5px] font-semibold text-ink">{p.symbol}</span>
-                  </div>
+                  </Link>
                 </Td>
                 <Td align="center"><Pill tone={PRODUCT_TONE[p.product]}>{p.product}</Pill></Td>
                 <Td align="center"><Pill tone={p.side === "BUY" ? "up" : "down"}>{p.side}</Pill></Td>
