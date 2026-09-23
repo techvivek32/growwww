@@ -3,6 +3,9 @@ import TopNav from "@/components/TopNav";
 import IndexStrip from "@/components/IndexStrip";
 import { AutoTradeProvider } from "@/components/AutoTrade";
 
+// The nav shows live account state.
+export const dynamic = "force-dynamic";
+
 /**
  * The terminal chrome. Everything behind the session lives in this group;
  * /login sits outside it and gets the bare root layout instead.

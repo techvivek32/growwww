@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Account } from "@/lib/types";
+import { fmtMoney } from "@/lib/format";
 import { logout } from "@/app/login/actions";
 
 /**
@@ -76,9 +77,9 @@ export default function ProfileMenu({ account }: { account: Account }) {
               <dd className="text-[12.5px] font-medium text-ink">{account.broker}</dd>
             </div>
             <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-[12.5px] text-ink3">Balance</dt>
-              <dd className="tnum text-[12.5px] font-medium text-ink3">
-                {account.balance === null ? "—" : account.balance}
+              <dt className="text-[12.5px] text-ink3">Available cash</dt>
+              <dd className={`tnum text-[12.5px] font-medium ${account.balance === null ? "text-ink3" : "text-ink"}`}>
+                {account.balance === null ? "—" : fmtMoney(account.balance)}
               </dd>
             </div>
           </dl>

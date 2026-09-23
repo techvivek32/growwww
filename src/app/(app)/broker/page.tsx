@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import { getAccount, isConnected } from "@/lib/api/broker";
+import { fmtMoney } from "@/lib/format";
 import { PageHead, Card, CardHead, Pill, Button } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Broker · MNHA Financials" };
+
+// Reads the live broker account — never bake this at build time.
+export const dynamic = "force-dynamic";
 
 function Dot({ on }: { on: boolean }) {
   return (
@@ -34,9 +38,9 @@ const STEPS = [
       "The TOTP flow lets the gateway mint its own access token. Tokens expire at 06:00 IST daily and are re-minted pre-market, so nothing needs a human at 6 AM.",
   },
   {
-    label: "Order gateway reachable",
+    label: "Orders leave from the registered IP",
     detail:
-      "Orders must leave from the registered IP, so a gateway on that host places them — never the browser, and never a serverless function whose egress IP is not fixed.",
+      "The terminal runs on the registered host and calls Groww over an IPv4-pinned connection, so requests cannot drift onto an unregistered address — never from the browser, and never from a serverless function whose egress IP is not fixed.",
   },
 ];
 
@@ -64,15 +68,21 @@ export default async function BrokerPage() {
           right={<Pill tone={connected ? "up" : "neutral"}>{connected ? "Connected" : "Not connected"}</Pill>}
         />
 
-        <dl className="grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-3 lg:grid-cols-5">
           <div>
             <dt className="text-[12px] text-ink3">Account</dt>
             <dd className="mt-1 text-[14.5px] font-semibold text-ink">{account.name}</dd>
           </div>
           <div>
-            <dt className="text-[12px] text-ink3">Balance</dt>
-            <dd className="tnum mt-1 text-[14.5px] font-semibold text-ink3">
-              {account.balance === null ? "—" : account.balance}
+            <dt className="text-[12px] text-ink3">Available cash</dt>
+            <dd className={`tnum mt-1 text-[14.5px] font-semibold ${account.balance === null ? "text-ink3" : "text-ink"}`}>
+              {account.balance === null ? "—" : fmtMoney(account.balance)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[12px] text-ink3">Margin used</dt>
+            <dd className={`tnum mt-1 text-[14.5px] font-semibold ${account.usedMargin === null ? "text-ink3" : "text-ink"}`}>
+              {account.usedMargin === null ? "—" : fmtMoney(account.usedMargin)}
             </dd>
           </div>
           <div>

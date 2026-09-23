@@ -1,66 +1,92 @@
 import "server-only";
-import type {
-  Account,
-  Holding,
-  Order,
-  OptionChain,
-  Position,
-  Trade,
-} from "../types";
+import * as groww from "./groww";
+import type { Account, Holding, Order, OptionChain, Position, Trade } from "../types";
 
 /**
- * The broker adapter.
+ * The broker adapter every account-dependent screen reads from.
  *
- * Every account-dependent screen reads from here. Until an order gateway is
- * configured there is nothing to read, so each call returns empty and
- * `isConnected()` is false — the screens render their empty state rather than
- * inventing numbers.
+ * With Groww credentials present it talks to the live account. Without them
+ * it returns empty and `isConnected()` is false, so those screens show their
+ * empty state rather than inventing numbers.
  *
- * Phase 2 fills these in against Groww. The signatures do not change, so the
- * screens do not change either.
- *
- * Why a gateway URL and not Groww directly: SEBI requires order placement
- * from an IP registered with the broker, and a serverless deploy has no fixed
- * egress IP. The gateway runs on the registered host; this app talks to it.
+ * Read failures are swallowed into empty results on purpose: a broker blip
+ * should leave the terminal usable and visibly empty, not throw a 500 over
+ * the whole page. Failures are logged for the journal.
  */
 
-const GATEWAY = process.env.BROKER_API_URL?.trim() || "";
-
 export function isConnected(): boolean {
-  return GATEWAY.length > 0;
+  return groww.hasCredentials();
 }
 
-/** Identity is ours; balances belong to the broker and stay null until connected. */
+async function safe<T>(what: string, run: () => Promise<T>, fallback: T): Promise<T> {
+  if (!groww.hasCredentials()) return fallback;
+  try {
+    return await run();
+  } catch (err) {
+    console.error(`[broker] ${what} failed:`, err instanceof Error ? err.message : err);
+    return fallback;
+  }
+}
+
 export async function getAccount(): Promise<Account> {
-  return {
+  const base: Account = {
     name: process.env.ACCOUNT_NAME ?? "Rahul Shah",
     email: process.env.AUTH_EMAIL ?? "rahulzshah@gmail.com",
     broker: "Groww",
     balance: null,
     usedMargin: null,
   };
+
+  const margin = await safe("margin", () => groww.getMargin(), null);
+  if (!margin) return base;
+
+  return { ...base, balance: margin.clearCash, usedMargin: margin.marginUsed };
 }
 
 export async function getHoldings(): Promise<Holding[]> {
-  return [];
+  return safe("holdings", () => groww.getHoldings(), []);
 }
 
 export async function getPositions(): Promise<Position[]> {
-  return [];
+  return safe("positions", () => groww.getPositions(), []);
 }
 
 export async function getOrders(): Promise<Order[]> {
-  return [];
-}
-
-export async function getTrades(): Promise<Trade[]> {
-  return [];
+  return safe("orders", () => groww.getOrders(), []);
 }
 
 /**
- * NSE option chains are not available from the free price feed, so this stays
- * empty until the broker provides one. Modelling strikes locally would put
- * numbers on screen that no exchange ever printed.
+ * Groww exposes no trade-list endpoint, so history is derived from orders
+ * that actually filled. Entry and exit are not paired into round-trips here —
+ * that needs both legs, and the screens treat each fill on its own terms.
+ */
+export async function getTrades(): Promise<Trade[]> {
+  const orders = await getOrders();
+
+  return orders
+    .filter((o) => o.status === "COMPLETE" && o.avg !== null && o.filled > 0)
+    .map((o) => ({
+      id: o.id,
+      date: new Date().toISOString().slice(0, 10),
+      day: o.time,
+      symbol: o.symbol,
+      company: o.symbol,
+      side: o.side,
+      product: o.product,
+      qty: o.filled,
+      entry: o.avg as number,
+      exit: o.avg as number,
+      entryTime: o.time,
+      exitTime: o.time,
+      charges: 0,
+    }));
+}
+
+/**
+ * NSE option chains are not in the free price feed and Groww's REST surface
+ * exposes quotes per instrument rather than a whole chain, so this stays null
+ * until a chain builder exists. Modelling strikes locally would put numbers on
+ * screen that no exchange ever printed.
  */
 export async function getOptionChain(): Promise<OptionChain | null> {
   return null;

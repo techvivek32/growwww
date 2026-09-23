@@ -6,6 +6,9 @@ import { PageHead, Card, CardHead } from "@/components/ui";
 
 export const metadata: Metadata = { title: "AI F&O Alerts · MNHA Financials" };
 
+// Reads the live broker account — never bake this at build time.
+export const dynamic = "force-dynamic";
+
 export default async function FnoAlertsPage() {
   const chain = await getOptionChain();
 

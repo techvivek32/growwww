@@ -7,6 +7,9 @@ import NotConnected from "@/components/NotConnected";
 
 export const metadata: Metadata = { title: "Positions · MNHA Financials" };
 
+// Reads the live broker account — never bake this at build time.
+export const dynamic = "force-dynamic";
+
 const PRODUCT_TONE = { MIS: "warn", CNC: "brand", NRML: "violet" } as const;
 
 export default async function PositionsPage() {

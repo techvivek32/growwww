@@ -7,6 +7,9 @@ import NotConnected from "@/components/NotConnected";
 
 export const metadata: Metadata = { title: "Orders · MNHA Financials" };
 
+// Reads the live broker account — never bake this at build time.
+export const dynamic = "force-dynamic";
+
 const STATUS_TONE = {
   COMPLETE: "up", OPEN: "brand", "TRIGGER PENDING": "warn",
   REJECTED: "down", CANCELLED: "neutral",

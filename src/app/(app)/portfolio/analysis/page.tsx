@@ -6,6 +6,9 @@ import NotConnected from "@/components/NotConnected";
 
 export const metadata: Metadata = { title: "Analysis · MNHA Financials" };
 
+// Reads the live broker account — never bake this at build time.
+export const dynamic = "force-dynamic";
+
 export default async function AnalysisPage() {
   const trades = await getTrades();
 
