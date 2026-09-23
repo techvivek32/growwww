@@ -8,6 +8,7 @@ const DOT: Record<MarketState["phase"], string> = {
   "pre-open": "bg-warn",
   post: "bg-ink3",
   closed: "bg-ink3",
+  holiday: "bg-ink3",
 };
 
 /**

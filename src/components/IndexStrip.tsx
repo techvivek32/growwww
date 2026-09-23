@@ -2,7 +2,7 @@ import { getIndices } from "@/lib/api/yahoo";
 import { fmtNum, toneText } from "@/lib/format";
 
 /**
- * The thin index ticker Groww puts under its nav. Live from Yahoo, scrolling
+ * The thin index ticker Groww puts under its nav. Live-priced, scrolling
  * horizontally on narrow screens rather than wrapping or squeezing.
  */
 export default async function IndexStrip() {
@@ -14,6 +14,11 @@ export default async function IndexStrip() {
         {indices.map((ix) => (
           <div key={ix.symbol} className="flex shrink-0 items-baseline gap-2 whitespace-nowrap">
             <span className="text-[12px] font-semibold text-ink">{ix.symbol}</span>
+            {ix.stale && (
+              <span className="rounded bg-warnsoft px-1 py-0.5 text-[9px] font-semibold text-warn">
+                snap {ix.asOf}
+              </span>
+            )}
             <span className="tnum text-[12px] text-ink2">{fmtNum(ix.last, 2)}</span>
             <span className={`tnum text-[12px] ${toneText(ix.change)}`}>
               {ix.change >= 0 ? "+" : ""}

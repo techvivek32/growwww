@@ -1,85 +1,41 @@
 import type { StockAlert } from "@/lib/alerts";
-import { fmtMoney, fmtPrice, fmtPct } from "@/lib/format";
+import { fmtMoney, fmtPct } from "@/lib/format";
 import { Card, Pill, Tag, Button, SymbolChip, Sparkline } from "./ui";
-
-/* ------------------------------------------------------------------- rail */
-
-/**
- * Where price sits between the stop and the target. This is the single most
- * useful glance in the product: left of centre means the trade is working
- * against you, right means it is running.
- */
-export function TradeRail({
-  stop,
-  entry,
-  target,
-  last,
-}: {
-  stop: number;
-  entry: number;
-  target: number;
-  last: number;
-}) {
-  const span = target - stop || 1;
-  const pos = Math.min(100, Math.max(0, ((last - stop) / span) * 100));
-  const entryPos = Math.min(100, Math.max(0, ((entry - stop) / span) * 100));
-  const toTarget = target > last ? ((target - last) / (target - entry || 1)) * 100 : 0;
-
-  return (
-    <div>
-      <div className="relative h-1.5 w-full rounded-full bg-downsoft">
-        <div
-          className="absolute inset-y-0 left-0 rounded-full bg-up/25"
-          style={{ width: `${pos}%` }}
-        />
-        {/* entry marker */}
-        <span
-          className="absolute top-1/2 h-3 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink3"
-          style={{ left: `${entryPos}%` }}
-          aria-hidden="true"
-        />
-        {/* live price marker */}
-        <span
-          className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface bg-up"
-          style={{ left: `${pos}%` }}
-          aria-hidden="true"
-        />
-      </div>
-      <div className="mt-1.5 flex items-center justify-between text-[11px] text-ink3">
-        <span>Stop</span>
-        <span className="font-medium text-ink2">
-          {toTarget > 0 ? `${toTarget.toFixed(0)}% to target` : "At target"}
-        </span>
-        <span>Target</span>
-      </div>
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------ level tiles */
 
+/**
+ * Entry / Target / Stop as three static levels. Deliberately no progress
+ * meter between them: nobody holds this trade, so there is no progress to
+ * report — a moving marker would be theatre.
+ *
+ * Order levels keep their paise (a stop is a number someone types into a
+ * ticket), so the value is allowed to shrink rather than round.
+ */
 function Levels({ a }: { a: StockAlert }) {
   const tgtPct = ((a.target - a.entry) / a.entry) * 100;
   const stopPct = ((a.stop - a.entry) / a.entry) * 100;
-  // px-2 not px-3, and the value clamps to the tile: a five-figure NSE price
-  // like ₹20,480 has to fit a third of a card without pushing the box open.
   const cell = "min-w-0 rounded-lg border border-line bg-surface2 px-2 py-2.5 text-center";
-  const value = "tnum mt-1 truncate text-[14px] font-semibold sm:text-[15px]";
+  const value = "tnum mt-1 truncate text-[13.5px] font-semibold sm:text-[14.5px]";
 
   return (
     <div className="grid grid-cols-3 gap-2">
       <div className={cell}>
-        <p className="text-[10px] font-semibold tracking-wider text-ink3 uppercase">Entry</p>
-        <p className={`${value} text-ink`}>{fmtPrice(a.entry)}</p>
+        <p className="text-[10px] font-semibold tracking-wider text-ink3 uppercase">Entry · mkt</p>
+        <p className={`${value} text-ink`}>{fmtMoney(a.entry)}</p>
+        <p className="tnum text-[10px] text-ink3">last traded</p>
       </div>
       <div className={cell}>
         <p className="text-[10px] font-semibold tracking-wider text-ink3 uppercase">Target</p>
-        <p className={`${value} text-up`}>{fmtPrice(a.target)}</p>
-        <p className="tnum text-[10px] text-up">{fmtPct(tgtPct)}</p>
+        <p className={`${value} text-up`}>{fmtMoney(a.target)}</p>
+        <p className="tnum text-[10px] text-up">
+          {fmtPct(tgtPct)}
+          {a.targetIsLevel ? " · 20-day high" : " · 2R"}
+        </p>
       </div>
       <div className={cell}>
         <p className="text-[10px] font-semibold tracking-wider text-ink3 uppercase">Stop</p>
-        <p className={`${value} text-down`}>{fmtPrice(a.stop)}</p>
+        <p className={`${value} text-down`}>{fmtMoney(a.stop)}</p>
         <p className="tnum text-[10px] text-down">{fmtPct(stopPct)}</p>
       </div>
     </div>
@@ -88,12 +44,27 @@ function Levels({ a }: { a: StockAlert }) {
 
 function ScoreBadge({ score }: { score: number }) {
   const tone = score >= 90 ? "up" : score >= 80 ? "brand" : "neutral";
+  return <Pill tone={tone}>Score {score}</Pill>;
+}
+
+/** R/R · RSI · Vol readout; segments that could not be computed are absent. */
+function Metrics({ a, ltp = false }: { a: StockAlert; ltp?: boolean }) {
+  const bits: string[] = [`R/R ${a.rr.toFixed(1)}`];
+  if (a.rsi !== null) bits.push(`RSI ${a.rsi}`);
+  if (a.volX !== null) bits.push(`Vol ${a.volX.toFixed(1)}x`);
   return (
-    <Pill tone={tone}>
-      Score {score}
-    </Pill>
+    <span className="tnum text-[12px] text-ink3">
+      {ltp && (
+        <>
+          LTP <span className="font-semibold text-ink">{fmtMoney(a.last)}</span> ·{" "}
+        </>
+      )}
+      {bits.join(" · ")}
+    </span>
   );
 }
+
+const BUY_DISABLED = "Order placement is not enabled — place the order in Groww";
 
 /* -------------------------------------------------------------- hero card */
 
@@ -102,7 +73,7 @@ export function BestTrade({ a }: { a: StockAlert }) {
     <Card className="border-brand/40">
       <div className="mb-4 flex items-center gap-2">
         <span className="text-[11px] font-bold tracking-wider text-brandtext uppercase">
-          Best trade of the moment
+          Highest-scoring setup
         </span>
       </div>
 
@@ -131,10 +102,6 @@ export function BestTrade({ a }: { a: StockAlert }) {
         </div>
       </div>
 
-      <div className="mt-4">
-        <TradeRail stop={a.stop} entry={a.entry} target={a.target} last={a.last} />
-      </div>
-
       <div className="mt-4 flex flex-wrap gap-1.5">
         {a.tags.map((t) => (
           <Tag key={t}>{t}</Tag>
@@ -142,11 +109,11 @@ export function BestTrade({ a }: { a: StockAlert }) {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Button className="min-w-[140px]">Buy {a.symbol}</Button>
-        <Button variant="outline">Add to watchlist</Button>
-        <span className="tnum ml-auto text-[12px] text-ink3">
-          R/R {a.rr.toFixed(1)} · RSI {a.rsi}
-          {a.volX !== null && ` · Vol ${a.volX.toFixed(1)}x`}
+        <Button className="min-w-[140px]" disabled title={BUY_DISABLED}>
+          Buy {a.symbol}
+        </Button>
+        <span className="ml-auto">
+          <Metrics a={a} />
         </span>
       </div>
     </Card>
@@ -159,7 +126,7 @@ export function AlertCard({ a }: { a: StockAlert }) {
   const up = a.changePct >= 0;
   return (
     // h-full + flex-col so every card in the grid is the same height and the
-    // Buy buttons line up regardless of how many reason tags a setup carries.
+    // buttons line up regardless of how many reason tags a setup carries.
     <Card className="flex h-full flex-col">
       <div className="flex items-start gap-3">
         <SymbolChip symbol={a.symbol} />
@@ -180,14 +147,8 @@ export function AlertCard({ a }: { a: StockAlert }) {
         <Levels a={a} />
       </div>
 
-      <div className="mt-3">
-        <TradeRail stop={a.stop} entry={a.entry} target={a.target} last={a.last} />
-      </div>
-
-      <p className="tnum mt-3 text-[12px] text-ink3">
-        LTP <span className="font-semibold text-ink">{fmtMoney(a.last)}</span> · R/R {a.rr.toFixed(1)} · RSI{" "}
-        {a.rsi}
-        {a.volX !== null && ` · Vol ${a.volX.toFixed(1)}x`}
+      <p className="mt-3">
+        <Metrics a={a} ltp />
       </p>
 
       {/* flex-1 absorbs the height difference between 1-line and 2-line tag sets */}
@@ -198,7 +159,9 @@ export function AlertCard({ a }: { a: StockAlert }) {
       </div>
 
       <div className="mt-4">
-        <Button className="w-full">Buy</Button>
+        <Button className="w-full" disabled title={BUY_DISABLED}>
+          Buy
+        </Button>
       </div>
     </Card>
   );

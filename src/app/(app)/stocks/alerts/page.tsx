@@ -3,9 +3,9 @@ import { getUniverse } from "@/lib/api/yahoo";
 import { buildAlerts } from "@/lib/alerts";
 import { BestTrade, AlertCard } from "@/components/AlertCard";
 import MarketMood from "@/components/MarketMood";
-import { PageHead, Pill, Card, Empty, SectionHead, MoreLink } from "@/components/ui";
+import { PageHead, Pill, Card, Empty, SectionHead } from "@/components/ui";
 
-export const metadata: Metadata = { title: "AI Stock Alerts · MNHA Financials" };
+export const metadata: Metadata = { title: "Stock Alerts · MNHA Financials" };
 
 export default async function StockAlertsPage() {
   const universe = await getUniverse();
@@ -16,8 +16,8 @@ export default async function StockAlertsPage() {
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_352px]">
       <div className="min-w-0">
         <PageHead
-          title="AI Stock Alerts"
-          sub="Live NSE buy setups — entry, target and stop on every one, sized off the stock's own daily range."
+          title="Stock Alerts"
+          sub="Rule-based NSE buy setups from daily bars and the live tick. Entry is the last traded price; the stop comes from the stock's own range; the target is its 20-day closing high where one sits above."
           right={<Pill tone="neutral">{universe.length} scanned</Pill>}
         />
 
@@ -27,7 +27,7 @@ export default async function StockAlertsPage() {
 
             <SectionHead
               title="Buy alerts"
-              right={<MoreLink>See all {rest.length}</MoreLink>}
+              right={<span className="text-[13.5px] text-ink3">{rest.length} more</span>}
               className="mt-8"
             />
 

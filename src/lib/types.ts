@@ -36,8 +36,10 @@ export interface Holding {
   company: string;
   qty: number;
   avg: number;
-  ltp: number;
-  dayPct: number;
+  /** Live price; null when the feed did not return one — never the avg cost. */
+  ltp: number | null;
+  /** Today's move in percent; null when unknown. */
+  dayPct: number | null;
 }
 
 export interface Position {
@@ -46,13 +48,16 @@ export interface Position {
   side: Side;
   qty: number;
   avg: number;
-  ltp: number;
+  /** Live price; null when the feed did not return one — never the avg cost. */
+  ltp: number | null;
   /** Booked P&L on the closed part of the position. */
   realised: number;
 }
 
 export interface Order {
   id: string;
+  /** Session date of the fill, ISO (YYYY-MM-DD); null when unparseable. */
+  date: string | null;
   time: string;
   symbol: string;
   side: Side;
@@ -79,8 +84,11 @@ export interface Trade {
   exit: number;
   entryTime: string;
   exitTime: string;
-  /** All-in: brokerage, STT, exchange fees, GST, SEBI, stamp duty. */
-  charges: number;
+  /**
+   * Per-trade charges. Groww's order payload does not carry them, so this is
+   * null and the UI says so — an account-level figure is not a substitute.
+   */
+  charges: number | null;
 }
 
 /** One strike's two legs, as an exchange publishes them. */

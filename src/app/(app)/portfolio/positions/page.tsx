@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getPositions } from "@/lib/api/broker";
+import { getPositions, isConnected } from "@/lib/api/broker";
 import { fmtMoney, fmtMoneySigned, fmtPct, toneText } from "@/lib/format";
 import { PageHead, StatTile, Pill, Button, SymbolChip } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
@@ -20,43 +20,74 @@ export default async function PositionsPage() {
       <>
         <PageHead title="Positions" sub="Open intraday and F&O positions." />
         <NotConnected
-          what="No open positions"
-          detail="Positions are read from your Groww account. Connect it and anything working shows here with live P&L."
+          connected={isConnected()}
+          what={isConnected() ? "No open positions" : "No positions to show"}
+          detail={
+            isConnected()
+              ? "Your Groww account has nothing working right now. Open positions appear here with live P&L."
+              : "Positions are read from your Groww account once credentials are configured on the server."
+          }
         />
       </>
     );
   }
 
-  const pnl = positions.reduce((s, p) => s + (p.ltp - p.avg) * p.qty * (p.side === "BUY" ? 1 : -1), 0);
-  const exposure = positions.reduce((s, p) => s + p.ltp * p.qty, 0);
+  // Rows without a live price cannot contribute to the totals — valuing a
+  // position at its own cost would print a fake flat P&L.
+  const priced = positions.filter(
+    (p): p is (typeof positions)[number] & { ltp: number } => p.ltp !== null,
+  );
+  const pnl = priced.reduce(
+    (s, p) => s + (p.ltp - p.avg) * p.qty * (p.side === "BUY" ? 1 : -1),
+    0,
+  );
+  const exposure = priced.reduce((s, p) => s + p.ltp * p.qty, 0);
+  const unpriced = positions.length - priced.length;
 
   return (
     <>
       <PageHead
         title="Positions"
         sub="Open intraday and F&O positions. MIS legs are auto-squared off by Groww before close."
-        right={<Button variant="danger" size="sm">Square off all</Button>}
+        right={
+          <Button variant="danger" size="sm" disabled title="Order placement is not enabled — square off in Groww">
+            Square off all
+          </Button>
+        }
       />
 
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile label="Open P&L" value={fmtMoneySigned(pnl, 0)} tone={pnl >= 0 ? "up" : "down"} sub={`${positions.length} positions`} />
-        <StatTile label="Exposure" value={fmtMoney(exposure, 0)} />
-        <StatTile label="Realised today" value={fmtMoneySigned(positions.reduce((s, p) => s + p.realised, 0), 0)} />
+        <StatTile
+          label="Open P&L"
+          value={priced.length ? fmtMoneySigned(pnl, 0) : "—"}
+          tone={pnl >= 0 ? "up" : "down"}
+          sub={`${positions.length} positions${unpriced ? ` · ${unpriced} awaiting a price` : ""}`}
+        />
+        <StatTile label="Exposure" value={priced.length ? fmtMoney(exposure, 0) : "—"} />
+        <StatTile
+          label="Realised today"
+          value={fmtMoneySigned(positions.reduce((s, p) => s + p.realised, 0), 0)}
+        />
         <StatTile label="Instruments" value={String(positions.length)} />
       </div>
 
       <TableWrap>
         <thead>
           <tr>
-            <Th>Instrument</Th><Th align="center">Product</Th><Th align="center">Side</Th>
-            <Th align="right">Qty</Th><Th align="right">Avg</Th><Th align="right">LTP</Th>
-            <Th align="right">P&L</Th><Th align="right">Action</Th>
+            <Th>Instrument</Th>
+            <Th align="center">Product</Th>
+            <Th align="center">Side</Th>
+            <Th align="right">Qty</Th>
+            <Th align="right">Avg</Th>
+            <Th align="right">LTP</Th>
+            <Th align="right">P&L</Th>
+            <Th align="right">Action</Th>
           </tr>
         </thead>
         <tbody>
           {positions.map((p) => {
             const dir = p.side === "BUY" ? 1 : -1;
-            const pl = (p.ltp - p.avg) * p.qty * dir;
+            const pl = p.ltp !== null ? (p.ltp - p.avg) * p.qty * dir : null;
             return (
               <Tr key={p.symbol}>
                 <Td>
@@ -69,12 +100,29 @@ export default async function PositionsPage() {
                 <Td align="center"><Pill tone={p.side === "BUY" ? "up" : "down"}>{p.side}</Pill></Td>
                 <Td align="right" className="tnum">{p.qty}</Td>
                 <Td align="right" className="tnum">{fmtMoney(p.avg)}</Td>
-                <Td align="right" className="tnum font-medium text-ink">{fmtMoney(p.ltp)}</Td>
-                <Td align="right" className={`tnum font-semibold ${toneText(pl)}`}>
-                  {fmtMoneySigned(pl, 0)}
-                  <span className="block text-[11.5px] font-normal">{fmtPct(((p.ltp - p.avg) / p.avg) * 100 * dir)}</span>
+                <Td align="right" className="tnum font-medium text-ink">
+                  {p.ltp === null ? "—" : fmtMoney(p.ltp)}
                 </Td>
-                <Td align="right"><Button size="sm" variant="outline">Exit</Button></Td>
+                <Td
+                  align="right"
+                  className={`tnum font-semibold ${pl === null ? "text-ink3" : toneText(pl)}`}
+                >
+                  {pl === null ? (
+                    "—"
+                  ) : (
+                    <>
+                      {fmtMoneySigned(pl, 0)}
+                      <span className="block text-[11.5px] font-normal">
+                        {fmtPct(((p.ltp as number) / p.avg - 1) * 100 * dir)}
+                      </span>
+                    </>
+                  )}
+                </Td>
+                <Td align="right">
+                  <Button size="sm" variant="outline" disabled title="Order placement is not enabled — exit in Groww">
+                    Exit
+                  </Button>
+                </Td>
               </Tr>
             );
           })}

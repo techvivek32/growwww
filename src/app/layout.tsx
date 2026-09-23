@@ -9,18 +9,18 @@ const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono-jb", di
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://visionmarket.in";
 
 const DESCRIPTION =
-  "AI stock and F&O alerts for NSE with entry, target and stop on every setup, plus a live order desk on your own Groww account.";
+  "An NSE terminal on your own Groww account — live balance, holdings, positions and order book, with rule-based momentum and volume setups.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "MNHA Financials — NSE trading terminal on Groww",
+  title: "MNHA Financials — NSE terminal on Groww",
   description: DESCRIPTION,
   applicationName: "MNHA Financials",
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     siteName: "MNHA Financials",
-    title: "MNHA Financials — NSE trading terminal on Groww",
+    title: "MNHA Financials — NSE terminal on Groww",
     description: DESCRIPTION,
     url: "/",
     locale: "en_IN",

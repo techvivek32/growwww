@@ -3,10 +3,17 @@ import type { Quote } from "./api/yahoo";
 /**
  * Turns real NSE quotes into buy setups.
  *
- * Nothing here is invented: the score, the stop distance and every tag are
- * computed from the day's real range, the real volume against its 20-session
- * average, and the real 30-day close series. Change the market data and the
- * setups change with it.
+ * Every number here is computed from market data: the day's real range, real
+ * volume against its 20-session average, and the real 30-day close series.
+ * Where an input is missing the field is null and the UI prints a dash — a
+ * constant dressed as a measurement is worse than an honest blank.
+ *
+ * The levels are mechanical, and presented as such:
+ *  - entry  = the last traded price ("at market", not a chosen level)
+ *  - risk   = max(0.55 × today's range, 14-day average daily move)
+ *  - target = the 20-day closing high when it sits above entry, else a 2R
+ *             projection from the risk distance
+ *  - R/R    = (target − entry) / risk — an OUTCOME of those two, not an input
  */
 
 export interface StockAlert {
@@ -19,9 +26,11 @@ export interface StockAlert {
   changePct: number;
   entry: number;
   target: number;
+  /** True when the target is the observed 20-day closing high. */
+  targetIsLevel: boolean;
   stop: number;
   rr: number;
-  rsi: number;
+  rsi: number | null;
   volX: number | null;
   tags: string[];
   spark: number[];
@@ -35,64 +44,95 @@ function sma(series: number[], n: number): number | null {
   return w.reduce((a, b) => a + b, 0) / n;
 }
 
-/** Wilder's RSI over the daily closes we have. */
+/** Wilder's RSI: simple-average seed, then Wilder smoothing over the rest. */
 function rsi(series: number[], period = 14): number | null {
-  if (series.length < period + 1) return null;
+  if (series.length < period + 2) return null;
+
   let gain = 0;
   let loss = 0;
-  for (let i = series.length - period; i < series.length; i++) {
+  for (let i = 1; i <= period; i++) {
     const d = series[i] - series[i - 1];
     if (d >= 0) gain += d;
     else loss -= d;
   }
-  if (gain + loss === 0) return 50;
-  return Math.round((gain / (gain + loss)) * 100);
+  let avgGain = gain / period;
+  let avgLoss = loss / period;
+
+  for (let i = period + 1; i < series.length; i++) {
+    const d = series[i] - series[i - 1];
+    avgGain = (avgGain * (period - 1) + Math.max(d, 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + Math.max(-d, 0)) / period;
+  }
+
+  if (avgGain + avgLoss === 0) return null; // a flat series has no RSI
+  return Math.round((avgGain / (avgGain + avgLoss)) * 100);
+}
+
+/** Mean absolute close-to-close move over the last `n` sessions. */
+function avgDailyMove(series: number[], n = 14): number | null {
+  if (series.length < n + 1) return null;
+  const w = series.slice(-(n + 1));
+  let sum = 0;
+  for (let i = 1; i < w.length; i++) sum += Math.abs(w[i] - w[i - 1]);
+  return sum / n;
 }
 
 export function buildAlert(q: Quote): StockAlert | null {
   const { last, dayHigh, dayLow, spark } = q;
-  if (!last || spark.length < 5) return null;
-
-  const hi = dayHigh ?? last;
-  const lo = dayLow ?? last;
-  const range = Math.max(hi - lo, last * 0.006);
+  // A snapshot quote's history and previous close are from another day —
+  // deriving a "today" setup from it would present old data as current.
+  if (q.stale) return null;
+  if (!last || spark.length < 21) return null;
 
   const volX = q.avgVolume && q.volume ? +(q.volume / q.avgVolume).toFixed(1) : null;
   const ma20 = sma(spark, 20);
   const ma10 = sma(spark, 10);
   const high20 = Math.max(...spark.slice(-20));
-  const rsiVal = rsi(spark) ?? 50;
+  const rsiVal = rsi(spark);
 
-  /* Score: momentum, participation, and where the close sits in the range. */
-  const closePos = (last - lo) / (hi - lo || 1); // 1 = closed on the high
+  // Where the price sits in today's real range; null when the feed did not
+  // carry a high/low — an unknown range is not a close on the low.
+  const closePos =
+    dayHigh !== null && dayLow !== null && dayHigh > dayLow
+      ? clamp((last - dayLow) / (dayHigh - dayLow), 0, 1)
+      : null;
+
   const score = Math.round(
     clamp(
       46 +
         q.changePct * 4.2 +
         Math.min(volX ?? 1, 6) * 3.4 +
-        closePos * 12 +
+        (closePos !== null ? closePos * 12 : 0) +
         (ma20 && last > ma20 ? 5 : -6),
       35,
       98,
     ),
   );
 
-  /* Risk is the day's own volatility, floored so a quiet stock still has room. */
-  const risk = +Math.max(range * 0.55, last * 0.011).toFixed(2);
-  const rr = +(1.7 + score / 140).toFixed(1);
+  // Risk: today's range, or the stock's own recent daily move when today is
+  // quiet — so the stop is stock-specific, not a flat percentage template.
+  const range = dayHigh !== null && dayLow !== null ? dayHigh - dayLow : 0;
+  const adm = avgDailyMove(spark);
+  const risk = +Math.max(range * 0.55, adm ?? 0, last * 0.004).toFixed(2);
+  if (risk <= 0) return null;
 
   const entry = +last.toFixed(2);
   const stop = +(entry - risk).toFixed(2);
-  const target = +(entry + risk * rr).toFixed(2);
+
+  // Target: an observable level when one exists above the entry, otherwise a
+  // plain 2R projection, and the card says which it is.
+  const targetIsLevel = high20 > entry * 1.002;
+  const target = targetIsLevel ? +high20.toFixed(2) : +(entry + risk * 2).toFixed(2);
+  const rr = +((target - entry) / risk).toFixed(1);
 
   const tags: string[] = [];
-  if (volX && volX >= 1.5) tags.push(`Volume ${volX.toFixed(1)}x average`);
-  if (last >= high20 * 0.999) tags.push("20-day breakout");
-  if (closePos >= 0.85) tags.push("Closed at the day's high");
+  if (volX && volX >= 1.5) tags.push(`Vol ${volX.toFixed(1)}x 20-day avg so far`);
+  if (last > high20) tags.push("Above the 20-day closing high");
+  if (closePos !== null && closePos >= 0.85) tags.push("Closed near the day's high");
   if (ma20 && ma10 && ma10 > ma20 && last > ma10) tags.push("Above 10 & 20 DMA");
   else if (ma20 && last > ma20) tags.push("Above 20 DMA");
   if (q.changePct >= 2) tags.push("Fresh upward momentum");
-  if (rsiVal >= 70) tags.push(`RSI ${rsiVal} — extended`);
+  if (rsiVal !== null && rsiVal >= 70) tags.push(`RSI ${rsiVal} — extended`);
 
   return {
     symbol: q.symbol,
@@ -104,6 +144,7 @@ export function buildAlert(q: Quote): StockAlert | null {
     changePct: q.changePct,
     entry,
     target,
+    targetIsLevel,
     stop,
     rr,
     rsi: rsiVal,
@@ -136,7 +177,7 @@ export function buildScanRows(quotes: Quote[]) {
       const high20 = q.spark.length >= 20 ? Math.max(...q.spark.slice(-20)) : null;
 
       let setup = "Watching";
-      if (high20 && q.last >= high20 * 0.999) setup = "Breakout";
+      if (high20 && q.last > high20) setup = "Breakout";
       else if (volX && volX >= 2.5) setup = "Volume spike";
       else if (ma20 && q.last > ma20 && q.changePct > 0) setup = "Trend pullback";
       else if (ma20 && q.last < ma20 && q.changePct < 0) setup = "Below trend";
@@ -149,9 +190,10 @@ export function buildScanRows(quotes: Quote[]) {
         change: q.change,
         changePct: q.changePct,
         volX,
-        rsi: a?.rsi ?? rsi(q.spark) ?? 50,
-        score: a?.score ?? 0,
+        rsi: a?.rsi ?? rsi(q.spark),
+        score: a?.score ?? null,
         setup,
+        stale: q.stale === true,
         spark: q.spark,
       };
     })

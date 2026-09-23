@@ -21,16 +21,27 @@ const TTL_MS = 8 * 60 * 60 * 1000;
 
 const enc = new TextEncoder();
 
+/**
+ * No fallbacks: this repository is public, and a committed credential that
+ * silently works is an open door. A deploy without these three env vars must
+ * fail loudly at first use, not sign people in with a password from git.
+ */
+function required(name: string): string {
+  const v = process.env[name]?.trim();
+  if (!v) throw new Error(`${name} is not set — configure it in the server environment`);
+  return v;
+}
+
 function secret(): string {
-  return process.env.AUTH_SECRET ?? "mnha-financials-dev-secret";
+  return required("AUTH_SECRET");
 }
 
 export function expectedEmail(): string {
-  return (process.env.AUTH_EMAIL ?? "rahulzshah@gmail.com").trim().toLowerCase();
+  return required("AUTH_EMAIL").toLowerCase();
 }
 
 function expectedPassword(): string {
-  return process.env.AUTH_PASSWORD ?? "Baroda@123";
+  return required("AUTH_PASSWORD");
 }
 
 /* ------------------------------------------------------------------ crypto */

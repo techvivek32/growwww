@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getOrders } from "@/lib/api/broker";
+import { getOrders, isConnected } from "@/lib/api/broker";
 import { fmtMoney } from "@/lib/format";
 import { PageHead, Pill, Button, Card } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
@@ -24,8 +24,13 @@ export default async function OrdersPage() {
       <>
         <PageHead title="Orders" sub="Today's order book." />
         <NotConnected
-          what="No orders today"
-          detail="The order book is read straight from Groww. Connect your account and every placement, fill and rejection lands here."
+          connected={isConnected()}
+          what={isConnected() ? "No orders on this account today" : "No orders to show"}
+          detail={
+            isConnected()
+              ? "The order book is read straight from Groww. Anything placed today — filled, open or rejected — lands here."
+              : "The order book is read from your Groww account once credentials are configured on the server."
+          }
         />
       </>
     );
@@ -37,11 +42,11 @@ export default async function OrdersPage() {
     <>
       <PageHead
         title="Orders"
-        sub="Today's order book. Every submission is read back from the broker and verified before it is shown as placed."
+        sub="Today's order book, read from Groww."
         right={
           <div className="flex items-center gap-2">
             <Pill tone="brand">{working.length} working</Pill>
-            <Button variant="outline" size="sm">Cancel all</Button>
+            <Button variant="outline" size="sm" disabled title="Order placement is not enabled — manage orders in Groww">Cancel all</Button>
           </div>
         }
       />
@@ -78,9 +83,8 @@ export default async function OrdersPage() {
 
       <Card className="mt-4">
         <p className="text-[13.5px] leading-relaxed text-ink2">
-          <strong className="font-semibold text-ink">Order types Groww accepts:</strong> MARKET, LIMIT, SL and SL_M,
-          across CNC, MIS and NRML. There are no bracket orders, so a stop and target pair is a GTT + OCO — filling
-          one cancels the other.
+          <strong className="font-semibold text-ink">Order types Groww accepts:</strong> MARKET, LIMIT, SL and
+          SL_M, across CNC, MIS and NRML. There are no bracket or cover orders.
         </p>
       </Card>
     </>

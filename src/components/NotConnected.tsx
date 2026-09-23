@@ -10,9 +10,12 @@ import { Card } from "./ui";
 export default function NotConnected({
   what,
   detail,
+  connected = false,
 }: {
   what: string;
   detail: string;
+  /** A connected account with nothing to show is empty, not disconnected. */
+  connected?: boolean;
 }) {
   return (
     <Card pad={false}>
@@ -26,12 +29,14 @@ export default function NotConnected({
         <p className="mt-4 text-[16px] font-semibold text-ink">{what}</p>
         <p className="mt-1.5 max-w-sm text-[13.5px] leading-relaxed text-ink3">{detail}</p>
 
-        <Link
-          href="/broker"
-          className="mt-5 inline-flex h-10 items-center rounded-lg bg-brand px-5 text-[14px] font-semibold text-white transition-colors hover:bg-brandh"
-        >
-          Connect Groww account
-        </Link>
+        {!connected && (
+          <Link
+            href="/broker"
+            className="mt-5 inline-flex h-10 items-center rounded-lg border border-line px-5 text-[14px] font-semibold text-ink transition-colors hover:bg-surfaceh"
+          >
+            How connecting works
+          </Link>
+        )}
       </div>
     </Card>
   );

@@ -198,6 +198,20 @@ export async function getUserDetail(): Promise<UserDetail | null> {
   };
 }
 
+/* ------------------------------------------------------------- day change */
+
+/**
+ * Today's percent move for one symbol, from the full quote endpoint. Used for
+ * holdings, which arrive without one. null when the call misses — the UI
+ * prints a dash rather than a zero.
+ */
+async function dayChangePct(symbol: string): Promise<number | null> {
+  const p = await get<{ day_change_perc?: number }>(
+    `/v1/live-data/quote?exchange=NSE&segment=CASH&trading_symbol=${encodeURIComponent(symbol)}`,
+  );
+  return typeof p?.day_change_perc === "number" ? +p.day_change_perc.toFixed(2) : null;
+}
+
 /* ---------------------------------------------------------------- margins */
 
 export interface Margin {
@@ -235,23 +249,26 @@ export async function getHoldings(): Promise<Holding[]> {
   const symbols = rows.map((h) => h.trading_symbol).filter((s): s is string => Boolean(s));
   const ltp = symbols.length ? await getLtp(symbols) : {};
 
-  return rows
-    .filter((h) => h.trading_symbol && (h.quantity ?? 0) > 0)
-    .map((h) => {
-      const symbol = h.trading_symbol as string;
-      const avg = h.average_price ?? 0;
-      // Groww's holdings payload carries no live price, so it is fetched
-      // separately; the average cost is the honest fallback if that fails.
-      const last = ltp[symbol] ?? avg;
-      return {
-        symbol,
-        company: symbol,
-        qty: h.quantity ?? 0,
-        avg,
-        ltp: last,
-        dayPct: 0,
-      };
-    });
+  const keep = rows.filter((h) => h.trading_symbol && (h.quantity ?? 0) > 0);
+
+  // The holdings payload carries neither a live price nor a day move; both
+  // come from the live-data endpoints, and stay null when a call misses —
+  // a missing price is not the average cost, and an unknown move is not 0%.
+  const dayMoves = await Promise.all(
+    keep.map((h) => dayChangePct(h.trading_symbol as string).catch(() => null)),
+  );
+
+  return keep.map((h, i) => {
+    const symbol = h.trading_symbol as string;
+    return {
+      symbol,
+      company: symbol,
+      qty: h.quantity ?? 0,
+      avg: h.average_price ?? 0,
+      ltp: ltp[symbol] ?? null,
+      dayPct: dayMoves[i],
+    };
+  });
 }
 
 /* -------------------------------------------------------------- positions */
@@ -288,7 +305,7 @@ export async function getPositions(): Promise<Position[]> {
       side: (qty >= 0 ? "BUY" : "SELL") as Side,
       qty: Math.abs(qty),
       avg,
-      ltp: ltp[symbol] ?? avg,
+      ltp: ltp[symbol] ?? null,
       realised: r.realised_pnl ?? 0,
     };
   });
@@ -331,6 +348,15 @@ const STATUS: Record<string, OrderStatus> = {
 
 const ORDER_TYPES: OrderType[] = ["MARKET", "LIMIT", "SL", "SL_M"];
 
+/** IST session date (YYYY-MM-DD) of a fill timestamp; null when unparseable. */
+function dateOf(iso?: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  // en-CA formats as YYYY-MM-DD.
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d);
+}
+
 function clockOf(iso?: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -359,6 +385,7 @@ export async function getOrders(): Promise<Order[]> {
 
       return {
         id: o.groww_order_id ?? "—",
+        date: dateOf(o.exchange_time ?? o.created_at),
         time: clockOf(o.exchange_time ?? o.created_at),
         symbol: o.trading_symbol as string,
         side: (o.transaction_type === "SELL" ? "SELL" : "BUY") as Side,

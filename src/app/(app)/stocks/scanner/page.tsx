@@ -2,12 +2,11 @@ import type { Metadata } from "next";
 import { getUniverse } from "@/lib/api/yahoo";
 import { buildScanRows } from "@/lib/alerts";
 import { fmtMoney, fmtPct, toneText } from "@/lib/format";
-import { PageHead, Pill, SymbolChip, Button, Chip, Sparkline } from "@/components/ui";
+import { PageHead, Pill, SymbolChip, Sparkline } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 
 export const metadata: Metadata = { title: "Scanner · MNHA Financials" };
 
-const FILTERS = ["All setups", "Breakout", "Volume spike", "Trend pullback", "Base", "Below trend"];
 
 const SETUP_TONE: Record<string, "up" | "warn" | "brand" | "down" | "neutral"> = {
   Breakout: "up",
@@ -26,18 +25,10 @@ export default async function ScannerPage() {
     <>
       <PageHead
         title="Scanner"
-        sub="The full NSE universe the alert engine watches, ranked by today's move."
-        right={<Button variant="outline" size="sm">Export CSV</Button>}
+        sub="The 32 NSE large caps the engine watches, ranked by today's move."
       />
 
-      <div className="mb-5 flex flex-wrap items-center gap-2.5">
-        {FILTERS.map((f, i) => (
-          <Chip key={f} active={i === 0}>
-            {f}
-          </Chip>
-        ))}
-        <span className="ml-auto text-[13px] text-ink3">{rows.length} stocks</span>
-      </div>
+      <p className="mb-5 text-[13px] text-ink3">{rows.length} stocks</p>
 
       <TableWrap>
         <thead>
@@ -50,7 +41,6 @@ export default async function ScannerPage() {
             <Th align="right">Vol</Th>
             <Th align="right">RSI</Th>
             <Th align="right">Score</Th>
-            <Th align="right">Action</Th>
           </tr>
         </thead>
         <tbody>
@@ -60,7 +50,10 @@ export default async function ScannerPage() {
                 <div className="flex items-center gap-3">
                   <SymbolChip symbol={r.symbol} size={32} />
                   <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-ink">{r.symbol}</p>
+                    <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                      {r.symbol}
+                      {r.stale && <Pill tone="warn">Snapshot</Pill>}
+                    </p>
                     <p className="truncate text-[11px] text-ink3">{r.company}</p>
                   </div>
                 </div>
@@ -82,14 +75,9 @@ export default async function ScannerPage() {
               <Td align="right" className="tnum">
                 {r.volX === null ? "—" : `${r.volX.toFixed(1)}x`}
               </Td>
-              <Td align="right" className="tnum">{r.rsi}</Td>
+              <Td align="right" className="tnum">{r.rsi === null ? "—" : r.rsi}</Td>
               <Td align="right" className="tnum font-semibold text-ink">
-                {r.score || "—"}
-              </Td>
-              <Td align="right">
-                <Button size="sm" variant={r.changePct >= 0 ? "primary" : "outline"}>
-                  {r.changePct >= 0 ? "Buy" : "View"}
-                </Button>
+                {r.score ?? "—"}
               </Td>
             </Tr>
           ))}

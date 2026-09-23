@@ -4,7 +4,7 @@
  * beyond the 9:00-9:15 pre-open call auction.
  */
 
-export type SessionPhase = "closed" | "pre-open" | "open" | "post";
+export type SessionPhase = "closed" | "holiday" | "pre-open" | "open" | "post";
 
 export interface MarketState {
   phase: SessionPhase;
@@ -40,6 +40,22 @@ function istParts(d: Date) {
   };
 }
 
+/**
+ * NSE trading holidays that fall on weekdays. Only nationally fixed dates are
+ * listed — the exchange's full calendar (Holi, Diwali, etc.) moves yearly and
+ * an invented date would be worse than an occasional "open" on a holiday.
+ */
+const HOLIDAYS = new Set([
+  "2026-01-26", // Republic Day
+  "2026-08-15", // Independence Day (Saturday in 2026, harmless to list)
+  "2026-10-02", // Gandhi Jayanti
+  "2026-12-25", // Christmas
+]);
+
+function istDate(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: IST }).format(d);
+}
+
 export function marketState(now: Date = new Date()): MarketState {
   const p = istParts(now);
   const mins = p.hour * 60 + p.minute;
@@ -52,7 +68,13 @@ export function marketState(now: Date = new Date()): MarketState {
   let phase: SessionPhase = "closed";
   let label = "Market closed";
 
-  if (!weekend) {
+  const holiday = HOLIDAYS.has(istDate(now));
+  if (holiday && !weekend) {
+    phase = "holiday";
+    label = "Market holiday";
+  }
+
+  if (!weekend && !holiday) {
     if (mins >= PRE_OPEN && mins < OPEN) {
       phase = "pre-open";
       label = "Pre-open";
@@ -73,6 +95,6 @@ export function marketState(now: Date = new Date()): MarketState {
     label,
     clock: `${hh}:${mm}:${p.second} IST`,
     date: `${p.weekday}, ${p.day} ${p.month}`,
-    isLive: phase === "open" || phase === "pre-open",
+    isLive: phase === "open",
   };
 }

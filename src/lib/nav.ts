@@ -12,8 +12,8 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/stocks/alerts", label: "AI Stock Alerts", short: "Alerts", group: "trading" },
-  { href: "/fno/alerts", label: "AI F&O Alerts", short: "F&O Alerts", group: "trading" },
+  { href: "/stocks/alerts", label: "Stock Alerts", short: "Alerts", group: "trading" },
+  { href: "/fno/alerts", label: "F&O Alerts", short: "F&O", group: "trading" },
   { href: "/fno/chain", label: "F&O Options", short: "Options", group: "trading" },
   { href: "/stocks/scanner", label: "Scanner", group: "trading" },
   { href: "/stocks/watchlist", label: "Watchlist", group: "trading" },

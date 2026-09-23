@@ -18,13 +18,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AutoTradeProvider>
-      <TopNav account={account} />
+      <TopNav account={account} connected={account.balance !== null} />
       <IndexStrip />
       <main className="mx-auto max-w-[1360px] px-4 py-6 lg:px-6 lg:py-8">{children}</main>
       <footer className="mx-auto max-w-[1360px] px-4 pb-10 lg:px-6">
         <p className="border-t border-line pt-5 text-[11.5px] leading-relaxed text-ink3">
           MNHA Financials is a decision-support terminal, not investment advice. Setups are generated from price and
-          volume data and can be wrong. Orders route to your own Groww account — you place them, you own them.
+          volume data and can be wrong. It reads your Groww account; it does not place orders — place them in Groww
+          yourself.
         </p>
       </footer>
     </AutoTradeProvider>

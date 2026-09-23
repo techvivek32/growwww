@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { getAccount, isConnected } from "@/lib/api/broker";
+import { getAccount, getConnectionStatus } from "@/lib/api/broker";
 import { fmtMoney } from "@/lib/format";
-import { PageHead, Card, CardHead, Pill, Button } from "@/components/ui";
+import { PageHead, Card, CardHead, Pill } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Broker · MNHA Financials" };
 
@@ -22,40 +22,47 @@ function Dot({ on }: { on: boolean }) {
   );
 }
 
-const STEPS = [
-  {
-    label: "Trading API subscription",
-    detail: "₹499 + GST per month on the Groww Cloud console. Unlocks order placement, the live feed and historical candles.",
-  },
-  {
-    label: "Static IP registered",
-    detail:
-      "SEBI has required order placement from a registered IP since 1 Apr 2026. It can be changed only once every 7 days, so the address is verified on the host before it is registered.",
-  },
-  {
-    label: "TOTP credentials",
-    detail:
-      "The TOTP flow lets the gateway mint its own access token. Tokens expire at 06:00 IST daily and are re-minted pre-market, so nothing needs a human at 6 AM.",
-  },
-  {
-    label: "Orders leave from the registered IP",
-    detail:
-      "The terminal runs on the registered host and calls Groww over an IPv4-pinned connection, so requests cannot drift onto an unregistered address — never from the browser, and never from a serverless function whose egress IP is not fixed.",
-  },
-];
+/** Each row's tick reflects a distinct, verifiable fact — not one boolean. */
+function buildSteps(status: { credentials: boolean; live: boolean; ipPinned: boolean }) {
+  return [
+    {
+      on: status.credentials,
+      label: "API credentials configured",
+      detail: "GROWW_API_KEY and the TOTP secret are set on the server.",
+    },
+    {
+      on: status.live,
+      label: "Live API call verified",
+      detail:
+        "A TOTP-authenticated request to Groww succeeded just now — which also proves the ₹499/month API subscription is active.",
+    },
+    {
+      on: status.ipPinned,
+      label: "Outbound calls pinned to the registered IP",
+      detail:
+        "SEBI requires order placement from a registered static IP. With GROWW_REGISTERED_IP set, every call binds that source address and fails loudly if it cannot.",
+    },
+  ];
+}
 
 const LIMITS = [
   { k: "Order types", v: "MARKET · LIMIT · SL · SL_M" },
   { k: "Products", v: "CNC · MIS · NRML" },
-  { k: "Stop + target", v: "GTT + OCO pair (no bracket orders)" },
+  { k: "Bracket orders", v: "None — Groww offers GTT + OCO instead" },
   { k: "Order rate limit", v: "10/s · 250/min" },
   { k: "Data rate limit", v: "10/s · 300/min" },
   { k: "Streaming", v: "Up to 1,000 instruments" },
 ];
 
 export default async function BrokerPage() {
-  const account = await getAccount();
-  const connected = isConnected();
+  const [account, status] = await Promise.all([getAccount(), getConnectionStatus()]);
+  const steps = buildSteps(status);
+  // "Connected" means a live call succeeded — not that env vars exist.
+  const pill = status.live
+    ? { tone: "up" as const, text: "Connected" }
+    : status.credentials
+      ? { tone: "warn" as const, text: "Credentials set — API call failing" }
+      : { tone: "neutral" as const, text: "Not connected" };
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -65,7 +72,7 @@ export default async function BrokerPage() {
         <CardHead
           title="Groww"
           sub={account.email}
-          right={<Pill tone={connected ? "up" : "neutral"}>{connected ? "Connected" : "Not connected"}</Pill>}
+          right={<Pill tone={pill.tone}>{pill.text}</Pill>}
         />
 
         <dl className="grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-3 lg:grid-cols-6">
@@ -103,23 +110,23 @@ export default async function BrokerPage() {
           </div>
         </dl>
 
-        {!connected && (
-          <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-5">
-            <Button>Connect Groww account</Button>
+        {!status.live && (
+          <div className="mt-5 border-t border-line pt-5">
             <p className="text-[12.5px] leading-relaxed text-ink3">
-              Balances, holdings, positions and orders all read from Groww. Until then those screens stay empty
-              rather than showing a number nobody can stand behind.
+              Connecting is server configuration, not a button: set GROWW_API_KEY, GROWW_API_SECRET and
+              GROWW_TOTP_SECRET in the server environment (see .env.example). Until a live call succeeds,
+              account screens stay empty rather than showing a number nobody can stand behind.
             </p>
           </div>
         )}
       </Card>
 
       <Card className="mb-5">
-        <CardHead title="What connecting needs" sub="Four things, in this order" />
+        <CardHead title="Connection checks" sub="Each tick is verified separately, just now" />
         <ul className="space-y-3.5">
-          {STEPS.map((s) => (
+          {steps.map((s) => (
             <li key={s.label} className="flex gap-3">
-              <Dot on={connected} />
+              <Dot on={s.on} />
               <div className="min-w-0">
                 <p className="text-[13.5px] font-semibold text-ink">{s.label}</p>
                 <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink3">{s.detail}</p>
@@ -130,7 +137,7 @@ export default async function BrokerPage() {
       </Card>
 
       <Card>
-        <CardHead title="How the Groww API works" sub="The constraints the order desk is built around" />
+        <CardHead title="Groww API limits" sub="What the integration paces itself against" />
         <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
           {LIMITS.map((c) => (
             <div key={c.k} className="border-b border-line pb-3 last:border-0">

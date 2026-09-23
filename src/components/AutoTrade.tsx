@@ -11,16 +11,14 @@ import {
 } from "react";
 
 /**
- * Auto-trade mode.
+ * Auto-trade arm switch.
  *
- * Turning it on hands the account to the engine and locks the screen behind a
- * full-page cover, so a stray click cannot modify an order mid-flight. The only
- * two ways out are the STOP button and Escape — both stop the engine, neither
- * merely hides the cover.
+ * Arming locks the screen behind a full cover with a STOP control. The cover
+ * is explicit about the current truth: order placement is NOT enabled in this
+ * build, so arming places nothing — the lock exists so the surface is ready
+ * for the day an engine is wired in, without pretending one is running now.
  *
- * State deliberately does NOT persist. A reload stops auto-trading, because a
- * refreshed tab is exactly the moment you least want an engine to still be
- * placing orders you cannot see.
+ * State deliberately does NOT persist across a reload.
  */
 
 interface AutoTradeCtx {
@@ -83,34 +81,15 @@ export function AutoTradeToggle() {
 
 /* ------------------------------------------------------------------- cover */
 
-/** What the engine narrates while it runs. Cycles so the screen is never dead. */
-const STEPS = [
-  "Scanning the NSE universe…",
-  "Checking NIFTY 50 against its 20 DMA — regime gate",
-  "Filtering on volume against the 20-session average",
-  "Ranking survivors by trend strength",
-  "Sizing candidates against the per-trade risk limit",
-  "Checking the open-position cap before entering",
-  "Arming GTT + OCO on anything filled",
-  "Monitoring working orders…",
-  "Waiting for the next scan window",
-];
-
 function AutoTradeCover() {
   const { stop } = useAutoTrade();
-  const [step, setStep] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const stopRef = useRef<HTMLButtonElement>(null);
 
-  // Advance the narration and the clock. setState lives in the interval
-  // callback, never synchronously in the effect body.
+  // A real clock: time since the switch was armed, nothing more.
   useEffect(() => {
     const tick = setInterval(() => setSeconds((s) => s + 1), 1000);
-    const next = setInterval(() => setStep((s) => (s + 1) % STEPS.length), 2600);
-    return () => {
-      clearInterval(tick);
-      clearInterval(next);
-    };
+    return () => clearInterval(tick);
   }, []);
 
   // Lock the page behind the cover and put focus on the way out.
@@ -123,8 +102,7 @@ function AutoTradeCover() {
     };
   }, []);
 
-  // Escape stops the engine. It does not merely dismiss the cover — leaving a
-  // running engine behind a hidden screen would be the worst of both.
+  // Escape disarms — it does not merely dismiss the cover.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") stop();
@@ -136,20 +114,17 @@ function AutoTradeCover() {
   const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
   const ss = String(seconds % 60).padStart(2, "0");
 
-  const recent = [0, 1, 2].map((i) => STEPS[(step - i + STEPS.length) % STEPS.length]);
-
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Auto trade is running"
+      aria-label="Auto trade is armed"
       className="fixed inset-0 z-[100] flex items-center justify-center bg-bg/95 p-4 backdrop-blur-sm"
     >
       <div
         className="w-full max-w-lg rounded-2xl border border-line bg-surface p-7 text-center"
         style={{ boxShadow: "var(--shadow-pop)" }}
       >
-        {/* live indicator */}
         <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-brandsoft">
           <span className="live-dot grid h-10 w-10 place-items-center rounded-full bg-brand">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -159,67 +134,30 @@ function AutoTradeCover() {
         </div>
 
         <h2 className="mt-5 text-[22px] leading-tight font-bold tracking-tight text-ink">
-          Hands off — MNHA is trading
+          Auto trade is armed
         </h2>
         <p className="mx-auto mt-2 max-w-sm text-[13.5px] leading-relaxed text-ink2">
-          The engine is placing and managing orders on its own. The screen stays locked so a stray
-          click cannot change an order mid-flight.
+          Order placement is <strong className="font-semibold text-ink">not enabled</strong> in this
+          build, so no orders will be placed. The screen stays locked while armed so nothing changes
+          under your hands.
         </p>
 
-        {/* what it is doing right now */}
-        <div className="mt-6 rounded-xl border border-line bg-surface2 px-4 py-3 text-left">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-semibold tracking-wider text-ink3 uppercase">
-              Live activity
-            </span>
-            <span className="tnum text-[11px] text-ink3">{mm}:{ss}</span>
-          </div>
-          <ul className="mt-2 space-y-1.5">
-            {recent.map((s, i) => (
-              <li
-                key={`${s}-${i}`}
-                className={`flex items-start gap-2 text-[12.5px] leading-snug transition-opacity ${
-                  i === 0 ? "text-ink opacity-100" : i === 1 ? "text-ink2 opacity-70" : "text-ink3 opacity-40"
-                }`}
-              >
-                <span
-                  className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${i === 0 ? "bg-brand" : "bg-line2"}`}
-                  aria-hidden="true"
-                />
-                {s}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <dl className="mt-4 grid grid-cols-3 gap-2">
-          {[
-            { k: "Risk / trade", v: "₹2,000" },
-            { k: "Max positions", v: "5" },
-            { k: "Scan window", v: "10 min" },
-          ].map((x) => (
-            <div key={x.k} className="rounded-lg border border-line bg-surface2 px-2 py-2">
-              <dt className="text-[11px] text-ink3">{x.k}</dt>
-              <dd className="tnum mt-0.5 text-[13px] font-semibold text-ink">{x.v}</dd>
-            </div>
-          ))}
-        </dl>
+        <p className="tnum mt-5 text-[12px] text-ink3">armed {mm}:{ss}</p>
 
         <button
           ref={stopRef}
           type="button"
           onClick={stop}
-          className="mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-down text-[16px] font-bold text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-down"
+          className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-down text-[16px] font-bold text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-down"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <rect x="6" y="6" width="12" height="12" rx="2" />
           </svg>
-          Stop auto trade
+          Stop
         </button>
 
         <p className="mt-3 text-[11px] text-ink3">
-          Press <kbd className="rounded border border-line bg-surface2 px-1 py-0.5 font-medium">Esc</kbd> to stop ·
-          Orders route to your Groww account
+          Press <kbd className="rounded border border-line bg-surface2 px-1 py-0.5 font-medium">Esc</kbd> to stop
         </p>
       </div>
     </div>

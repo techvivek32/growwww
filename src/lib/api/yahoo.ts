@@ -27,6 +27,10 @@ export interface Quote {
   avgVolume: number | null;
   /** Daily closes, oldest first — drives the sparklines. */
   spark: number[];
+  /** True when this quote came from the committed snapshot, not a live fetch. */
+  stale?: boolean;
+  /** Capture date of the snapshot this quote came from, e.g. "2026-09-02". */
+  asOf?: string;
 }
 
 const UA =
@@ -163,19 +167,32 @@ export async function getIndices(): Promise<Quote[]> {
   const results = await Promise.all(
     INDEX_TICKERS.map((t) => fetchOne(t.symbol, t.yahoo, t.name)),
   );
-  const quotes = results.map((q, i) => q ?? SNAPSHOT.indices[i]).filter(Boolean);
+  const quotes = results
+    .map((q, i) => q ?? markStale(SNAPSHOT.indices[i]))
+    .filter((q): q is Quote => Boolean(q));
   return overlayLive(quotes, () => groww.getIndexLtp());
 }
 
 /** Live equity quotes by NSE symbol, snapshot-backed the same way. */
 export async function getQuotes(symbols: string[]): Promise<Quote[]> {
-  const wanted = symbols
-    .map((s) => SNAPSHOT.stocks.find((x) => x.symbol === s))
-    .filter((x): x is Quote => Boolean(x));
+  // Any NSE symbol resolves — `SYMBOL.NS` is Yahoo's spelling — so a symbol
+  // outside the snapshot universe still fetches instead of silently dropping.
+  const wanted = symbols.map((sym) => {
+    const snap = SNAPSHOT.stocks.find((x) => x.symbol === sym);
+    return { symbol: sym, yahoo: snap?.yahoo ?? `${sym}.NS`, name: snap?.name, snap };
+  });
 
-  const results = await Promise.all(wanted.map((s) => fetchOne(s.symbol, s.yahoo, s.name)));
-  const quotes = results.map((q, i) => q ?? wanted[i]);
+  const results = await Promise.all(wanted.map((w) => fetchOne(w.symbol, w.yahoo, w.name)));
+  const quotes = results
+    .map((q, i) => q ?? markStale(wanted[i].snap))
+    .filter((q): q is Quote => Boolean(q));
   return overlayLive(quotes, () => groww.getLtp(quotes.map((q) => q.symbol)));
+}
+
+/** A snapshot substitute carries its vintage so no screen prints it as today. */
+function markStale(snap: Quote | undefined): Quote | null {
+  if (!snap) return null;
+  return { ...snap, stale: true, asOf: SNAPSHOT.fetchedAt.slice(0, 10) };
 }
 
 /**
@@ -193,6 +210,9 @@ async function overlayLive(
   try {
     const live = await fetchLtp();
     return quotes.map((q) => {
+      // A stale quote's previous close is from another day; differencing a
+      // live tick against it would print a multi-day move as today's change.
+      if (q.stale) return q;
       const ltp = live[q.symbol];
       if (typeof ltp !== "number" || !Number.isFinite(ltp) || q.prevClose <= 0) return q;
       const change = ltp - q.prevClose;

@@ -7,9 +7,9 @@ export const metadata: Metadata = {
 };
 
 const POINTS = [
-  "AI setups on NSE with entry, target and stop on every one",
-  "Live order desk on your own Groww account",
-  "Positions, P&L and a verified trade archive",
+  "Rule-based NSE setups with entry, target and stop on every one",
+  "Live balance, holdings, positions and order book from your Groww account",
+  "Real-time index and stock prices from the exchange feed",
 ];
 
 export default function LoginPage() {
@@ -62,8 +62,8 @@ export default function LoginPage() {
         </div>
 
         <p className="max-w-md text-[11px] leading-relaxed text-white/70">
-          NSE market data is delayed. MNHA Financials is decision-support tooling, not investment
-          advice.
+          MNHA Financials is decision-support tooling, not investment advice. It reads your Groww
+          account; it does not place orders.
         </p>
       </section>
 

@@ -3,7 +3,6 @@ import { getOptionChain } from "@/lib/api/broker";
 import { fmtNum, toneText } from "@/lib/format";
 import { PageHead, Pill, Card } from "@/components/ui";
 import { Th, Td } from "@/components/Table";
-import NotConnected from "@/components/NotConnected";
 
 export const metadata: Metadata = { title: "Option Chain · MNHA Financials" };
 
@@ -17,10 +16,15 @@ export default async function OptionChainPage() {
     return (
       <>
         <PageHead title="Option chain" sub="NSE index options — strikes, open interest and implied volatility." />
-        <NotConnected
-          what="No option chain available"
-          detail="NSE option quotes are not carried by the free price feed, so the chain comes from the broker. Connect your Groww account and live strikes appear here."
-        />
+        <Card pad={false}>
+          <div className="px-6 py-14 text-center">
+            <p className="text-[15px] font-semibold text-ink">Not built yet</p>
+            <p className="mx-auto mt-1.5 max-w-md text-[13.5px] leading-relaxed text-ink3">
+              Groww&apos;s API returns option quotes per instrument, not a whole chain, and nothing here
+              assembles one yet — connecting an account does not change that.
+            </p>
+          </div>
+        </Card>
       </>
     );
   }
@@ -136,7 +140,7 @@ export default async function OptionChainPage() {
         <p className="text-[13.5px] leading-relaxed text-ink2">
           Open interest is in lakhs of contracts. One lot is{" "}
           <strong className="font-semibold text-ink">{chain.lotSize} qty</strong> — NSE revises lot sizes
-          periodically, so they are read from the instruments master rather than hard-coded.
+          periodically.
         </p>
       </Card>
     </>

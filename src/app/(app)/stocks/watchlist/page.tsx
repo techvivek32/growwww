@@ -19,8 +19,7 @@ export default async function WatchlistPage() {
     <>
       <PageHead
         title="Watchlist"
-        sub="Stocks you are tracking. Alerts fire on these first."
-        right={<Button size="sm">Add symbol</Button>}
+        sub="A fixed starter list — editing the watchlist is not available yet."
       />
 
       <TableWrap>
@@ -60,7 +59,7 @@ export default async function WatchlistPage() {
                 {fmtPct(w.changePct)}
               </Td>
               <Td align="right">
-                <Button size="sm" variant="outline">Trade</Button>
+                <Button size="sm" variant="outline" disabled title="Order placement is not enabled — place in Groww">Trade</Button>
               </Td>
             </Tr>
           ))}

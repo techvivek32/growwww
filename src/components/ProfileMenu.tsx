@@ -74,7 +74,10 @@ export default function ProfileMenu({ account }: { account: Account }) {
           <dl className="space-y-2 border-b border-line px-4 py-3">
             <div className="flex items-baseline justify-between gap-3">
               <dt className="text-[12.5px] text-ink3">Broker</dt>
-              <dd className="text-[12.5px] font-medium text-ink">{account.broker}</dd>
+              <dd className="text-[12.5px] font-medium text-ink">
+                {account.broker}
+                {account.balance === null && <span className="text-ink3"> · not connected</span>}
+              </dd>
             </div>
             <div className="flex items-baseline justify-between gap-3">
               <dt className="text-[12.5px] text-ink3">Available cash</dt>

@@ -28,7 +28,7 @@ function Logo() {
   );
 }
 
-export default function TopNav({ account }: { account: Account }) {
+export default function TopNav({ account, connected }: { account: Account; connected: boolean }) {
   const pathname = usePathname();
   const trading = NAV_ITEMS.filter((i) => i.group === "trading");
   const system = NAV_ITEMS.filter((i) => i.group === "system");
@@ -57,37 +57,11 @@ export default function TopNav({ account }: { account: Account }) {
       <div className="mx-auto flex h-14 max-w-[1360px] items-center gap-4 px-4 lg:px-6">
         <Logo />
 
-        <div className="ml-auto hidden min-w-0 flex-1 justify-center lg:flex">
-          <label className="flex h-9 w-full max-w-[400px] items-center gap-2 rounded-lg border border-line bg-surface2 px-3 focus-within:border-brand">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-ink3">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3.2-3.2" strokeLinecap="round" />
-            </svg>
-            <input
-              type="search"
-              placeholder="Search NSE stocks, F&O…"
-              className="min-w-0 flex-1 bg-transparent text-[13.5px] text-ink outline-none placeholder:text-ink3"
-            />
-            <kbd className="hidden rounded border border-line bg-surface px-1.5 py-0.5 text-[10px] font-medium text-ink3 xl:block">
-              Ctrl K
-            </kbd>
-          </label>
-        </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-2 lg:ml-0">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <MarketClock />
           <AutoTradeToggle />
           <ThemeToggle />
-          <button
-            type="button"
-            aria-label="Notifications"
-            className="grid h-9 w-9 place-items-center rounded-full text-ink2 transition-colors hover:bg-surfaceh hover:text-ink"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-              <path d="M18 9a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7" />
-              <path d="M10.3 20a2 2 0 0 0 3.4 0" />
-            </svg>
-          </button>
           <ProfileMenu account={account} />
         </div>
       </div>
@@ -106,8 +80,9 @@ export default function TopNav({ account }: { account: Account }) {
               href="/broker"
               className="flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12px] font-medium text-ink2 transition-colors hover:bg-surfaceh hover:text-ink"
             >
-              <span className="h-1.5 w-1.5 rounded-full bg-ink3" />
+              <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-up" : "bg-ink3"}`} />
               {account.broker}
+              {!connected && <span className="text-ink3">· not connected</span>}
             </Link>
           </div>
         </div>
