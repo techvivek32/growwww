@@ -154,13 +154,24 @@ export async function refreshBacktests(): Promise<BacktestResult[]> {
   const groups = intervalGroups();
 
   // Fetch each needed (symbol, interval) once, then score every strategy that
-  // reads that interval over the same series.
+  // reads that interval over the same series. A group's backtest is only
+  // trustworthy if nearly the whole universe returned candles — a partial pull
+  // (some symbols rate-limited) makes the win rate wobble run to run, so we
+  // keep the last GOOD result for that group rather than publish a half one.
+  const kept = new Map(state.backtests.map((r) => [r.strategy, r] as const));
   const results: BacktestResult[] = [];
   for (const grp of groups) {
-    const series = await pool(u, 4, (x) =>
-      groww.getCandles(x.symbol, grp.interval, grp.lookback).catch(() => []),
+    const series = await pool(u, 3, (x) =>
+      groww.getCandles(x.symbol, grp.interval, grp.lookback).catch(() => [] as groww.Candle[]),
     );
+    const usable = series.filter((c) => c.length >= 60).length;
+    const coverage = usable / u.length;
+
     for (const strat of grp.strategies) {
+      if (coverage < 0.9 && kept.has(strat.name)) {
+        results.push(kept.get(strat.name)!); // keep the last full-universe run
+        continue;
+      }
       const trades = series.flatMap((c) => (c.length >= 60 ? collectTrades(strat, c) : []));
       const bars = series.reduce((a, c) => a + c.length, 0);
       results.push(summarize(strat.name, trades, bars));

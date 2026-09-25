@@ -979,21 +979,31 @@ async function candleWindow(
   from: number,
   to: number,
   interval: number,
-): Promise<Candle[]> {
-  const p = await get<{ candles?: number[][] }>(
+): Promise<Candle[] | null> {
+  const path =
     `/v1/historical/candle/range?exchange=${exchange}&segment=CASH` +
-      `&trading_symbol=${encodeURIComponent(wire)}` +
-      `&start_time=${from}&end_time=${to}&interval_in_minutes=${interval}`,
-  );
-  const rows = p?.candles ?? [];
-  return rows.map((c) => ({
-    time: c[0] * 1_000,
-    open: c[1],
-    high: c[2],
-    low: c[3],
-    close: c[4],
-    volume: c[5] ?? 0,
-  }));
+    `&trading_symbol=${encodeURIComponent(wire)}` +
+    `&start_time=${from}&end_time=${to}&interval_in_minutes=${interval}`;
+
+  // The history endpoint rate-limits under a burst of symbols. A miss here is
+  // NOT "no data" — returning [] would silently shrink a backtest and make its
+  // win rate wobble run to run. So retry, and signal a hard failure as null so
+  // the caller can refuse to publish a partial result.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const p = await get<{ candles?: number[][] }>(path);
+    if (p?.candles) {
+      return p.candles.map((c) => ({
+        time: c[0] * 1_000,
+        open: c[1],
+        high: c[2],
+        low: c[3],
+        close: c[4],
+        volume: c[5] ?? 0,
+      }));
+    }
+    await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+  }
+  return null;
 }
 
 /**
@@ -1008,9 +1018,13 @@ export async function getCandles(
   interval: number,
   lookbackDays: number,
 ): Promise<Candle[]> {
+  // Daily bars change once a day — cache them long so a scan and a backtest in
+  // the same session read the SAME history and produce the same numbers.
+  // Intraday stays short so the live board keeps moving.
+  const ttl = interval >= 1440 ? 30 * 60_000 : 60_000;
   const key = `${symbol}|${interval}|${lookbackDays}`;
   const hit = candleCache.get(key);
-  if (hit && Date.now() - hit.at < 60_000) return hit.data;
+  if (hit && Date.now() - hit.at < ttl) return hit.data;
 
   const { exchange, wire } = candleWire(symbol);
   const span = CANDLE_MAX_DAYS[interval] ?? 30;
@@ -1019,13 +1033,13 @@ export async function getCandles(
 
   const merged: Candle[] = [];
   const seen = new Set<number>();
+  let failed = false;
   for (let winTo = now; winTo > start; winTo -= span * DAY_MS) {
     const winFrom = Math.max(start, winTo - span * DAY_MS);
-    let bars: Candle[] = [];
-    try {
-      bars = await candleWindow(exchange, wire, winFrom, winTo, interval);
-    } catch {
-      break; // a failed window ends the stitch; return what we have
+    const bars = await candleWindow(exchange, wire, winFrom, winTo, interval);
+    if (bars === null) {
+      failed = true; // a window that would not answer even after retries
+      break;
     }
     for (const b of bars) {
       if (!seen.has(b.time)) {
@@ -1034,6 +1048,13 @@ export async function getCandles(
       }
     }
     if (bars.length === 0) break;
+  }
+
+  // Never cache (or return) a truncated pull as if it were the full history —
+  // a stale-but-complete copy is better than a fresh half.
+  if (failed && merged.length === 0) {
+    if (hit) return hit.data;
+    return [];
   }
 
   merged.sort((a, b) => a.time - b.time);
