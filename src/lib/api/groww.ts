@@ -938,3 +938,105 @@ export async function getTicks(symbols: string[]): Promise<Record<string, Tick>>
   }
   return out;
 }
+
+/* ------------------------------------------------------- historical candles */
+
+export interface Candle {
+  /** Bar open time, epoch milliseconds (IST session). */
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+/**
+ * The largest span Groww will answer for one request at a given interval —
+ * found by probing the live API (it returns GA001 "duration too long" past
+ * these). Longer histories are stitched from back-to-back windows.
+ */
+const CANDLE_MAX_DAYS: Record<number, number> = {
+  1: 7,
+  5: 15,
+  10: 30,
+  15: 30,
+  30: 60,
+  60: 90,
+  1440: 1000,
+};
+
+const DAY_MS = 24 * 3_600 * 1_000;
+const candleCache = new Map<string, { at: number; data: Candle[] }>();
+
+function candleWire(symbol: string): { exchange: string; wire: string } {
+  return { exchange: exchangeOf(symbol), wire: QUOTE_SYMBOL[symbol] ?? symbol };
+}
+
+async function candleWindow(
+  exchange: string,
+  wire: string,
+  from: number,
+  to: number,
+  interval: number,
+): Promise<Candle[]> {
+  const p = await get<{ candles?: number[][] }>(
+    `/v1/historical/candle/range?exchange=${exchange}&segment=CASH` +
+      `&trading_symbol=${encodeURIComponent(wire)}` +
+      `&start_time=${from}&end_time=${to}&interval_in_minutes=${interval}`,
+  );
+  const rows = p?.candles ?? [];
+  return rows.map((c) => ({
+    time: c[0] * 1_000,
+    open: c[1],
+    high: c[2],
+    low: c[3],
+    close: c[4],
+    volume: c[5] ?? 0,
+  }));
+}
+
+/**
+ * Real OHLCV history for one symbol, oldest bar first. `interval` is in
+ * minutes (1440 = daily); `lookbackDays` is stitched from as many windows as
+ * Groww's per-request cap needs. Cached in-process for 60s so a scan pass and
+ * a page render share one pull. Returns [] on a miss — the caller decides
+ * whether a strategy has enough bars to speak.
+ */
+export async function getCandles(
+  symbol: string,
+  interval: number,
+  lookbackDays: number,
+): Promise<Candle[]> {
+  const key = `${symbol}|${interval}|${lookbackDays}`;
+  const hit = candleCache.get(key);
+  if (hit && Date.now() - hit.at < 60_000) return hit.data;
+
+  const { exchange, wire } = candleWire(symbol);
+  const span = CANDLE_MAX_DAYS[interval] ?? 30;
+  const now = Date.now();
+  const start = now - lookbackDays * DAY_MS;
+
+  const merged: Candle[] = [];
+  const seen = new Set<number>();
+  for (let winTo = now; winTo > start; winTo -= span * DAY_MS) {
+    const winFrom = Math.max(start, winTo - span * DAY_MS);
+    let bars: Candle[] = [];
+    try {
+      bars = await candleWindow(exchange, wire, winFrom, winTo, interval);
+    } catch {
+      break; // a failed window ends the stitch; return what we have
+    }
+    for (const b of bars) {
+      if (!seen.has(b.time)) {
+        seen.add(b.time);
+        merged.push(b);
+      }
+    }
+    if (bars.length === 0) break;
+  }
+
+  merged.sort((a, b) => a.time - b.time);
+  candleCache.set(key, { at: Date.now(), data: merged });
+  return merged;
+}
