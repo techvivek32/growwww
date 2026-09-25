@@ -304,18 +304,29 @@ export async function getOptionChain(
     const symbols = strikes
       .flatMap((s) => [s.CE?.tradingSymbol, s.PE?.tradingSymbol])
       .filter((t): t is string => Boolean(t));
-    const quotes = await groww.getFnoQuotes(symbols);
+    const exchange = strikes[0]?.CE?.exchange ?? strikes[0]?.PE?.exchange ?? "NSE";
+    const quotes = await groww.getFnoQuotes(symbols, exchange);
 
     const leg = (t?: string) => {
       if (!t) return null;
       const q = quotes[t];
-      if (!q) return { tradingSymbol: t, ltp: null, changePct: null, oi: null, oiChgPct: null, volume: null };
+      if (!q)
+        return {
+          tradingSymbol: t,
+          exchange,
+          ltp: null,
+          changePct: null,
+          oi: null,
+          oiChgPct: null,
+          volume: null,
+        };
       const oiChgPct =
         q.oi !== null && q.prevOi !== null && q.prevOi > 0
           ? +(((q.oi - q.prevOi) / q.prevOi) * 100).toFixed(1)
           : null;
       return {
         tradingSymbol: t,
+        exchange,
         ltp: q.ltp,
         changePct: q.changePct,
         oi: q.oi,

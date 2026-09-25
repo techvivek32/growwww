@@ -64,6 +64,7 @@ export default function OrderTicket({
   disabledReason,
   segment = "CASH",
   lotSize = 1,
+  exchange = "NSE",
 }: {
   symbol: string;
   company?: string;
@@ -78,6 +79,7 @@ export default function OrderTicket({
   /** FNO instruments trade in whole lots and settle NRML/MIS. */
   segment?: "CASH" | "FNO";
   lotSize?: number;
+  exchange?: "NSE" | "BSE";
 }) {
   const fno = segment === "FNO";
   const PRODUCTS = fno ? FNO_PRODUCTS : CASH_PRODUCTS;
@@ -220,6 +222,7 @@ export default function OrderTicket({
                 <input type="hidden" name="product" value={product} />
                 <input type="hidden" name="qty" value={fno ? String(qtyNum || "") : qty} />
                 <input type="hidden" name="segment" value={segment} />
+                <input type="hidden" name="exchange" value={exchange} />
                 <input type="hidden" name="price" value={needsPrice ? price : ""} />
                 <input type="hidden" name="trigger" value={needsTrigger ? triggerPrice : ""} />
 

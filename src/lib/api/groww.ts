@@ -441,17 +441,20 @@ export interface FnoQuote {
 }
 
 /** Batched last prices for FNO trading symbols (options, futures). */
-export async function getFnoLtp(tradingSymbols: string[]): Promise<Record<string, number>> {
+export async function getFnoLtp(
+  tradingSymbols: string[],
+  exchange: "NSE" | "BSE" = "NSE",
+): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   for (let i = 0; i < tradingSymbols.length; i += 40) {
     const batch = tradingSymbols.slice(i, i + 40);
-    const q = batch.map((t) => `NSE_${t}`).join(",");
+    const q = batch.map((t) => `${exchange}_${t}`).join(",");
     const p = await get<Record<string, number>>(
       `/v1/live-data/ltp?segment=FNO&exchange_symbols=${encodeURIComponent(q)}`,
     );
     if (!p) continue;
     for (const t of batch) {
-      const v = p[`NSE_${t}`];
+      const v = p[`${exchange}_${t}`];
       if (typeof v === "number") out[t] = v;
     }
   }
@@ -463,7 +466,10 @@ const fnoQuoteCache = new Map<string, { at: number; q: FnoQuote }>();
 /** OI and previous close move slowly next to the price; 45s is plenty. */
 const FNO_QUOTE_TTL_MS = 45_000;
 
-async function fnoQuoteOnce(tradingSymbol: string): Promise<FnoQuote | null> {
+async function fnoQuoteOnce(
+  tradingSymbol: string,
+  exchange: "NSE" | "BSE" = "NSE",
+): Promise<FnoQuote | null> {
   const p = await get<{
     last_price?: number;
     day_change_perc?: number;
@@ -471,7 +477,7 @@ async function fnoQuoteOnce(tradingSymbol: string): Promise<FnoQuote | null> {
     previous_open_interest?: number;
     volume?: number;
     ohlc?: { close?: number };
-  }>(`/v1/live-data/quote?exchange=NSE&segment=FNO&trading_symbol=${encodeURIComponent(tradingSymbol)}`);
+  }>(`/v1/live-data/quote?exchange=${exchange}&segment=FNO&trading_symbol=${encodeURIComponent(tradingSymbol)}`);
   if (!p || typeof p.last_price !== "number") return null;
   return {
     ltp: p.last_price,
@@ -488,7 +494,10 @@ async function fnoQuoteOnce(tradingSymbol: string): Promise<FnoQuote | null> {
  * 21 strikes is 42 legs; at a 45-second cache that is well inside the
  * live-data budget alongside the tick hub.
  */
-export async function getFnoQuotes(tradingSymbols: string[]): Promise<Record<string, FnoQuote>> {
+export async function getFnoQuotes(
+  tradingSymbols: string[],
+  exchange: "NSE" | "BSE" = "NSE",
+): Promise<Record<string, FnoQuote>> {
   const now = Date.now();
   const out: Record<string, FnoQuote> = {};
   const due: string[] = [];
@@ -500,7 +509,7 @@ export async function getFnoQuotes(tradingSymbols: string[]): Promise<Record<str
   }
 
   if (due.length) {
-    const fresh = await pool(due, 6, (t) => fnoQuoteOnce(t).catch(() => null));
+    const fresh = await pool(due, 6, (t) => fnoQuoteOnce(t, exchange).catch(() => null));
     fresh.forEach((q, i) => {
       if (q) {
         fnoQuoteCache.set(due[i], { at: now, q });
@@ -512,7 +521,7 @@ export async function getFnoQuotes(tradingSymbols: string[]): Promise<Record<str
   // Overlay the freshest LTP in one batched call — the quote cache may be up
   // to 45s old on price, which is the one field that must not be.
   try {
-    const live = await getFnoLtp(tradingSymbols.filter((t) => out[t]));
+    const live = await getFnoLtp(tradingSymbols.filter((t) => out[t]), exchange);
     for (const [t, ltp] of Object.entries(live)) {
       if (out[t]) out[t] = { ...out[t], ltp };
     }
@@ -536,6 +545,8 @@ export interface PlaceOrderInput {
   /** Required for SL and SL_M; ignored otherwise. */
   triggerPrice?: number | null;
   segment?: "CASH" | "FNO";
+  /** SENSEX/BANKEX contracts trade on BSE; everything else here is NSE. */
+  exchange?: "NSE" | "BSE";
 }
 
 export interface PlaceOrderResult {
@@ -565,7 +576,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     trading_symbol: input.symbol,
     quantity: input.qty,
     validity: "DAY",
-    exchange: "NSE",
+    exchange: input.exchange ?? "NSE",
     segment,
     product: input.product,
     order_type: input.type,
@@ -704,15 +715,16 @@ const INDEX_WIRE: Record<string, string> = {
   BANKNIFTY: "NSE_BANKNIFTY",
   MIDCPNIFTY: "NSE_NIFTYMIDSELECT",
   FINNIFTY: "NSE_FINNIFTY",
+  BANKEX: "BSE_BANKEX",
 };
 
 const QUOTE_SYMBOL: Record<string, string> = {
   MIDCPNIFTY: "NIFTYMIDSELECT",
 };
 
-/** Exchange for the quote endpoint — SENSEX is BSE, everything else NSE. */
+/** Exchange for the quote endpoint — the BSE benchmarks, else NSE. */
 function exchangeOf(symbol: string): string {
-  return symbol === "SENSEX" ? "BSE" : "NSE";
+  return symbol === "SENSEX" || symbol === "BANKEX" ? "BSE" : "NSE";
 }
 
 /**

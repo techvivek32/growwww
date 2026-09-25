@@ -31,16 +31,22 @@ function week52Pos(t: Tick | undefined): number | null {
 export default async function WatchlistPage({
   searchParams,
 }: {
-  searchParams: Promise<{ list?: string }>;
+  searchParams: Promise<{ list?: string; q?: string; edit?: string }>;
 }) {
-  const { list: listParam } = await searchParams;
+  const { list: listParam, q, edit } = await searchParams;
+  const filter = (q ?? "").trim().toUpperCase();
+  const editing = edit === "1";
   const lists = await getWatchlists();
   const active = lists.find((l) => l.id === listParam) ?? lists[0];
 
+  const visible = filter
+    ? active.symbols.filter((s) => s.includes(filter))
+    : active.symbols;
+
   const [rows, ticks] = await Promise.all([
-    active.symbols.length ? getQuotes(active.symbols) : Promise.resolve([]),
-    active.symbols.length && hasCredentials()
-      ? getTicks(active.symbols).catch(() => ({}) as Record<string, Tick>)
+    visible.length ? getQuotes(visible) : Promise.resolve([]),
+    visible.length && hasCredentials()
+      ? getTicks(visible).catch(() => ({}) as Record<string, Tick>)
       : Promise.resolve({} as Record<string, Tick>),
   ]);
   const tradable = canTrade();
@@ -81,7 +87,30 @@ export default async function WatchlistPage({
         </form>
 
         <span className="ml-auto flex items-center gap-2">
+          <form action="/stocks/watchlist" className="hidden md:block">
+            <input type="hidden" name="list" value={active.id} />
+            <input
+              name="q"
+              defaultValue={q ?? ""}
+              placeholder="Search your watchlist"
+              className="h-9 w-44 rounded-lg border border-line bg-surface2 px-3 text-[13px] text-ink outline-none placeholder:text-ink3 focus:border-brand"
+              aria-label="Search within this watchlist"
+            />
+          </form>
           <AddStockBox listId={active.id} action={addSymbolAction} />
+          <Link
+            href={`/stocks/watchlist?list=${active.id}${editing ? "" : "&edit=1"}`}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-medium transition-colors ${
+              editing
+                ? "border-brand bg-brandsoft text-brandtext"
+                : "border-line text-ink2 hover:bg-surfaceh hover:text-ink"
+            }`}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+            </svg>
+            {editing ? "Done" : "Edit"}
+          </Link>
           {lists.length > 1 && (
             <form action={deleteListAction}>
               <input type="hidden" name="id" value={active.id} />
@@ -108,14 +137,14 @@ export default async function WatchlistPage({
         <TableWrap>
           <thead>
             <tr>
-              <Th>Stock</Th>
-              <Th align="center">30-day trend</Th>
-              <Th align="right">LTP</Th>
-              <Th align="right">Change</Th>
+              <Th>Company ({rows.length})</Th>
+              <Th align="center">Trend</Th>
+              <Th align="right">Mkt price</Th>
+              <Th align="right">1D change</Th>
               <Th align="right">1D vol</Th>
-              <Th align="center">52W range</Th>
+              <Th align="center">52W perf</Th>
               <Th align="right">Trade</Th>
-              <Th align="right"> </Th>
+              {editing && <Th align="right"> </Th>}
             </tr>
           </thead>
           <tbody>
@@ -187,6 +216,7 @@ export default async function WatchlistPage({
                       disabledReason={tradable ? undefined : "Order placement is disabled on this server"}
                     />
                   </Td>
+                  {editing && (
                   <Td align="right">
                     <form action={removeSymbolAction}>
                       <input type="hidden" name="id" value={active.id} />
@@ -202,6 +232,7 @@ export default async function WatchlistPage({
                       </button>
                     </form>
                   </Td>
+                  )}
                 </Tr>
               );
             })}

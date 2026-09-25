@@ -94,6 +94,7 @@ export interface Trade {
 /** One leg of a strike, with everything needed to display and to order it. */
 export interface ChainLeg {
   tradingSymbol: string;
+  exchange: "NSE" | "BSE";
   ltp: number | null;
   /** Day change percent, from the exchange. */
   changePct: number | null;

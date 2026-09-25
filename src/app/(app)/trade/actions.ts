@@ -50,6 +50,10 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
 
   const symbol = String(form.get("symbol") ?? "").trim().toUpperCase();
   const segment = String(form.get("segment") ?? "CASH") === "FNO" ? ("FNO" as const) : ("CASH" as const);
+  const exchange = String(form.get("exchange") ?? "NSE") === "BSE" ? ("BSE" as const) : ("NSE" as const);
+  if (exchange === "BSE" && segment !== "FNO") {
+    return fail("BSE orders are supported for index derivatives only.");
+  }
   const side = String(form.get("side") ?? "") as Side;
   const type = String(form.get("type") ?? "") as OrderType;
   const product = String(form.get("product") ?? "") as Product;
@@ -87,7 +91,7 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
     }
   }
 
-  const result = await placeOrder({ symbol, side, qty, type, product, price, triggerPrice, segment });
+  const result = await placeOrder({ symbol, side, qty, type, product, price, triggerPrice, segment, exchange });
 
   // The order book changed either way — a rejection belongs on screen too.
   revalidatePath("/portfolio/orders");

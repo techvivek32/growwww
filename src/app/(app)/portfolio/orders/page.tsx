@@ -20,19 +20,38 @@ export default async function OrdersPage() {
   const orders = await getOrders();
 
   if (orders.length === 0) {
+    if (!isConnected()) {
+      return (
+        <>
+          <PageHead title="Orders" sub="Today's order book." />
+          <NotConnected
+            connected={false}
+            what="No orders to show"
+            detail="The order book is read from your Groww account once credentials are configured on the server."
+          />
+        </>
+      );
+    }
+    // Groww's empty state: the little rocket and nothing else in the way.
     return (
-      <>
-        <PageHead title="Orders" sub="Today's order book." />
-        <NotConnected
-          connected={isConnected()}
-          what={isConnected() ? "No orders on this account today" : "No orders to show"}
-          detail={
-            isConnected()
-              ? "The order book is read straight from Groww. Anything placed today — filled, open or rejected — lands here."
-              : "The order book is read from your Groww account once credentials are configured on the server."
-          }
-        />
-      </>
+      <div className="flex min-h-[52vh] items-center justify-center">
+        <div className="flex items-center gap-8">
+          <svg width="130" height="130" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+            <path d="M20 100 60 60" stroke="var(--c-border-strong)" strokeWidth="2" strokeLinecap="round" strokeDasharray="1 7" />
+            <path d="M30 96l16-6 10 10-6 16c-1.5 3-5.5 2.5-7-1l-4-8-8-4c-3.5-1.5-4-5.5-1-7Z" fill="var(--c-brand-soft)" />
+            <path d="M62 22c10-10 28-12 34-6s4 24-6 34L64 76 44 56Z" fill="var(--c-violet-soft)" stroke="var(--c-violet)" strokeWidth="2" />
+            <circle cx="74" cy="42" r="7" fill="var(--c-surface)" stroke="var(--c-violet)" strokeWidth="2" />
+            <path d="M46 58 32 62l8-14M62 74l-4 14 14-8" stroke="var(--c-brand)" strokeWidth="2" strokeLinejoin="round" fill="var(--c-brand-soft)" />
+          </svg>
+          <div>
+            <p className="text-[26px] leading-snug font-semibold tracking-[-0.02em] text-ink">
+              You have
+              <br />
+              no orders
+            </p>
+          </div>
+        </div>
+      </div>
     );
   }
 

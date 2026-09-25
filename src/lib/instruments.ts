@@ -17,6 +17,7 @@ export interface OptionInstrument {
   right: "CE" | "PE";
   expiry: string; // YYYY-MM-DD
   lotSize: number;
+  exchange: "NSE" | "BSE";
 }
 
 export interface EquityInstrument {
@@ -40,8 +41,15 @@ interface Master {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** The index underlyings the chain UI offers. */
-export const CHAIN_UNDERLYINGS = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"] as const;
+/** The index underlyings the chain UI offers — Groww's own list and order. */
+export const CHAIN_UNDERLYINGS = [
+  "NIFTY",
+  "BANKNIFTY",
+  "SENSEX",
+  "FINNIFTY",
+  "MIDCPNIFTY",
+  "BANKEX",
+] as const;
 
 const store = globalThis as { __mnhaInstruments?: { master: Master | null; loading: Promise<Master> | null } };
 store.__mnhaInstruments ??= { master: null, loading: null };
@@ -62,10 +70,12 @@ async function load(): Promise<Master> {
   // segment,series,isin,underlying_symbol,...,expiry_date,strike_price,lot_size,...
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i].split(",");
-    if (cols.length < 15 || cols[0] !== "NSE") continue;
+    const exchange = cols[0];
+    if (cols.length < 15 || (exchange !== "NSE" && exchange !== "BSE")) continue;
 
     const segment = cols[6];
     if (segment === "CASH") {
+      if (exchange !== "NSE") continue;
       // Series EQ only — the tradable common stock, not bonds or rights.
       if (cols[7] === "EQ" && cols[2]) {
         equities.push({ tradingSymbol: cols[2], name: cols[4] || cols[2], token: cols[1] });
@@ -91,7 +101,14 @@ async function load(): Promise<Master> {
     if (!byStrike) byExpiry.set(expiry, (byStrike = new Map()));
     let pair = byStrike.get(strike);
     if (!pair) byStrike.set(strike, (pair = {}));
-    pair[right] = { tradingSymbol: cols[2], strike, right, expiry, lotSize };
+    pair[right] = {
+      tradingSymbol: cols[2],
+      strike,
+      right,
+      expiry,
+      lotSize,
+      exchange: exchange as "NSE" | "BSE",
+    };
 
     let exps = expirySets.get(underlying);
     if (!exps) expirySets.set(underlying, (exps = new Set()));

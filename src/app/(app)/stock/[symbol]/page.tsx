@@ -3,14 +3,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getStockSnapshot, hasCredentials } from "@/lib/api/groww";
 import { getChartSeries, INDEX_TICKERS } from "@/lib/api/yahoo";
-import { canTrade } from "@/lib/api/broker";
+import { canTrade, getAccount, getOptionChain } from "@/lib/api/broker";
 import { equityName } from "@/lib/instruments";
 import { CHAIN_UNDERLYINGS } from "@/lib/instruments";
 import { fmtMoney, fmtNum, fmtCompact } from "@/lib/format";
 import { Card, CardHead, Pill, SymbolChip } from "@/components/ui";
 import { LivePrice, LiveChange } from "@/components/Live";
 import PriceChart from "@/components/PriceChart";
-import OrderTicket from "@/components/OrderTicket";
+import OrderPanel from "@/components/OrderPanel";
 
 // Live account + live quotes — never bake this at build time.
 export const dynamic = "force-dynamic";
@@ -37,10 +37,13 @@ export default async function StockPage({
   const isIndex = INDEX_TICKERS.some((t) => t.symbol === raw);
   const indexName = INDEX_TICKERS.find((t) => t.symbol === raw)?.name ?? null;
 
-  const [snapshot, chart, name] = await Promise.all([
+  const hasChain = (CHAIN_UNDERLYINGS as readonly string[]).includes(raw);
+  const [snapshot, chart, name, account, chain] = await Promise.all([
     hasCredentials() ? getStockSnapshot(raw).catch(() => null) : Promise.resolve(null),
     getChartSeries(raw, "1D"),
     isIndex ? Promise.resolve(indexName) : equityName(raw).catch(() => null),
+    getAccount(),
+    hasChain ? getOptionChain(raw).catch(() => null) : Promise.resolve(null),
   ]);
 
   // Unknown symbol: no name in the master, no chart, no quote.
@@ -50,7 +53,30 @@ export default async function StockPage({
   const last = snapshot?.last ?? chart?.c.at(-1) ?? 0;
   const change = snapshot?.change ?? 0;
   const changePct = snapshot?.changePct ?? 0;
-  const hasChainLink = (CHAIN_UNDERLYINGS as readonly string[]).includes(raw);
+  const hasChainLink = hasChain;
+
+  // The strikes nearest the money, both legs — Groww's "Top options" list.
+  const atmIdx = chain
+    ? chain.rows.reduce(
+        (best, r, i) =>
+          Math.abs(r.strike - chain.spot) < Math.abs(chain.rows[best].strike - chain.spot) ? i : best,
+        0,
+      )
+    : 0;
+  const topOptions = chain
+    ? chain.rows
+        .slice(Math.max(0, atmIdx - 2), atmIdx + 3)
+        .flatMap((r) =>
+          (["pe", "ce"] as const).map((side) => {
+            const leg = r[side];
+            return leg && leg.ltp !== null
+              ? { strike: r.strike, side, ltp: leg.ltp, changePct: leg.changePct }
+              : null;
+          }),
+        )
+        .filter((x): x is NonNullable<typeof x> => x !== null)
+        .slice(0, 7)
+    : [];
 
   const stats: { k: string; v: string }[] = snapshot
     ? [
@@ -150,27 +176,59 @@ export default async function StockPage({
       {/* right rail */}
       <aside className="min-w-0 space-y-5">
         {!isIndex && (
+          <OrderPanel
+            instrument={{
+              symbol: raw,
+              displayName: name ?? raw,
+              exchange: "NSE",
+              segment: "CASH",
+              lotSize: 1,
+              ltp: snapshot?.last ?? null,
+              changePct: snapshot?.changePct ?? null,
+            }}
+            balance={account.balance}
+            tradable={tradable}
+          />
+        )}
+
+        {topOptions.length > 0 && (
           <Card>
-            <CardHead title="Trade" sub={snapshot ? undefined : "Live price unavailable"} />
-            <div className="flex gap-2">
-              <OrderTicket
-                symbol={raw}
-                company={name ?? raw}
-                ltp={snapshot?.last ?? null}
-                suggestedPrice={snapshot?.last ?? null}
-                trigger={{ label: "Buy", full: true }}
-                disabledReason={tradable ? undefined : "Order placement is disabled on this server"}
-              />
-              <OrderTicket
-                symbol={raw}
-                company={name ?? raw}
-                ltp={snapshot?.last ?? null}
-                side="SELL"
-                suggestedPrice={snapshot?.last ?? null}
-                trigger={{ label: "Sell", variant: "danger", full: true }}
-                disabledReason={tradable ? undefined : "Order placement is disabled on this server"}
-              />
-            </div>
+            <CardHead
+              title={`Top ${raw} options`}
+              right={
+                <Link href={`/fno/chain?u=${raw}`} className="text-[12.5px] font-medium text-brandtext hover:opacity-75">
+                  Option chain →
+                </Link>
+              }
+            />
+            <ul className="divide-y divide-line">
+              {topOptions.map((o) => (
+                <li key={`${o.strike}-${o.side}`}>
+                  <Link
+                    href={`/fno/chain?u=${raw}`}
+                    className="flex items-center justify-between gap-3 py-2.5 hover:opacity-80"
+                  >
+                    <span className="text-[13px] font-medium text-ink">
+                      {raw} {fmtNum(o.strike)} {o.side === "ce" ? "Call" : "Put"}
+                    </span>
+                    <span className="text-right">
+                      <span className="tnum block text-[13px] font-semibold text-ink">
+                        ₹{o.ltp.toFixed(2)}
+                      </span>
+                      <span
+                        className={`tnum block text-[11px] ${
+                          o.changePct === null ? "text-ink3" : o.changePct >= 0 ? "text-up" : "text-down"
+                        }`}
+                      >
+                        {o.changePct === null
+                          ? "—"
+                          : `${o.changePct >= 0 ? "+" : ""}${o.changePct.toFixed(2)}%`}
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </Card>
         )}
 
