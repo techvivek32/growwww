@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getAccount } from "@/lib/api/broker";
 import { currentUserId } from "@/lib/session";
 import { hasBroker } from "@/lib/users";
+import { unreadCount } from "@/lib/notifications";
 import { OWNER_ID } from "@/lib/auth";
 import TopNav from "@/components/TopNav";
 import IndexStrip from "@/components/IndexStrip";
@@ -25,12 +26,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!uid) redirect("/login");
   if (uid !== OWNER_ID && !(await hasBroker(uid))) redirect("/connect-broker");
 
-  const account = await getAccount();
+  const [account, unread] = await Promise.all([getAccount(), unreadCount(uid)]);
 
   return (
     <AutoTradeProvider>
       <LiveTicksProvider>
-      <TopNav account={account} connected={account.balance !== null} isOwner={uid === OWNER_ID} />
+      <TopNav account={account} connected={account.balance !== null} isOwner={uid === OWNER_ID} unread={unread} />
       <IndexStrip />
       <main className="mx-auto max-w-[1360px] px-4 py-6 lg:px-6 lg:py-8">{children}</main>
       <footer className="mx-auto max-w-[1360px] px-4 pb-10 lg:px-6">

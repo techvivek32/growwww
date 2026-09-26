@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
 import { placeOrder, cancelOrder, canTrade } from "@/lib/api/broker";
 import { lotSizeOf } from "@/lib/instruments";
-import { SESSION_COOKIE, verifyToken } from "@/lib/auth";
+import { currentUserId } from "@/lib/session";
+import { rateLimit } from "@/lib/ratelimit";
+import { notify } from "@/lib/notifications";
 import type { OrderType, Product, Side } from "@/lib/types";
 
 /**
@@ -32,21 +33,24 @@ const PRODUCTS: Product[] = ["CNC", "MIS", "NRML"];
 /** NSE trading symbols: capitals, digits, and the occasional & or -. */
 const SYMBOL = /^[A-Z0-9&-]{1,30}$/;
 
-/** A hard ceiling that no UI path can exceed — the fat-finger backstop. */
+/** Hard ceilings no UI path can exceed — the fat-finger backstops. */
 const MAX_QTY = 10_000;
-
-async function signedIn(): Promise<boolean> {
-  const jar = await cookies();
-  return verifyToken(jar.get(SESSION_COOKIE)?.value);
-}
+/** Per-order notional cap (enforced where a price is known). */
+const MAX_NOTIONAL = 5_000_000;
 
 function fail(message: string): OrderState {
   return { status: "error", message };
 }
 
 export async function submitOrder(_prev: OrderState, form: FormData): Promise<OrderState> {
-  if (!(await signedIn())) return fail("Your session expired. Sign in again.");
-  if (!canTrade()) return fail("Order placement is disabled on this server.");
+  const userId = await currentUserId();
+  if (!userId) return fail("Your session expired. Sign in again.");
+  // Throttle the order path so a stuck client or a script cannot machine-gun
+  // the broker: at most 30 submissions a minute per user.
+  if (!rateLimit(`order:${userId}`, 30, 60_000).ok) {
+    return fail("Too many orders in a short window. Pause a moment and retry.");
+  }
+  if (!canTrade()) return fail("Order placement is disabled, or no broker is connected on this account.");
 
   const symbol = String(form.get("symbol") ?? "").trim().toUpperCase();
   const segment = String(form.get("segment") ?? "CASH") === "FNO" ? ("FNO" as const) : ("CASH" as const);
@@ -81,6 +85,10 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
   if (type === "LIMIT" || type === "SL") {
     price = Number(priceRaw);
     if (!Number.isFinite(price) || price <= 0) return fail("A limit price is required for this order type.");
+    // Notional backstop: quantity × price cannot exceed the per-order ceiling.
+    if (qty * price > MAX_NOTIONAL) {
+      return fail(`This order's value exceeds the ₹${MAX_NOTIONAL.toLocaleString("en-IN")} per-order limit.`);
+    }
   }
 
   let triggerPrice: number | null = null;
@@ -98,9 +106,25 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
   revalidatePath("/portfolio/positions");
   revalidatePath("/portfolio/holdings");
 
+  const label = `${side} ${qty} ${symbol}`;
   if (!result.ok) {
+    await notify(userId, {
+      kind: "order",
+      tone: "down",
+      title: "Order rejected",
+      body: `${label} — ${result.message ?? "Groww rejected the order."}`,
+      key: result.referenceId ? `rej-${result.referenceId}` : undefined,
+    });
     return fail(result.message ?? "Groww rejected the order.");
   }
+
+  await notify(userId, {
+    kind: "order",
+    tone: "up",
+    title: "Order placed",
+    body: `${label} · status ${result.status ?? "sent"}${result.orderId ? ` · ${result.orderId}` : ""}`,
+    key: result.orderId ? `ord-${result.orderId}` : undefined,
+  });
 
   return {
     status: "ok",
@@ -112,7 +136,11 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
 }
 
 export async function cancelOrderAction(_prev: OrderState, form: FormData): Promise<OrderState> {
-  if (!(await signedIn())) return fail("Your session expired. Sign in again.");
+  const userId = await currentUserId();
+  if (!userId) return fail("Your session expired. Sign in again.");
+  if (!rateLimit(`cancel:${userId}`, 30, 60_000).ok) {
+    return fail("Too many cancellations in a short window. Pause a moment and retry.");
+  }
 
   const orderId = String(form.get("orderId") ?? "").trim();
   if (!orderId) return fail("Missing order id.");
@@ -122,7 +150,9 @@ export async function cancelOrderAction(_prev: OrderState, form: FormData): Prom
 
   revalidatePath("/portfolio/orders");
 
-  return res.ok
-    ? { status: "ok", message: "Cancellation sent." }
-    : fail(res.message ?? "Groww refused the cancellation.");
+  if (res.ok) {
+    await notify(userId, { kind: "order", tone: "neutral", title: "Cancellation sent", body: `Order ${orderId}` });
+    return { status: "ok", message: "Cancellation sent." };
+  }
+  return fail(res.message ?? "Groww refused the cancellation.");
 }

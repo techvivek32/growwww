@@ -5,6 +5,7 @@ import { setBroker } from "@/lib/users";
 import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
 import { runWithCreds } from "@/lib/api/credctx";
+import { notify } from "@/lib/notifications";
 import * as groww from "@/lib/api/groww";
 
 export interface FormState {
@@ -40,5 +41,12 @@ export async function connectBroker(_prev: FormState, formData: FormData): Promi
   const saved = await setBroker(userId, apiKey, totpSecret);
   if (!saved) return { error: "Could not save the connection. Try again." };
 
+  await notify(userId, {
+    kind: "broker",
+    tone: "up",
+    title: "Broker connected",
+    body: "Your Groww account is linked. Your keys are encrypted and used only for your account.",
+    key: "broker-connected",
+  });
   redirect("/stocks/alerts");
 }

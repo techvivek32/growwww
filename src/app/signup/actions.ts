@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { createUser } from "@/lib/users";
 import { setSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
+import { notify } from "@/lib/notifications";
 
 export interface FormState {
   error?: string;
@@ -27,6 +28,13 @@ export async function signup(_prev: FormState, formData: FormData): Promise<Form
   const res = await createUser(email, password);
   if (!res.ok || !res.user) return { error: res.error ?? "Could not create the account." };
 
+  await notify(res.user.id, {
+    kind: "account",
+    tone: "up",
+    title: "Welcome to MNHA Financials",
+    body: "Connect your Groww account to bring the terminal to life. You confirm every order yourself — nothing trades on its own.",
+    key: "welcome",
+  });
   await setSession(res.user.id);
   // A fresh account has no broker yet — go connect one.
   redirect("/connect-broker");
