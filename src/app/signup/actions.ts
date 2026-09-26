@@ -1,8 +1,10 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createUser } from "@/lib/users";
 import { setSession } from "@/lib/session";
+import { rateLimit } from "@/lib/ratelimit";
 
 export interface FormState {
   error?: string;
@@ -12,6 +14,13 @@ export async function signup(_prev: FormState, formData: FormData): Promise<Form
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
+
+  // Cap new-account creation per client, so signup cannot be used to flood.
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "local").trim();
+  if (!rateLimit(`signup:${ip}`, 5, 60 * 60_000).ok) {
+    return { error: "Too many sign-ups from here. Please try again later." };
+  }
 
   if (password !== confirm) return { error: "The two passwords do not match." };
 

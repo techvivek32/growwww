@@ -28,6 +28,6 @@ export const config = {
     // sign-in and sign-up, robots, and static assets. Everything else needs a
     // valid session. Redirecting a crawler to a sign-in page teaches it
     // nothing and reads worse than an honest Disallow.
-    "/((?!login|signup|robots.txt|sitemap.xml|_next/static|_next/image|favicon.ico|$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!login|signup|legal|robots.txt|sitemap.xml|_next/static|_next/image|favicon.ico|$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

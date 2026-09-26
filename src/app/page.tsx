@@ -245,10 +245,14 @@ export default function Landing() {
         <div className="mx-auto max-w-[1180px] px-5 py-12">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <Wordmark />
-            <div className="flex gap-6 text-[13px] font-medium text-ink2">
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-[13px] font-medium text-ink2">
               <a href="#features" className="hover:text-ink">Features</a>
               <a href="#how" className="hover:text-ink">How it works</a>
               <a href="#faq" className="hover:text-ink">FAQ</a>
+              <Link href="/legal/terms" className="hover:text-ink">Terms</Link>
+              <Link href="/legal/privacy" className="hover:text-ink">Privacy</Link>
+              <Link href="/legal/risk-disclosure" className="hover:text-ink">Risk</Link>
+              <Link href="/legal/contact" className="hover:text-ink">Contact</Link>
               <Link href="/login" className="hover:text-ink">Sign in</Link>
             </div>
           </div>

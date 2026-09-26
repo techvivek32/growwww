@@ -1,5 +1,5 @@
 import "server-only";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 import {
   randomBytes,
@@ -65,6 +65,13 @@ async function read(): Promise<Store> {
 
 async function write(store: Store): Promise<void> {
   await mkdir(path.dirname(FILE), { recursive: true });
+  // Keep the last good copy before overwriting — this file holds accounts and
+  // encrypted broker keys, so a bad write must never be the only version left.
+  try {
+    await copyFile(FILE, `${FILE}.bak`);
+  } catch {
+    /* first write, nothing to back up yet */
+  }
   const tmp = `${FILE}.tmp`;
   await writeFile(tmp, JSON.stringify(store, null, 2), "utf8");
   await rename(tmp, FILE);
@@ -207,4 +214,31 @@ export async function getBroker(userId: string): Promise<BrokerCreds | null> {
 
 export async function hasBroker(userId: string): Promise<boolean> {
   return Boolean((await findById(userId))?.broker);
+}
+
+/** Change a password after verifying the current one. */
+export async function changePassword(
+  userId: string,
+  current: string,
+  next: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (next.length < 8) return { ok: false, error: "New password must be at least 8 characters." };
+  return enqueue(async () => {
+    const store = await read();
+    const user = store.users.find((u) => u.id === userId);
+    if (!user) return { ok: false, error: "Account not found." };
+    if (!checkPassword(current, user.passwordHash)) return { ok: false, error: "Your current password is wrong." };
+    user.passwordHash = hashPassword(next);
+    await write(store);
+    return { ok: true };
+  });
+}
+
+/** Permanently remove a user and everything stored on them. */
+export async function deleteUser(userId: string): Promise<void> {
+  return enqueue(async () => {
+    const store = await read();
+    store.users = store.users.filter((u) => u.id !== userId);
+    await write(store);
+  });
 }
