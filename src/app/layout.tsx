@@ -34,7 +34,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0f1012" },
+    { media: "(prefers-color-scheme: dark)", color: "#0c0d10" },
   ],
 };
 
@@ -45,9 +45,9 @@ export const viewport: Viewport = {
 const themeScript = `
 (function(){
   try {
-    var s = localStorage.getItem('mnha-theme');
-    var d = s ? s === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (d) document.documentElement.classList.add('dark');
+    // Light-first, like Groww: dark only when the viewer has chosen it. No
+    // stored choice means light, regardless of the OS setting.
+    if (localStorage.getItem('mnha-theme') === 'dark') document.documentElement.classList.add('dark');
   } catch (e) {}
 })();
 `;

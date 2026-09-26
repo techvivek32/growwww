@@ -4,7 +4,8 @@ import { useCallback, useSyncExternalStore } from "react";
 
 /**
  * Light is the default because Groww is a light-first product. The choice is
- * remembered per browser; a viewer who never chooses follows their OS.
+ * remembered per browser; a viewer who never chooses stays on light,
+ * regardless of their OS setting.
  *
  * The theme lives on <html> as a class, which makes it external state rather
  * than React state — so it is read through useSyncExternalStore instead of an
