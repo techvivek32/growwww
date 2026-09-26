@@ -42,7 +42,17 @@ export default async function SignalsPage() {
         <PageHead
           title="Signals"
           sub="Both-side setups on real NSE candles, scored by a backtest and by their own live outcomes. Nothing here is a guarantee — it is a measured edge that updates itself."
-          right={<RefreshSignals />}
+          right={
+            <div className="flex items-center gap-2">
+              <Link
+                href="/stocks/alerts/backtest"
+                className="inline-flex h-9 items-center rounded-lg border border-line px-3.5 text-[12.5px] font-semibold text-ink2 hover:bg-surfaceh hover:text-ink"
+              >
+                Backtest on ₹1L →
+              </Link>
+              <RefreshSignals />
+            </div>
+          }
         />
 
         {/* the honest banner — this is the promise the tool will NOT make */}

@@ -19,6 +19,8 @@ export interface BacktestTrade {
   entryTime: number;
   exitTime: number;
   entry: number;
+  /** the stop price the size was risked against — needed to size a position. */
+  stop: number;
   exit: number;
   r: number;
   outcome: "target" | "stop" | "timeout";
@@ -79,9 +81,9 @@ export function collectTrades(strategy: Strategy, candles: Candle[]): BacktestTr
       const hitTarget = sig.side === "LONG" ? b.high >= sig.target : b.low <= sig.target;
 
       if (hitStop) {
-        closed = { side: sig.side, entryTime: candles[i].time, exitTime: b.time, entry: sig.entry, exit: sig.stop, r: -1, outcome: "stop" };
+        closed = { side: sig.side, entryTime: candles[i].time, exitTime: b.time, entry: sig.entry, stop: sig.stop, exit: sig.stop, r: -1, outcome: "stop" };
       } else if (hitTarget) {
-        closed = { side: sig.side, entryTime: candles[i].time, exitTime: b.time, entry: sig.entry, exit: sig.target, r: +sig.rr, outcome: "target" };
+        closed = { side: sig.side, entryTime: candles[i].time, exitTime: b.time, entry: sig.entry, stop: sig.stop, exit: sig.target, r: +sig.rr, outcome: "target" };
       }
       if (closed) {
         i = j + 1; // no overlapping positions per strategy
@@ -97,6 +99,7 @@ export function collectTrades(strategy: Strategy, candles: Candle[]): BacktestTr
         entryTime: candles[i].time,
         exitTime: last.time,
         entry: sig.entry,
+        stop: sig.stop,
         exit: last.close,
         r: +(signed / risk).toFixed(3),
         outcome: "timeout",
