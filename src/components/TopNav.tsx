@@ -29,7 +29,15 @@ function Logo() {
   );
 }
 
-export default function TopNav({ account, connected }: { account: Account; connected: boolean }) {
+export default function TopNav({
+  account,
+  connected,
+  isOwner = false,
+}: {
+  account: Account;
+  connected: boolean;
+  isOwner?: boolean;
+}) {
   const pathname = usePathname();
   const trading = NAV_ITEMS.filter((i) => i.group === "trading");
   const system = NAV_ITEMS.filter((i) => i.group === "system");
@@ -78,6 +86,7 @@ export default function TopNav({ account, connected }: { account: Account; conne
             {trading.map((i) => tab(i))}
             <span className="mx-2 h-4 w-px shrink-0 bg-line" aria-hidden="true" />
             {system.map((i) => tab(i, true))}
+            {isOwner && tab({ href: "/admin", label: "Admin", short: "Admin", group: "system" }, true)}
           </nav>
 
           <div className="hidden shrink-0 items-center xl:flex">

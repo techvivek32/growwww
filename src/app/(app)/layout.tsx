@@ -30,7 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <AutoTradeProvider>
       <LiveTicksProvider>
-      <TopNav account={account} connected={account.balance !== null} />
+      <TopNav account={account} connected={account.balance !== null} isOwner={uid === OWNER_ID} />
       <IndexStrip />
       <main className="mx-auto max-w-[1360px] px-4 py-6 lg:px-6 lg:py-8">{children}</main>
       <footer className="mx-auto max-w-[1360px] px-4 pb-10 lg:px-6">

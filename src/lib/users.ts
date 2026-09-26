@@ -216,6 +216,28 @@ export async function hasBroker(userId: string): Promise<boolean> {
   return Boolean((await findById(userId))?.broker);
 }
 
+export interface UserSummary {
+  id: string;
+  email: string;
+  createdAt: number;
+  hasBroker: boolean;
+  brokerConnectedAt: number | null;
+}
+
+/** Admin listing — safe fields only. Never the password hash or the keys. */
+export async function listUsers(): Promise<UserSummary[]> {
+  const store = await read();
+  return store.users
+    .map((u) => ({
+      id: u.id,
+      email: u.email,
+      createdAt: u.createdAt,
+      hasBroker: Boolean(u.broker),
+      brokerConnectedAt: u.broker?.connectedAt ?? null,
+    }))
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
 /** Change a password after verifying the current one. */
 export async function changePassword(
   userId: string,
