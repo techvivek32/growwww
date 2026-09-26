@@ -9,19 +9,20 @@
 :root {
   color-scheme: light;
 
-  /* Groww is white-on-white: the page and the cards are both white, and a
-     hairline border does the separating. No grey canvas, no drop shadows. */
-  --c-bg:            #ffffff;
+  /* A whisper-grey page with pure-white cards: the card lifts off the canvas
+     by tone as well as a hairline border — the quiet depth premium fintech
+     UIs use, without a heavy drop shadow. */
+  --c-bg:            #f6f7f9;
   --c-surface:       #ffffff;
-  --c-surface-2:     #f8f9fa;
-  --c-surface-hover: #f5f6f7;
+  --c-surface-2:     #f1f3f6;
+  --c-surface-hover: #f2f4f7;
 
-  --c-border:        #ededed;
-  --c-border-strong: #dcdcdc;
+  --c-border:        #e8eaee;
+  --c-border-strong: #d3d7dd;
 
-  --c-text:          #121212;
-  --c-text-2:        #44475b;
-  --c-text-3:        #7c7e8c;
+  --c-text:          #101114;
+  --c-text-2:        #444a58;
+  --c-text-3:        #79808d;
 
   /* Groww brand */
   --c-brand:         #00d09c;
@@ -41,25 +42,31 @@
   --c-warn:          #f5a623;
   --c-warn-soft:     #fef5e6;
 
-  /* Cards carry a border, not a shadow. Only floating layers get one. */
-  --shadow-card:     none;
-  --shadow-pop:      0 6px 28px rgba(18, 18, 18, 0.14);
+  /* Elevation-1 for cards (barely there), a real lift for floating layers,
+     and a hairline shadow that lets the sticky header sit above content. */
+  --shadow-card:     0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.05);
+  --shadow-pop:      0 12px 40px -8px rgba(16, 24, 40, 0.18), 0 2px 8px rgba(16, 24, 40, 0.08);
+  --shadow-header:   0 6px 20px -14px rgba(16, 24, 40, 0.16);
+  --ring:            0 0 0 3px color-mix(in srgb, var(--c-brand) 32%, transparent);
 }
 
 .dark {
   color-scheme: dark;
 
-  --c-bg:            #131417;
-  --c-surface:       #131417;
-  --c-surface-2:     #1b1d21;
-  --c-surface-hover: #202328;
+  /* A near-black canvas with cards a clear step lighter, so a card reads as a
+     card — the old palette made page and surface the same colour and the
+     cards vanished. */
+  --c-bg:            #0c0d10;
+  --c-surface:       #15171c;
+  --c-surface-2:     #1c1f26;
+  --c-surface-hover: #22262f;
 
-  --c-border:        #2a2e34;
-  --c-border-strong: #3a3f47;
+  --c-border:        #262a32;
+  --c-border-strong: #383d47;
 
-  --c-text:          #eceef0;
-  --c-text-2:        #a8adb6;
-  --c-text-3:        #767d88;
+  --c-text:          #e7e9ec;
+  --c-text-2:        #a2a8b4;
+  --c-text-3:        #6f7682;
 
   --c-brand:         #00d09c;
   --c-brand-hover:   #22e0b0;
@@ -77,8 +84,10 @@
   --c-warn:          #f5a623;
   --c-warn-soft:     #33260d;
 
-  --shadow-card:     none;
-  --shadow-pop:      0 6px 28px rgba(0, 0, 0, 0.55);
+  --shadow-card:     0 1px 2px rgba(0, 0, 0, 0.32), 0 1px 3px rgba(0, 0, 0, 0.28);
+  --shadow-pop:      0 16px 48px -8px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.5);
+  --shadow-header:   0 8px 24px -16px rgba(0, 0, 0, 0.8);
+  --ring:            0 0 0 3px color-mix(in srgb, var(--c-brand) 40%, transparent);
 }
 
 @theme inline {
@@ -117,6 +126,32 @@
 * { border-color: var(--c-border); }
 
 html, body { height: 100%; }
+
+/* Brand-tinted text selection — a small, consistent premium touch. */
+::selection { background: color-mix(in srgb, var(--c-brand) 26%, transparent); color: var(--c-text); }
+
+/* One accessible focus ring for everything keyboard-reachable. Pointer clicks
+   never show it (:focus-visible), keyboard users always do. The box-shadow
+   follows each element's own border-radius, so pills and circles stay round. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* A card surface, used consistently instead of ad-hoc border+shadow. */
+.card-surface {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  box-shadow: var(--shadow-card);
+}
+
+/* The sticky header sits above the page on a hairline + soft shadow. */
+.app-header {
+  background: color-mix(in srgb, var(--c-surface) 88%, transparent);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  box-shadow: var(--shadow-header);
+}
 
 /* The header is sticky (brand row + section rail). Anchor jumps and
    scroll-into-view must clear it, or headings land underneath it. */

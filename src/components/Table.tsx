@@ -7,7 +7,10 @@ import type { ReactNode } from "react";
  */
 export function TableWrap({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+    <div
+      className="overflow-x-auto rounded-xl border border-line bg-surface"
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
       <table className="w-full min-w-[720px] border-collapse text-left">{children}</table>
     </div>
   );
@@ -26,7 +29,7 @@ export function Th({
   return (
     <th
       scope="col"
-      className={`sticky top-0 z-10 border-b border-line bg-surface px-4 py-3.5 text-[12.5px] font-medium whitespace-nowrap text-ink3 ${a} ${className}`}
+      className={`sticky top-0 z-10 border-b border-line bg-surface2 px-4 py-3 text-[12px] font-semibold tracking-wide whitespace-nowrap text-ink3 ${a} ${className}`}
     >
       {children}
     </th>

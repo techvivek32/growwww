@@ -17,7 +17,10 @@ export function Card({
   pad?: boolean;
 }) {
   return (
-    <div className={`rounded-lg border border-line bg-surface ${pad ? "p-4 sm:p-5" : ""} ${className}`}>
+    <div
+      className={`rounded-xl border border-line bg-surface ${pad ? "p-4 sm:p-5" : ""} ${className}`}
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
       {children}
     </div>
   );

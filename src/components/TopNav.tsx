@@ -53,7 +53,7 @@ export default function TopNav({ account, connected }: { account: Account; conne
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-surface">
+    <header className="app-header sticky top-0 z-40">
       {/* Row 1 — brand, search, account */}
       <div className="mx-auto flex h-14 max-w-[1360px] items-center gap-4 px-4 lg:px-6">
         <Logo />
