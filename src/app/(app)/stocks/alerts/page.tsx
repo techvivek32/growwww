@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { canTrade } from "@/lib/api/broker";
-import { scorecards, actionableSignals, engineStatus } from "@/lib/signals/engine";
-import { strategyByName } from "@/lib/signals/strategies";
+import { scorecards, openSignalsTagged, engineStatus } from "@/lib/signals/engine";
 import MarketMood from "@/components/MarketMood";
 import OrderTicket from "@/components/OrderTicket";
 import RefreshSignals from "@/components/RefreshSignals";
@@ -27,13 +26,14 @@ function num(v: number | null, digits = 2, suffix = ""): string {
 }
 
 export default async function SignalsPage() {
-  const [cards, signals] = await Promise.all([scorecards(), actionableSignals()]);
+  const [cards, signals] = await Promise.all([scorecards(), openSignalsTagged()]);
   const status = engineStatus();
   const tradable = canTrade();
   const mkt = marketState();
 
   const longs = signals.filter((s) => s.side === "LONG");
   const shorts = signals.filter((s) => s.side === "SHORT");
+  const edgeCount = signals.filter((s) => s.edge).length;
   const warmingUp = cards.every((c) => c.backtest === null || c.backtest.trades === 0);
 
   return (
@@ -139,16 +139,26 @@ export default async function SignalsPage() {
           </div>
         )}
 
-        {/* live signals, both sides */}
-        <SectionHead title="Signals now" className="mt-9" right={<span className="text-[13px] text-ink3">{signals.length} open · active setups only</span>} />
+        {/* live signals — ALL setups, both sides, tagged by measured edge */}
+        <SectionHead
+          title="Signals now"
+          className="mt-9"
+          right={<span className="text-[13px] text-ink3">{signals.length} open · {edgeCount} from edge-backed setups</span>}
+        />
+        <p className="mb-4 -mt-2 text-[12.5px] leading-relaxed text-ink3">
+          Every setup that has fired, both directions — manual trading, your call. The{" "}
+          <span className="font-semibold text-up">Edge</span> tag means that strategy currently has a measured positive edge;{" "}
+          <span className="font-semibold text-ink2">No edge</span> means it fires but has not paid after costs, so treat it as
+          information, not a recommendation.
+        </p>
         {signals.length === 0 ? (
           <Card pad={false}>
             <Empty
-              title={mkt.isLive ? "No active-setup signal open right now" : "Market is closed — no live signals"}
+              title={mkt.isLive ? "No setup is open right now" : "Market is closed — no live signals"}
               hint={
                 mkt.isLive
-                  ? "The engine only surfaces signals from strategies whose blended edge is currently positive. When a fresh bar triggers one, it appears here with its entry, stop and target."
-                  : "Signals are read off live 15-minute bars during market hours (9:15–15:30 IST). The backtested edge above stays available any time."
+                  ? "None of the setups is triggered on the latest bar. When a fresh bar fires one — any direction — it appears here with its entry, stop and target."
+                  : "Signals are read off the latest closed bar during market hours (9:15–15:30 IST). The backtested scorecard above stays available any time."
               }
             />
           </Card>
@@ -158,19 +168,21 @@ export default async function SignalsPage() {
               (grp) =>
                 grp.rows.length > 0 && (
                   <div key={grp.title}>
-                    <h3 className="mb-3 text-[13.5px] font-semibold text-ink2">{grp.title}</h3>
+                    <h3 className="mb-3 text-[13.5px] font-semibold text-ink2">{grp.title} · {grp.rows.length}</h3>
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                       {grp.rows.map((s) => {
-                        const strat = strategyByName(s.strategy);
                         const isIndex = s.segment === "FNO";
                         return (
                           <Card key={s.id} className="flex flex-col">
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <p className="text-[14.5px] font-bold tracking-tight text-ink">{s.symbol}</p>
-                                <p className="text-[11.5px] text-ink3">{strat?.label ?? s.strategy}</p>
+                                <p className="text-[11.5px] text-ink3">{s.stratLabel}</p>
                               </div>
-                              <Pill tone={s.side === "LONG" ? "up" : "down"}>{s.side}</Pill>
+                              <div className="flex shrink-0 flex-col items-end gap-1">
+                                <Pill tone={s.side === "LONG" ? "up" : "down"}>{s.side}</Pill>
+                                <Pill tone={s.edge ? "up" : "neutral"}>{s.edge ? "Edge" : "No edge"}</Pill>
+                              </div>
                             </div>
 
                             <div className="mt-3 grid grid-cols-3 gap-2 text-center">

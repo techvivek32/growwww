@@ -268,6 +268,29 @@ export async function actionableSignals(): Promise<JournalSignal[]> {
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
+export interface TaggedSignal extends JournalSignal {
+  edge: boolean;
+  stratLabel: string;
+}
+
+/**
+ * Every open signal, each tagged with whether its strategy currently has a
+ * measured edge — so the manual trader sees the whole tape (all setups, both
+ * directions) while the honest label stays attached. Edge-backed setups sort
+ * first; within a group, freshest first.
+ */
+export async function openSignalsTagged(): Promise<TaggedSignal[]> {
+  const [open, cards] = await Promise.all([openSignals(), scorecards()]);
+  const byName = new Map(cards.map((c) => [c.strategy, c]));
+  return open
+    .map((s) => ({
+      ...s,
+      edge: byName.get(s.strategy)?.edge ?? false,
+      stratLabel: byName.get(s.strategy)?.label ?? s.strategy,
+    }))
+    .sort((a, b) => Number(b.edge) - Number(a.edge) || b.createdAt - a.createdAt);
+}
+
 export function engineStatus() {
   return {
     running: Boolean(state.timer),

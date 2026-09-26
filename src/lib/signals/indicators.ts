@@ -120,3 +120,53 @@ export function priorExtreme(
   }
   return { high, low };
 }
+
+/** Rolling standard deviation of `values` over `period` (population), full-length. */
+export function stdev(values: number[], period: number): (number | null)[] {
+  const out: (number | null)[] = new Array(values.length).fill(null);
+  let sum = 0;
+  let sumSq = 0;
+  for (let i = 0; i < values.length; i++) {
+    sum += values[i];
+    sumSq += values[i] * values[i];
+    if (i >= period) {
+      sum -= values[i - period];
+      sumSq -= values[i - period] * values[i - period];
+    }
+    if (i >= period - 1) {
+      const mean = sum / period;
+      out[i] = Math.sqrt(Math.max(0, sumSq / period - mean * mean));
+    }
+  }
+  return out;
+}
+
+export interface Macd {
+  line: (number | null)[];
+  signal: (number | null)[];
+}
+
+/** MACD line (EMA fast − EMA slow) and its signal EMA, full-length. */
+export function macd(values: number[], fast = 12, slow = 26, sig = 9): Macd {
+  const ef = ema(values, fast);
+  const es = ema(values, slow);
+  const line: (number | null)[] = values.map((_, i) =>
+    ef[i] !== null && es[i] !== null ? ef[i]! - es[i]! : null,
+  );
+  // signal = EMA of the (dense) macd line, mapped back to full length
+  const start = line.findIndex((v) => v !== null);
+  const signal: (number | null)[] = new Array(values.length).fill(null);
+  if (start >= 0) {
+    const dense = line.slice(start).map((v) => v as number);
+    const sg = ema(dense, sig);
+    for (let k = 0; k < sg.length; k++) signal[start + k] = sg[k];
+  }
+  return { line, signal };
+}
+
+/** Rate of change over `n` bars, in percent. Full-length. */
+export function rocPct(values: number[], n: number): (number | null)[] {
+  return values.map((v, i) =>
+    i >= n && values[i - n] > 0 ? ((v - values[i - n]) / values[i - n]) * 100 : null,
+  );
+}
