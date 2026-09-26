@@ -24,8 +24,10 @@ export async function proxy(req: NextRequest) {
 
 export const config = {
   matcher: [
-    // robots.txt stays reachable — redirecting a crawler to a sign-in page
-    // teaches it nothing and reads worse than an honest Disallow.
-    "/((?!login|robots.txt|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    // Public, ungated routes: the marketing landing ("$" = the root path),
+    // sign-in and sign-up, robots, and static assets. Everything else needs a
+    // valid session. Redirecting a crawler to a sign-in page teaches it
+    // nothing and reads worse than an honest Disallow.
+    "/((?!login|signup|robots.txt|sitemap.xml|_next/static|_next/image|favicon.ico|$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
