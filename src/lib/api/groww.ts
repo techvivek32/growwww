@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import https from "node:https";
 import type { Holding, Order, OrderStatus, OrderType, Position, Product, Side } from "../types";
 import * as feed from "./growwFeed";
+import { currentCredState } from "./credctx";
 
 /**
  * Groww Trading API adapter.
@@ -30,8 +31,23 @@ function env(name: string): string | undefined {
   return v && v.length > 0 ? v : undefined;
 }
 
+/**
+ * The credentials this call must run against. Per-user creds from the request
+ * context win; a signed-in user with no broker resolves to null (NEVER the env
+ * house account — that would leak one account to another); and outside any
+ * request (the background engine) the env house account is used.
+ */
+function resolveCreds(): { apiKey: string; totpSecret: string } | null {
+  const state = currentCredState();
+  if (state === "none") return null;
+  if (state && typeof state === "object") return state;
+  const apiKey = env("GROWW_API_KEY");
+  const totpSecret = env("GROWW_TOTP_SECRET");
+  return apiKey && totpSecret ? { apiKey, totpSecret } : null;
+}
+
 export function hasCredentials(): boolean {
-  return Boolean(env("GROWW_API_KEY") && env("GROWW_TOTP_SECRET"));
+  return resolveCreds() !== null;
 }
 
 /* ------------------------------------------------------------------ agent */
@@ -123,11 +139,16 @@ function totp(secret: string, at: number = Date.now()): string {
 
 /* ------------------------------------------------------------------ token */
 
-let cached: { token: string; expiresAt: number } | null = null;
-let inFlight: Promise<string> | null = null;
+// Tokens are cached PER API KEY — different users must never share a token.
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
+const inFlight = new Map<string, Promise<string>>();
 
 /** Seconds of headroom before the token's own expiry. */
 const SKEW_MS = 5 * 60 * 1000;
+
+function keyFingerprint(apiKey: string): string {
+  return crypto.createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
+}
 
 function expiryOf(jwt: string): number {
   try {
@@ -138,11 +159,7 @@ function expiryOf(jwt: string): number {
   }
 }
 
-async function mint(): Promise<string> {
-  const apiKey = env("GROWW_API_KEY");
-  const secret = env("GROWW_TOTP_SECRET");
-  if (!apiKey || !secret) throw new Error("GROWW_API_KEY and GROWW_TOTP_SECRET are required");
-
+async function mint(apiKey: string, secret: string, fp: string): Promise<string> {
   const res = await request<{ status?: string; token?: string; error?: unknown }>("/v1/token/api/access", {
     method: "POST",
     token: apiKey,
@@ -153,17 +170,25 @@ async function mint(): Promise<string> {
     throw new Error(`groww auth failed: ${res.status} ${JSON.stringify(res.body).slice(0, 200)}`);
   }
 
-  cached = { token: res.body.token, expiresAt: expiryOf(res.body.token) };
-  return cached.token;
+  tokenCache.set(fp, { token: res.body.token, expiresAt: expiryOf(res.body.token) });
+  return res.body.token;
 }
 
 async function accessToken(): Promise<string> {
-  if (cached && Date.now() < cached.expiresAt - SKEW_MS) return cached.token;
-  // Collapse concurrent refreshes onto one request.
-  inFlight ??= mint().finally(() => {
-    inFlight = null;
-  });
-  return inFlight;
+  const creds = resolveCreds();
+  if (!creds) throw new Error("No Groww credentials in context — connect a broker or configure the server");
+  const fp = keyFingerprint(creds.apiKey);
+
+  const hit = tokenCache.get(fp);
+  if (hit && Date.now() < hit.expiresAt - SKEW_MS) return hit.token;
+
+  // Collapse concurrent refreshes for the SAME key onto one request.
+  let flight = inFlight.get(fp);
+  if (!flight) {
+    flight = mint(creds.apiKey, creds.totpSecret, fp).finally(() => inFlight.delete(fp));
+    inFlight.set(fp, flight);
+  }
+  return flight;
 }
 
 /** The live REST JWT, for subsystems that authenticate against other Groww

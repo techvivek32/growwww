@@ -2,6 +2,27 @@ import "server-only";
 import * as groww from "./groww";
 import { CHAIN_UNDERLYINGS, getExpiries, getStrikesAround } from "../instruments";
 import type { Account, Holding, Order, OptionChain, Position, Trade } from "../types";
+import { runWithCreds, type CredState } from "./credctx";
+import { currentUserId } from "../session";
+import { getBroker, findById } from "../users";
+import { OWNER_ID } from "../auth";
+
+/**
+ * Resolve WHOSE broker this request talks to. The owner (env session) uses the
+ * house account; a signed-in user uses their own connected creds; a signed-in
+ * user with none resolves to "none" — which returns empty, and NEVER the house
+ * account, so one user can never see another's data.
+ */
+async function credState(): Promise<CredState> {
+  const uid = await currentUserId();
+  if (!uid) return "none";
+  if (uid === OWNER_ID) return undefined; // env house account
+  return (await getBroker(uid)) ?? "none";
+}
+
+async function withUserCreds<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithCreds(await credState(), fn);
+}
 
 /**
  * The broker adapter every account-dependent screen reads from.
@@ -20,13 +41,15 @@ export function isConnected(): boolean {
 }
 
 async function safe<T>(what: string, run: () => Promise<T>, fallback: T): Promise<T> {
-  if (!groww.hasCredentials()) return fallback;
-  try {
-    return await run();
-  } catch (err) {
-    console.error(`[broker] ${what} failed:`, err instanceof Error ? err.message : err);
-    return fallback;
-  }
+  return withUserCreds(async () => {
+    if (!groww.hasCredentials()) return fallback;
+    try {
+      return await run();
+    } catch (err) {
+      console.error(`[broker] ${what} failed:`, err instanceof Error ? err.message : err);
+      return fallback;
+    }
+  });
 }
 
 /* -------------------------------------------------------------- connection */
@@ -45,25 +68,30 @@ export interface ConnectionStatus {
  * a real authenticated round-trip. The margin call doubles as that probe.
  */
 export async function getConnectionStatus(): Promise<ConnectionStatus> {
-  const credentials = groww.hasCredentials();
-  const live = credentials
-    ? (await safe("margin-probe", () => groww.getMargin(), null)) !== null
-    : false;
-  return {
-    credentials,
-    live,
-    ipPinned: Boolean(process.env.GROWW_REGISTERED_IP?.trim()),
-  };
+  return withUserCreds(async () => {
+    const credentials = groww.hasCredentials();
+    const live = credentials
+      ? (await safe("margin-probe", () => groww.getMargin(), null)) !== null
+      : false;
+    return {
+      credentials,
+      live,
+      ipPinned: Boolean(process.env.GROWW_REGISTERED_IP?.trim()),
+    };
+  });
 }
 
 /* ----------------------------------------------------------------- account */
 
 export async function getAccount(): Promise<Account> {
+  // Identity comes from the signed-in user (or the env owner); the balance and
+  // the rest come live from whichever Groww account this request resolves to.
+  const uid = await currentUserId();
+  const user = uid && uid !== OWNER_ID ? await findById(uid) : null;
+
   const base: Account = {
-    // The API carries no display name, so it comes from config; everything
-    // else on the account is read from Groww.
-    name: process.env.ACCOUNT_NAME ?? "Groww account",
-    email: process.env.AUTH_EMAIL ?? "",
+    name: user ? user.email.split("@")[0] : process.env.ACCOUNT_NAME ?? "Groww account",
+    email: user ? user.email : process.env.AUTH_EMAIL ?? "",
     broker: "Groww",
     balance: null,
     usedMargin: null,
@@ -210,13 +238,17 @@ export interface PlacedOrder {
  * from one that was never placed, and the UI says so.
  */
 export async function placeOrder(input: groww.PlaceOrderInput): Promise<PlacedOrder> {
+  return withUserCreds(() => placeOrderImpl(input));
+}
+
+async function placeOrderImpl(input: groww.PlaceOrderInput): Promise<PlacedOrder> {
   if (!canTrade()) {
     return {
       ok: false,
       orderId: null,
       status: null,
       filled: null,
-      message: "Order placement is disabled on this server.",
+      message: "Order placement is disabled, or no broker is connected on this account.",
       referenceId: null,
     };
   }
@@ -265,13 +297,15 @@ export async function cancelOrder(
   orderId: string,
   segment: "CASH" | "FNO" = "CASH",
 ): Promise<{ ok: boolean; message: string | null }> {
-  if (!canTrade()) return { ok: false, message: "Order placement is disabled on this server." };
-  try {
-    return await groww.cancelOrder(orderId, segment);
-  } catch (err) {
-    console.error("[broker] cancelOrder failed:", err instanceof Error ? err.message : err);
-    return { ok: false, message: "The cancel request did not complete. Check Groww." };
-  }
+  return withUserCreds(async () => {
+    if (!canTrade()) return { ok: false, message: "Order placement is disabled, or no broker is connected." };
+    try {
+      return await groww.cancelOrder(orderId, segment);
+    } catch (err) {
+      console.error("[broker] cancelOrder failed:", err instanceof Error ? err.message : err);
+      return { ok: false, message: "The cancel request did not complete. Check Groww." };
+    }
+  });
 }
 
 /**
@@ -284,6 +318,10 @@ export async function getOptionChain(
   underlying = "NIFTY",
   expiry?: string,
 ): Promise<OptionChain | null> {
+  return withUserCreds(() => getOptionChainImpl(underlying, expiry));
+}
+
+async function getOptionChainImpl(underlying: string, expiry?: string): Promise<OptionChain | null> {
   if (!groww.hasCredentials()) return null;
 
   const u = (CHAIN_UNDERLYINGS as readonly string[]).includes(underlying) ? underlying : "NIFTY";

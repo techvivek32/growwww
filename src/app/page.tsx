@@ -90,7 +90,7 @@ export default function Landing() {
             Sign in
           </Link>
           <Link
-            href="/login"
+            href="/signup"
             className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-[13.5px] font-semibold text-white transition-colors hover:bg-brandh"
           >
             Get started
@@ -121,7 +121,7 @@ export default function Landing() {
             you upgrade the cockpit.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Link href="/login" className="inline-flex h-12 items-center rounded-xl bg-brand px-6 text-[15px] font-semibold text-white transition-colors hover:bg-brandh">
+            <Link href="/signup" className="inline-flex h-12 items-center rounded-xl bg-brand px-6 text-[15px] font-semibold text-white transition-colors hover:bg-brandh">
               Get started — connect Groww
             </Link>
             <a href="#features" className="inline-flex h-12 items-center rounded-xl border border-line2 px-6 text-[15px] font-semibold text-ink transition-colors hover:bg-surfaceh">
@@ -234,7 +234,7 @@ export default function Landing() {
           <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-white/90">
             Sign in, connect your broker, and trade from a terminal that tells you the truth about its own edge.
           </p>
-          <Link href="/login" className="mt-7 inline-flex h-12 items-center rounded-xl bg-white px-7 text-[15px] font-semibold text-ink transition-transform hover:scale-[1.02]">
+          <Link href="/signup" className="mt-7 inline-flex h-12 items-center rounded-xl bg-white px-7 text-[15px] font-semibold text-ink transition-transform hover:scale-[1.02]">
             Get started
           </Link>
         </div>

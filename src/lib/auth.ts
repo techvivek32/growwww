@@ -16,15 +16,17 @@
 
 export const SESSION_COOKIE = "mnha_session";
 
+/** The reserved user id for the env "house" account (the owner). */
+export const OWNER_ID = "owner";
+
 /** Eight hours — a trading day plus the pre-open, and no longer. */
 const TTL_MS = 8 * 60 * 60 * 1000;
 
 const enc = new TextEncoder();
 
 /**
- * No fallbacks: this repository is public, and a committed credential that
- * silently works is an open door. A deploy without these three env vars must
- * fail loudly at first use, not sign people in with a password from git.
+ * AUTH_SECRET has no fallback: this repository is public, and a committed
+ * signing key that silently works is an open door.
  */
 function required(name: string): string {
   const v = process.env[name]?.trim();
@@ -36,12 +38,13 @@ function secret(): string {
   return required("AUTH_SECRET");
 }
 
-export function expectedEmail(): string {
-  return required("AUTH_EMAIL").toLowerCase();
+/** The owner logs in with these env credentials, if configured. Optional now
+ *  that anyone can register — a deploy may run with no env owner at all. */
+export function ownerEmail(): string | null {
+  return process.env.AUTH_EMAIL?.trim().toLowerCase() || null;
 }
-
-function expectedPassword(): string {
-  return required("AUTH_PASSWORD");
+function ownerPassword(): string | null {
+  return process.env.AUTH_PASSWORD?.trim() || null;
 }
 
 /* ------------------------------------------------------------------ crypto */
@@ -73,59 +76,58 @@ function timingSafeEqual(a: string, b: string): boolean {
 
 /* ------------------------------------------------------------------ tokens */
 
-/** `<base64url(payload)>.<base64url(hmac)>` where payload is `email|expiry`. */
-export async function issueToken(email: string): Promise<string> {
-  const payload = `${email}|${Date.now() + TTL_MS}`;
+/** `<base64url(payload)>.<base64url(hmac)>` where payload is `userId|expiry`. */
+export async function issueToken(userId: string): Promise<string> {
+  const payload = `${userId}|${Date.now() + TTL_MS}`;
   const body = b64url(enc.encode(payload));
   const sig = await crypto.subtle.sign("HMAC", await hmacKey(), enc.encode(body));
   return `${body}.${b64url(sig)}`;
 }
 
-export async function verifyToken(token: string | undefined): Promise<boolean> {
-  if (!token) return false;
+/** The signed, unexpired user id in a token, or null. The heart of every
+ *  per-user data boundary, so it verifies the HMAC before trusting a byte. */
+export async function sessionUserId(token: string | undefined): Promise<string | null> {
+  if (!token) return null;
 
   const dot = token.lastIndexOf(".");
-  if (dot <= 0) return false;
+  if (dot <= 0) return null;
 
   const body = token.slice(0, dot);
   const sig = token.slice(dot + 1);
 
-  const expected = b64url(
-    await crypto.subtle.sign("HMAC", await hmacKey(), enc.encode(body)),
-  );
-  if (!timingSafeEqual(sig, expected)) return false;
+  const expected = b64url(await crypto.subtle.sign("HMAC", await hmacKey(), enc.encode(body)));
+  if (!timingSafeEqual(sig, expected)) return null;
 
-  // Signature is good, so the payload is ours and safe to read.
   let payload: string;
   try {
     payload = atob(body.replace(/-/g, "+").replace(/_/g, "/"));
   } catch {
-    return false;
+    return null;
   }
 
-  const [email, expiry] = payload.split("|");
-  if (email !== expectedEmail()) return false;
-
+  const [userId, expiry] = payload.split("|");
   const at = Number(expiry);
-  return Number.isFinite(at) && Date.now() < at;
+  if (!userId || !Number.isFinite(at) || Date.now() >= at) return null;
+  return userId;
 }
 
-/* --------------------------------------------------------------- checking */
-
-export interface LoginResult {
-  ok: boolean;
-  error?: string;
+/** Boolean gate for the Edge proxy — a valid, unexpired signature. */
+export async function verifyToken(token: string | undefined): Promise<boolean> {
+  return (await sessionUserId(token)) !== null;
 }
 
-export function checkCredentials(email: string, password: string): LoginResult {
+/* --------------------------------------------------------------- owner login */
+
+/** True when the credentials match the env "house" owner (if configured). */
+export function isOwnerLogin(email: string, password: string): boolean {
+  const oe = ownerEmail();
+  const op = ownerPassword();
+  if (!oe || !op) return false;
   const e = email.trim().toLowerCase();
-
-  // Deliberately one message for both cases — telling someone the email was
-  // right narrows the search for them.
-  if (!timingSafeEqual(e, expectedEmail()) || !timingSafeEqual(password, expectedPassword())) {
-    return { ok: false, error: "That email and password do not match." };
-  }
-  return { ok: true };
+  // Compare against padded copies so length never leaks which field was wrong.
+  return timingSafeEqual(e.padEnd(64, "\0").slice(0, 64), oe.padEnd(64, "\0").slice(0, 64)) &&
+    timingSafeEqual(password.padEnd(64, "\0").slice(0, 64), op.padEnd(64, "\0").slice(0, 64)) &&
+    e === oe && password === op;
 }
 
 export const SESSION_MAX_AGE = TTL_MS / 1000;

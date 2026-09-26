@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import LoginForm from "./LoginForm";
 
 export const metadata: Metadata = {
@@ -87,7 +88,8 @@ export default function LoginPage() {
 
           <h1 className="text-[24px] leading-tight font-bold tracking-tight text-ink">Sign in</h1>
           <p className="mt-1.5 text-[13.5px] text-ink3">
-            Use the account linked to your Groww trading profile.
+            New here?{" "}
+            <Link href="/signup" className="font-semibold text-brandtext hover:opacity-75">Create an account</Link>
           </p>
 
           <LoginForm />

@@ -1,4 +1,8 @@
+import { redirect } from "next/navigation";
 import { getAccount } from "@/lib/api/broker";
+import { currentUserId } from "@/lib/session";
+import { hasBroker } from "@/lib/users";
+import { OWNER_ID } from "@/lib/auth";
 import TopNav from "@/components/TopNav";
 import IndexStrip from "@/components/IndexStrip";
 import { AutoTradeProvider } from "@/components/AutoTrade";
@@ -15,6 +19,12 @@ export const dynamic = "force-dynamic";
  * props — the nav never reaches for broker data itself.
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  // A registered user with no broker connected has an empty terminal — send
+  // them to connect one first. (The owner uses the env house account.)
+  const uid = await currentUserId();
+  if (!uid) redirect("/login");
+  if (uid !== OWNER_ID && !(await hasBroker(uid))) redirect("/connect-broker");
+
   const account = await getAccount();
 
   return (
