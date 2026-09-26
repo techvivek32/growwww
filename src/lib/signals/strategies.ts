@@ -124,7 +124,7 @@ const meanReversion: Strategy = {
   name: "mean-reversion",
   label: "Mean reversion (RSI-2)",
   description:
-    "Buys a 2-day RSI below 10 while price holds above its 200-day average (a dip inside an uptrend); fades a 2-day RSI above 90 below the 200-day average. Daily bars, 1.5-ATR stop, 1R target, closed after 20 bars. High win rate, small edge — and correlated, so the portfolio drawdown is realer than the per-trade number suggests.",
+    "Buys a 2-day RSI in the 3–10 zone above the 200-day average (an oversold dip in an uptrend, but not a falling knife — sub-3 dips measured to lose and are skipped); mirrors it short at 90–97 below the 200-SMA. Daily bars, 1.5-ATR stop, 1R target, closed after 20 bars. High win rate, small edge.",
   interval: 1440,
   lookbackDays: 900,
   timeStopBars: 20,
@@ -135,11 +135,13 @@ const meanReversion: Strategy = {
     const a = ind.atr14[i];
     if (s200 === null || r2 === null || a === null) return null;
 
-    if (c.close > s200 && r2 < 10) {
-      return frame("mean-reversion", "LONG", i, c.close, a, 1.5, 1, "Oversold dip in an uptrend (RSI-2 < 10 above 200-SMA)");
+    // Sweet spot 3–10, not the deepest dip: RSI-2 below 3 is a falling knife
+    // that keeps falling — measured to LOSE, so it is deliberately excluded.
+    if (c.close > s200 && r2 >= 3 && r2 < 10) {
+      return frame("mean-reversion", "LONG", i, c.close, a, 1.5, 1, "Oversold dip in an uptrend (RSI-2 in 3–10 above 200-SMA)");
     }
-    if (c.close < s200 && r2 > 90) {
-      return frame("mean-reversion", "SHORT", i, c.close, a, 1.5, 1, "Overbought pop in a downtrend (RSI-2 > 90 below 200-SMA)");
+    if (c.close < s200 && r2 > 90 && r2 <= 97) {
+      return frame("mean-reversion", "SHORT", i, c.close, a, 1.5, 1, "Overbought pop in a downtrend (RSI-2 in 90–97 below 200-SMA)");
     }
     return null;
   },
