@@ -61,6 +61,8 @@ export interface Strategy {
   interval: number;
   /** How far back to pull candles for scanning and backtesting. */
   lookbackDays: number;
+  /** Close the trade at market after this many bars if neither level is hit. */
+  timeStopBars?: number;
   /** null when the pattern is not present at bar i. */
   evaluate: (candles: Candle[], i: number, ind: Indicators) => Signal | null;
 }
@@ -106,9 +108,10 @@ const meanReversion: Strategy = {
   name: "mean-reversion",
   label: "Mean reversion (RSI-2)",
   description:
-    "Buys a 2-day RSI below 10 while price holds above its 200-day average (a dip inside an uptrend); fades a 2-day RSI above 90 below the 200-day average. Daily bars. The one setup with a measured positive edge here.",
+    "Buys a 2-day RSI below 10 while price holds above its 200-day average (a dip inside an uptrend); fades a 2-day RSI above 90 below the 200-day average. Daily bars, 1.5-ATR stop, 1R target, closed after 20 bars. High win rate, small edge — and correlated, so the portfolio drawdown is realer than the per-trade number suggests.",
   interval: 1440,
   lookbackDays: 900,
+  timeStopBars: 20,
   evaluate(candles, i, ind) {
     const c = candles[i];
     const s200 = ind.sma200[i];

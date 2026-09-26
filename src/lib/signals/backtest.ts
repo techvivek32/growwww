@@ -74,8 +74,11 @@ export function collectTrades(strategy: Strategy, candles: Candle[]): BacktestTr
       continue;
     }
 
+    // A time stop closes the trade at market after N bars if neither level hit.
+    const lastBar = strategy.timeStopBars ? Math.min(candles.length - 1, i + strategy.timeStopBars) : candles.length - 1;
+
     let closed: BacktestTrade | null = null;
-    for (let j = i + 1; j < candles.length; j++) {
+    for (let j = i + 1; j <= lastBar; j++) {
       const b = candles[j];
       const hitStop = sig.side === "LONG" ? b.low <= sig.stop : b.high >= sig.stop;
       const hitTarget = sig.side === "LONG" ? b.high >= sig.target : b.low <= sig.target;
@@ -92,19 +95,22 @@ export function collectTrades(strategy: Strategy, candles: Candle[]): BacktestTr
     }
 
     if (!closed) {
-      const last = candles[candles.length - 1];
-      const signed = sig.side === "LONG" ? last.close - sig.entry : sig.entry - last.close;
+      // Time stop (or end of data): exit at that bar's close.
+      const exitBar = candles[lastBar];
+      const signed = sig.side === "LONG" ? exitBar.close - sig.entry : sig.entry - exitBar.close;
       trades.push({
         side: sig.side,
         entryTime: candles[i].time,
-        exitTime: last.time,
+        exitTime: exitBar.time,
         entry: sig.entry,
         stop: sig.stop,
-        exit: last.close,
+        exit: exitBar.close,
         r: +(signed / risk).toFixed(3),
         outcome: "timeout",
       });
-      break;
+      // continue scanning AFTER this trade closed, not from the end of data
+      i = lastBar + 1;
+      continue;
     }
     trades.push(closed);
   }
