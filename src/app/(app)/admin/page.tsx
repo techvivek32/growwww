@@ -202,8 +202,9 @@ export default async function AdminPage() {
                 <tr className="border-b border-line text-[12px] text-ink3">
                   <th className="px-5 py-3 font-semibold">Signature</th>
                   <th className="px-5 py-3 font-semibold">User</th>
-                  <th className="px-5 py-3 font-semibold">Version</th>
+                  <th className="px-5 py-3 font-semibold">Lang / Version</th>
                   <th className="px-5 py-3 font-semibold">When</th>
+                  <th className="px-5 py-3 font-semibold">Media</th>
                   <th className="px-5 py-3 font-semibold">IP</th>
                 </tr>
               </thead>
@@ -212,8 +213,15 @@ export default async function AdminPage() {
                   <tr key={`${c.userId}-${i}`} className="border-b border-line/60">
                     <td className="px-5 py-3 text-[13px] font-medium text-ink">{c.signatureName}</td>
                     <td className="px-5 py-3 text-[11.5px] text-ink3">{emailFor.get(c.userId) ?? c.userId}</td>
-                    <td className="px-5 py-3 text-[12px] text-ink2">{c.agreementVersion}</td>
+                    <td className="px-5 py-3 text-[12px] text-ink2">{c.language?.toUpperCase() ?? "—"} · {c.agreementVersion}</td>
                     <td className="tnum px-5 py-3 text-[12px] text-ink2">{fmtDate(c.consentedAt)}</td>
+                    <td className="px-5 py-3 text-[11.5px]">
+                      <span className="flex gap-2">
+                        {c.media?.selfie && <a href={`/api/consent/media?user=${c.userId}&kind=selfie`} target="_blank" rel="noopener noreferrer" className="text-brandtext hover:opacity-75">Selfie</a>}
+                        {c.media?.idPhoto && <a href={`/api/consent/media?user=${c.userId}&kind=id`} target="_blank" rel="noopener noreferrer" className="text-brandtext hover:opacity-75">ID</a>}
+                        {c.media?.video && <a href={`/api/consent/media?user=${c.userId}&kind=video`} target="_blank" rel="noopener noreferrer" className="text-brandtext hover:opacity-75">Video</a>}
+                      </span>
+                    </td>
                     <td className="tnum px-5 py-3 text-[11.5px] text-ink3">{c.ip}</td>
                   </tr>
                 ))}
