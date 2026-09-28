@@ -1,5 +1,5 @@
 import type { Candle } from "@/lib/api/groww";
-import { ema, sma, rsi, atr, sessionVwap, priorExtreme, stdev, macd, rocPct } from "./indicators";
+import { ema, sma, rsi, atr, sessionVwap, priorExtreme, stdev, macd, rocPct, supertrend } from "./indicators";
 
 /**
  * The strategy library. Every setup is a MECHANICAL rule read off real
@@ -45,12 +45,15 @@ export interface Indicators {
   macdSignal: (number | null)[];
   roc20: (number | null)[];
   volSma20: (number | null)[];
+  stDir: (number | null)[];
+  stLine: (number | null)[];
 }
 
 export function computeIndicators(candles: Candle[]): Indicators {
   const close = candles.map((c) => c.close);
   const vol = candles.map((c) => c.volume);
   const m = macd(close);
+  const st = supertrend(candles, 10, 3);
   return {
     ema20: ema(close, 20),
     ema50: ema(close, 50),
@@ -66,6 +69,8 @@ export function computeIndicators(candles: Candle[]): Indicators {
     macdSignal: m.signal,
     roc20: rocPct(close, 20),
     volSma20: sma(vol, 20),
+    stDir: st.dir,
+    stLine: st.line,
   };
 }
 
@@ -412,6 +417,27 @@ const openingRange: Strategy = {
   },
 };
 
+/** Supertrend flip — the indicator most Indian algo repos are built around.
+ *  Enter when the Supertrend line flips side (down→up = long, up→down = short);
+ *  stop rides on the line, target a 2R multiple. Ported to backtest ONLY — it
+ *  never places an order, like every setup here. */
+const supertrendFlip: Strategy = {
+  name: "supertrend",
+  label: "Supertrend flip",
+  description:
+    "The classic Supertrend (ATR 10, ×3): go long when the line flips below price, short when it flips above. The most-used setup in Indian retail algos — measured here honestly rather than assumed to work.",
+  interval: 1440,
+  lookbackDays: 900,
+  evaluate(c, i, ind) {
+    if (i < 1) return null;
+    const d = ind.stDir[i], pd = ind.stDir[i - 1], a = ind.atr14[i];
+    if (d === null || pd === null || a === null) return null;
+    if (pd <= 0 && d === 1) return frame("supertrend", "LONG", i, c[i].close, a, 1.5, 2, "Supertrend flipped up");
+    if (pd >= 0 && d === -1) return frame("supertrend", "SHORT", i, c[i].close, a, 1.5, 2, "Supertrend flipped down");
+    return null;
+  },
+};
+
 /**
  * The full library, arranged so the strongest read leads. Every one is scored
  * by its own real backtest and live journal; the board tags each Active or
@@ -429,6 +455,7 @@ export const STRATEGIES: Strategy[] = [
   donchian,
   maCross,
   macdCross,
+  supertrendFlip,
   highLow52,
   volumeBreakout,
   squeeze,

@@ -170,3 +170,53 @@ export function rocPct(values: number[], n: number): (number | null)[] {
     i >= n && values[i - n] > 0 ? ((v - values[i - n]) / values[i - n]) * 100 : null,
   );
 }
+
+export interface Supertrend {
+  /** trend direction per bar: +1 up, -1 down, null until seeded. */
+  dir: (number | null)[];
+  /** the supertrend line value per bar. */
+  line: (number | null)[];
+}
+
+/**
+ * Supertrend — the single most-used indicator across Indian retail algo repos.
+ * ATR bands around the HL2 midline; the line flips side when price closes
+ * through it, and the flip is the trade trigger. `period` = ATR length,
+ * `mult` = band width. Full-length arrays; leading slots null until seeded.
+ */
+export function supertrend(candles: Candle[], period = 10, mult = 3): Supertrend {
+  const n = candles.length;
+  const dir: (number | null)[] = new Array(n).fill(null);
+  const line: (number | null)[] = new Array(n).fill(null);
+  const a = atr(candles, period);
+
+  let prevUpper = 0;
+  let prevLower = 0;
+  let prevDir = 1;
+  let seeded = false;
+
+  for (let i = 0; i < n; i++) {
+    if (a[i] === null) continue;
+    const hl2 = (candles[i].high + candles[i].low) / 2;
+    const basicUpper = hl2 + mult * (a[i] as number);
+    const basicLower = hl2 - mult * (a[i] as number);
+    const close = candles[i].close;
+    const prevClose = candles[i - 1]?.close ?? close;
+
+    const finalUpper = !seeded || basicUpper < prevUpper || prevClose > prevUpper ? basicUpper : prevUpper;
+    const finalLower = !seeded || basicLower > prevLower || prevClose < prevLower ? basicLower : prevLower;
+
+    let d: number;
+    if (!seeded) d = close > hl2 ? 1 : -1;
+    else if (prevDir === 1) d = close < finalLower ? -1 : 1;
+    else d = close > finalUpper ? 1 : -1;
+
+    dir[i] = d;
+    line[i] = d === 1 ? finalLower : finalUpper;
+    prevUpper = finalUpper;
+    prevLower = finalLower;
+    prevDir = d;
+    seeded = true;
+  }
+  return { dir, line };
+}

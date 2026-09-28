@@ -160,12 +160,14 @@ export async function refreshBacktests(): Promise<BacktestResult[]> {
   // keep the last GOOD result for that group rather than publish a half one.
   const kept = new Map(state.backtests.map((r) => [r.strategy, r] as const));
   const results: BacktestResult[] = [];
+  let minCoverage = 1;
   for (const grp of groups) {
     const series = await pool(u, 3, (x) =>
       groww.getCandles(x.symbol, grp.interval, grp.lookback).catch(() => [] as groww.Candle[]),
     );
     const usable = series.filter((c) => c.length >= 60).length;
     const coverage = usable / u.length;
+    minCoverage = Math.min(minCoverage, coverage);
 
     for (const strat of grp.strategies) {
       if (coverage < 0.9 && kept.has(strat.name)) {
@@ -176,6 +178,15 @@ export async function refreshBacktests(): Promise<BacktestResult[]> {
       const bars = series.reduce((a, c) => a + c.length, 0);
       results.push(summarize(strat.name, trades, bars));
     }
+  }
+
+  // A cold boot can rate-limit the candle pull and yield a thin, misleading
+  // scorecard. If coverage is poor AND we have nothing good yet, DON'T publish
+  // — leave the board "warming up" and leave lastBacktest unset so the next
+  // tick (3 min) retries with a warm cache, rather than poisoning the board
+  // (and blocking the 2-hour refresh) with a partial run.
+  if (minCoverage < 0.9 && state.backtests.length === 0) {
+    return results;
   }
 
   state.backtests = results;
