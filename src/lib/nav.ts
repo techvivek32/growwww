@@ -24,6 +24,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/portfolio/history", label: "History", group: "trading" },
   { href: "/portfolio/analysis", label: "Analysis", group: "trading" },
   { href: "/terminal", label: "Terminal", group: "trading" },
+  { href: "/membership", label: "Membership", group: "system" },
   { href: "/broker", label: "Broker", group: "system" },
   { href: "/settings", label: "Settings", group: "system" },
 ];

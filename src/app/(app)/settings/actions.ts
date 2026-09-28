@@ -8,6 +8,7 @@ import { changePassword, clearBroker, deleteUser } from "@/lib/users";
 import { deleteKyc } from "@/lib/kyc";
 import { deleteConsents } from "@/lib/consent";
 import { deleteConsentMedia } from "@/lib/consentMedia";
+import { deleteMembership } from "@/lib/membership";
 
 export interface PwState {
   error?: string;
@@ -42,6 +43,7 @@ export async function deleteAccountAction(): Promise<void> {
   await deleteKyc(uid); // erase KYC record + uploaded files
   await deleteConsents(uid);
   await deleteConsentMedia(uid);
+  await deleteMembership(uid);
   await deleteUser(uid);
   await clearSession();
   redirect("/");

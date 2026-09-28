@@ -5,6 +5,7 @@ import { OWNER_ID } from "@/lib/auth";
 import { listUsers } from "@/lib/users";
 import { listKyc } from "@/lib/kyc";
 import { listConsents, AGREEMENT_VERSION } from "@/lib/consent";
+import { listMembers, accrual } from "@/lib/membership";
 import { engineStatus } from "@/lib/signals/engine";
 import { PageHead, Card, CardHead, Pill } from "@/components/ui";
 import { adminDisconnectBroker, adminDeleteUser, adminKycDecision, adminScheduleKycCall } from "./actions";
@@ -39,12 +40,14 @@ export default async function AdminPage() {
   // Owner only. A regular user who guesses the URL is sent back to the app.
   if ((await currentUserId()) !== OWNER_ID) redirect("/stocks/alerts");
 
-  const [users, kyc, consents] = await Promise.all([listUsers(), listKyc(), listConsents()]);
+  const [users, kyc, consents, members] = await Promise.all([listUsers(), listKyc(), listConsents(), listMembers()]);
   const engine = engineStatus();
   const connected = users.filter((u) => u.hasBroker).length;
   const last7 = users.filter((u) => withinDays(u.createdAt, 7)).length;
   const pendingKyc = kyc.filter((k) => k.status === "submitted").length;
+  const activeMembers = members.filter((m) => m.status === "active");
   const emailFor = new Map(users.map((u) => [u.id, u.email]));
+  const inr = (v: number) => `₹${Math.round(v).toLocaleString("en-IN")}`;
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -58,6 +61,7 @@ export default async function AdminPage() {
         <Stat label="Users" value={String(users.length)} />
         <Stat label="Brokers connected" value={String(connected)} sub={`${users.length - connected} pending`} />
         <Stat label="KYC in review" value={String(pendingKyc)} sub={`${kyc.length} submitted`} />
+        <Stat label="Active members" value={String(activeMembers.length)} sub="performance-fee" />
         <Stat label="New (7 days)" value={String(last7)} />
         <Stat label="Signal engine" value={engine.running ? "Running" : "Idle"} sub={`scan ${ago(engine.lastScan)}`} />
       </div>
@@ -184,6 +188,47 @@ export default async function AdminPage() {
               </li>
             ))}
           </ul>
+        )}
+      </Card>
+
+      {/* Members */}
+      <Card pad={false} className="mt-6">
+        <div className="border-b border-line px-5 py-4">
+          <h2 className="text-[15px] font-semibold tracking-tight text-ink">Members ({members.length})</h2>
+          <p className="mt-0.5 text-[12px] text-ink3">Performance-fee members. Values are the member&apos;s last-known account NAV (their own context) — no guarantee, fee on profit above the high-water mark only.</p>
+        </div>
+        {members.length === 0 ? (
+          <p className="px-5 py-8 text-center text-[13.5px] text-ink3">No members yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[680px] border-collapse text-left">
+              <thead>
+                <tr className="border-b border-line text-[12px] text-ink3">
+                  <th className="px-5 py-3 font-semibold">Member</th>
+                  <th className="px-5 py-3 text-right font-semibold">Start</th>
+                  <th className="px-5 py-3 text-right font-semibold">Last NAV</th>
+                  <th className="px-5 py-3 text-right font-semibold">Profit</th>
+                  <th className="px-5 py-3 text-right font-semibold">Fee est.</th>
+                  <th className="px-5 py-3 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {members.map((m) => {
+                  const a = m.lastNav != null ? accrual(m, m.lastNav) : null;
+                  return (
+                    <tr key={m.userId} className="border-b border-line/60">
+                      <td className="px-5 py-3 text-[13px] text-ink">{emailFor.get(m.userId) ?? m.userId}</td>
+                      <td className="tnum px-5 py-3 text-right text-[12.5px] text-ink2">{inr(m.startNav)}</td>
+                      <td className="tnum px-5 py-3 text-right text-[12.5px] text-ink2">{m.lastNav != null ? inr(m.lastNav) : "—"}</td>
+                      <td className={`tnum px-5 py-3 text-right text-[12.5px] ${a && a.profit >= 0 ? "text-up" : "text-down"}`}>{a ? `${a.profit >= 0 ? "+" : ""}${inr(a.profit)}` : "—"}</td>
+                      <td className="tnum px-5 py-3 text-right text-[12.5px] text-ink2">{a ? inr(a.feeEstimate) : "—"}</td>
+                      <td className="px-5 py-3 text-[12px]"><span className={`rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold ${m.status === "active" ? "bg-upsoft text-up" : "bg-surface2 text-ink2"}`}>{m.status}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
 

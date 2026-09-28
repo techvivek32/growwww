@@ -117,6 +117,26 @@ export async function getHoldings(): Promise<Holding[]> {
   return safe("holdings", () => groww.getHoldings(), []);
 }
 
+/**
+ * A simple account value for the current user: clear cash + the live value of
+ * holdings (qty × LTP). An estimate — it excludes open F&O positions — used to
+ * anchor a membership's starting NAV and its high-water mark. Runs in the
+ * caller's own credential context, so it is always their own account.
+ */
+export async function getNav(): Promise<{ cash: number; holdings: number; nav: number } | null> {
+  return withUserCreds(async () => {
+    if (!groww.hasCredentials()) return null;
+    try {
+      const [margin, holdings] = await Promise.all([groww.getMargin(), groww.getHoldings()]);
+      if (!margin) return null;
+      const holdingsVal = holdings.reduce((s, h) => s + (h.ltp != null ? h.qty * h.ltp : 0), 0);
+      return { cash: margin.clearCash, holdings: +holdingsVal.toFixed(2), nav: +(margin.clearCash + holdingsVal).toFixed(2) };
+    } catch {
+      return null;
+    }
+  });
+}
+
 export async function getPositions(): Promise<Position[]> {
   return safe("positions", () => groww.getPositions(), []);
 }
