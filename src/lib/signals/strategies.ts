@@ -1,5 +1,5 @@
 import type { Candle } from "@/lib/api/groww";
-import { ema, sma, rsi, atr, sessionVwap, priorExtreme, stdev, macd, rocPct, supertrend } from "./indicators";
+import { ema, sma, rsi, atr, sessionVwap, priorExtreme, stdev, macd, rocPct, supertrend, heikinAshi, sessionLevels } from "./indicators";
 
 /**
  * The strategy library. Every setup is a MECHANICAL rule read off real
@@ -47,6 +47,12 @@ export interface Indicators {
   volSma20: (number | null)[];
   stDir: (number | null)[];
   stLine: (number | null)[];
+  haOpen: number[];
+  haClose: number[];
+  cprTC: (number | null)[];
+  cprBC: (number | null)[];
+  pdh: (number | null)[];
+  pdl: (number | null)[];
 }
 
 export function computeIndicators(candles: Candle[]): Indicators {
@@ -54,6 +60,8 @@ export function computeIndicators(candles: Candle[]): Indicators {
   const vol = candles.map((c) => c.volume);
   const m = macd(close);
   const st = supertrend(candles, 10, 3);
+  const ha = heikinAshi(candles);
+  const sl = sessionLevels(candles);
   return {
     ema20: ema(close, 20),
     ema50: ema(close, 50),
@@ -71,6 +79,12 @@ export function computeIndicators(candles: Candle[]): Indicators {
     volSma20: sma(vol, 20),
     stDir: st.dir,
     stLine: st.line,
+    haOpen: ha.open,
+    haClose: ha.close,
+    cprTC: sl.tc,
+    cprBC: sl.bc,
+    pdh: sl.pdh,
+    pdl: sl.pdl,
   };
 }
 
@@ -438,6 +452,48 @@ const supertrendFlip: Strategy = {
   },
 };
 
+/** Central Pivot Range breakout — THE reel-famous Indian intraday setup.
+ *  Trades a 15-minute break of the prior day's CPR: close crosses above the
+ *  CPR top (TC) = long, below the bottom (BC) = short. Backtest only. */
+const cprBreakout: Strategy = {
+  name: "cpr-breakout",
+  label: "CPR breakout",
+  description:
+    "The Central Pivot Range every Indian intraday reel is about: a 15-minute close breaking above yesterday's CPR top (bullish) or below its bottom (bearish). Prior-day levels, traded intraday — measured, not hyped.",
+  interval: 15,
+  lookbackDays: 30,
+  evaluate(c, i, ind) {
+    if (i < 1) return null;
+    const tc = ind.cprTC[i], bc = ind.cprBC[i], a = ind.atr14[i];
+    const pc = c[i - 1];
+    if (tc === null || bc === null || a === null) return null;
+    if (pc.close <= tc && c[i].close > tc) return frame("cpr-breakout", "LONG", i, c[i].close, a, 1.0, 2, "Broke above the prior-day CPR top");
+    if (pc.close >= bc && c[i].close < bc) return frame("cpr-breakout", "SHORT", i, c[i].close, a, 1.0, 2, "Broke below the prior-day CPR bottom");
+    return null;
+  },
+};
+
+/** Heikin-Ashi trend flip — the smoothed-candle setup reels swear by. A red→green
+ *  flip goes long, green→red short. Daily bars. Backtest only. */
+const heikinAshiTrend: Strategy = {
+  name: "heikin-ashi",
+  label: "Heikin-Ashi flip",
+  description:
+    "Heikin-Ashi candles smooth the noise; the setup reels love is the colour flip — a red candle turning green (long) or green turning red (short). Daily bars — measured honestly.",
+  interval: 1440,
+  lookbackDays: 900,
+  evaluate(c, i, ind) {
+    if (i < 1) return null;
+    const a = ind.atr14[i];
+    if (a === null) return null;
+    const up = ind.haClose[i] > ind.haOpen[i];
+    const pup = ind.haClose[i - 1] > ind.haOpen[i - 1];
+    if (up && !pup) return frame("heikin-ashi", "LONG", i, c[i].close, a, 1.5, 2, "Heikin-Ashi flipped green");
+    if (!up && pup) return frame("heikin-ashi", "SHORT", i, c[i].close, a, 1.5, 2, "Heikin-Ashi flipped red");
+    return null;
+  },
+};
+
 /**
  * The full library, arranged so the strongest read leads. Every one is scored
  * by its own real backtest and live journal; the board tags each Active or
@@ -456,11 +512,13 @@ export const STRATEGIES: Strategy[] = [
   maCross,
   macdCross,
   supertrendFlip,
+  heikinAshiTrend,
   highLow52,
   volumeBreakout,
   squeeze,
   vwapReclaim,
   openingRange,
+  cprBreakout,
 ];
 
 export function strategyByName(name: string): Strategy | undefined {

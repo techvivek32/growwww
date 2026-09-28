@@ -171,6 +171,78 @@ export function rocPct(values: number[], n: number): (number | null)[] {
   );
 }
 
+export interface HeikinAshi {
+  open: number[];
+  high: number[];
+  low: number[];
+  close: number[];
+}
+
+/** Heikin-Ashi candles — the smoothed candles reels love for reading trend. */
+export function heikinAshi(candles: Candle[]): HeikinAshi {
+  const n = candles.length;
+  const open = new Array(n).fill(0);
+  const high = new Array(n).fill(0);
+  const low = new Array(n).fill(0);
+  const close = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    const c = candles[i];
+    close[i] = (c.open + c.high + c.low + c.close) / 4;
+    open[i] = i === 0 ? (c.open + c.close) / 2 : (open[i - 1] + close[i - 1]) / 2;
+    high[i] = Math.max(c.high, open[i], close[i]);
+    low[i] = Math.min(c.low, open[i], close[i]);
+  }
+  return { open, high, low, close };
+}
+
+export interface SessionLevels {
+  /** Central Pivot Range top / bottom, from the PRIOR IST session. */
+  tc: (number | null)[];
+  bc: (number | null)[];
+  /** Prior session high / low. */
+  pdh: (number | null)[];
+  pdl: (number | null)[];
+}
+
+/**
+ * Per-bar levels derived from the PRIOR completed IST trading day — the Central
+ * Pivot Range (CPR) and previous-day high/low that Indian intraday traders live
+ * by. Meant for an intraday series; each bar carries the levels computed from
+ * the day before it (null on the first day, before a prior day exists).
+ */
+export function sessionLevels(candles: Candle[]): SessionLevels {
+  const n = candles.length;
+  const tc: (number | null)[] = new Array(n).fill(null);
+  const bc: (number | null)[] = new Array(n).fill(null);
+  const pdh: (number | null)[] = new Array(n).fill(null);
+  const pdl: (number | null)[] = new Array(n).fill(null);
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" });
+
+  let curDay = "";
+  let dayHi = -Infinity, dayLo = Infinity, dayClose = 0;
+  // levels of the most recently COMPLETED day, applied to the current day
+  let prior: { tc: number; bc: number; pdh: number; pdl: number } | null = null;
+
+  for (let i = 0; i < n; i++) {
+    const d = fmt.format(new Date(candles[i].time));
+    if (d !== curDay) {
+      if (curDay !== "") {
+        const pivot = (dayHi + dayLo + dayClose) / 3;
+        const bcv = (dayHi + dayLo) / 2;
+        const tcv = 2 * pivot - bcv;
+        prior = { tc: Math.max(tcv, bcv), bc: Math.min(tcv, bcv), pdh: dayHi, pdl: dayLo };
+      }
+      curDay = d;
+      dayHi = -Infinity; dayLo = Infinity; dayClose = candles[i].close;
+    }
+    dayHi = Math.max(dayHi, candles[i].high);
+    dayLo = Math.min(dayLo, candles[i].low);
+    dayClose = candles[i].close;
+    if (prior) { tc[i] = prior.tc; bc[i] = prior.bc; pdh[i] = prior.pdh; pdl[i] = prior.pdl; }
+  }
+  return { tc, bc, pdh, pdl };
+}
+
 export interface Supertrend {
   /** trend direction per bar: +1 up, -1 down, null until seeded. */
   dir: (number | null)[];
