@@ -55,27 +55,6 @@ export default async function SignalsPage() {
           }
         />
 
-        {/* the honest banner — this is the promise the tool will NOT make */}
-        <Card className="mb-6 border-warn/40 bg-warnsoft/40">
-          <div className="flex gap-3">
-            <span className="mt-0.5 text-warn">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
-              </svg>
-            </span>
-            <div className="text-[13px] leading-relaxed text-ink2">
-              <p className="font-semibold text-ink">There is no zero-loss, 20%-a-month setup — anywhere.</p>
-              <p className="mt-1">
-                SEBI&apos;s own study found 9 in 10 F&amp;O traders lose money. What this engine does
-                is honest and useful: it reads real candles, fires long <em>and</em> short setups, and
-                shows each one&apos;s <strong>measured</strong> hit rate and expectancy — from a backtest
-                first, then from its own live results. A setup that stops paying is retired automatically.
-                Losses are capped by the stop on every signal, not eliminated. Trade small, size by the stop.
-              </p>
-            </div>
-          </div>
-        </Card>
-
         {/* engine status */}
         <div className="mb-6 flex flex-wrap items-center gap-2 text-[12px] text-ink3">
           <Pill tone={status.running ? "up" : "neutral"}>{status.running ? "Engine running" : "Engine idle"}</Pill>
