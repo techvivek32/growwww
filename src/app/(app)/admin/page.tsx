@@ -4,6 +4,7 @@ import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
 import { listUsers } from "@/lib/users";
 import { listKyc } from "@/lib/kyc";
+import { listConsents, AGREEMENT_VERSION } from "@/lib/consent";
 import { engineStatus } from "@/lib/signals/engine";
 import { PageHead, Card, CardHead, Pill } from "@/components/ui";
 import { adminDisconnectBroker, adminDeleteUser, adminKycDecision, adminScheduleKycCall } from "./actions";
@@ -38,7 +39,7 @@ export default async function AdminPage() {
   // Owner only. A regular user who guesses the URL is sent back to the app.
   if ((await currentUserId()) !== OWNER_ID) redirect("/stocks/alerts");
 
-  const [users, kyc] = await Promise.all([listUsers(), listKyc()]);
+  const [users, kyc, consents] = await Promise.all([listUsers(), listKyc(), listConsents()]);
   const engine = engineStatus();
   const connected = users.filter((u) => u.hasBroker).length;
   const last7 = users.filter((u) => withinDays(u.createdAt, 7)).length;
@@ -186,8 +187,44 @@ export default async function AdminPage() {
         )}
       </Card>
 
+      {/* Consent audit */}
+      <Card pad={false} className="mt-6">
+        <div className="border-b border-line px-5 py-4">
+          <h2 className="text-[15px] font-semibold tracking-tight text-ink">Consent audit ({consents.length})</h2>
+          <p className="mt-0.5 text-[12px] text-ink3">Immutable record of who accepted which agreement version, when, and from where. Current version: {AGREEMENT_VERSION}.</p>
+        </div>
+        {consents.length === 0 ? (
+          <p className="px-5 py-8 text-center text-[13.5px] text-ink3">No consent records yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse text-left">
+              <thead>
+                <tr className="border-b border-line text-[12px] text-ink3">
+                  <th className="px-5 py-3 font-semibold">Signature</th>
+                  <th className="px-5 py-3 font-semibold">User</th>
+                  <th className="px-5 py-3 font-semibold">Version</th>
+                  <th className="px-5 py-3 font-semibold">When</th>
+                  <th className="px-5 py-3 font-semibold">IP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {consents.map((c, i) => (
+                  <tr key={`${c.userId}-${i}`} className="border-b border-line/60">
+                    <td className="px-5 py-3 text-[13px] font-medium text-ink">{c.signatureName}</td>
+                    <td className="px-5 py-3 text-[11.5px] text-ink3">{emailFor.get(c.userId) ?? c.userId}</td>
+                    <td className="px-5 py-3 text-[12px] text-ink2">{c.agreementVersion}</td>
+                    <td className="tnum px-5 py-3 text-[12px] text-ink2">{fmtDate(c.consentedAt)}</td>
+                    <td className="tnum px-5 py-3 text-[11.5px] text-ink3">{c.ip}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
       <p className="mt-4 text-[11.5px] leading-relaxed text-ink3">
-        Deleting a user removes their MNHA account, encrypted broker credentials, and KYC record + uploaded files.
+        Deleting a user removes their MNHA account, encrypted broker credentials, KYC record + files, and consent records.
         Their money and positions stay with Groww and are unaffected. Broker keys are never decrypted or displayed
         here; KYC files open only through an owner-gated route.
       </p>

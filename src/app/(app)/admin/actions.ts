@@ -5,6 +5,7 @@ import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
 import { clearBroker, deleteUser } from "@/lib/users";
 import { setKycDecision, scheduleKycCall, deleteKyc } from "@/lib/kyc";
+import { deleteConsents } from "@/lib/consent";
 import { notify } from "@/lib/notifications";
 
 /** Every admin action re-checks the caller is the owner — never trust the UI. */
@@ -25,6 +26,7 @@ export async function adminDeleteUser(formData: FormData): Promise<void> {
   if (userId && userId !== OWNER_ID) {
     await deleteUser(userId);
     await deleteKyc(userId); // erase their KYC record + uploaded files too
+    await deleteConsents(userId);
   }
   revalidatePath("/admin");
 }

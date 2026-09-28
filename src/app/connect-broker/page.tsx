@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
+import { hasConsented } from "@/lib/consent";
 import { logout } from "@/app/login/actions";
 import ConnectForm from "./ConnectForm";
 
@@ -13,6 +14,8 @@ export default async function ConnectBrokerPage() {
   if (!uid) redirect("/login");
   // The owner uses the env house account and never connects here.
   if (uid === OWNER_ID) redirect("/stocks/alerts");
+  // Must accept the agreement before connecting a broker.
+  if (!(await hasConsented(uid))) redirect("/consent");
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-[560px] flex-col justify-center px-5 py-12">

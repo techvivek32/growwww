@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getAccount } from "@/lib/api/broker";
 import { currentUserId } from "@/lib/session";
 import { hasBroker } from "@/lib/users";
+import { hasConsented } from "@/lib/consent";
 import { unreadCount } from "@/lib/notifications";
 import { OWNER_ID } from "@/lib/auth";
 import TopNav from "@/components/TopNav";
@@ -24,7 +25,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // them to connect one first. (The owner uses the env house account.)
   const uid = await currentUserId();
   if (!uid) redirect("/login");
-  if (uid !== OWNER_ID && !(await hasBroker(uid))) redirect("/connect-broker");
+  // Gate order: accept the agreement, then connect a broker, then the terminal.
+  if (uid !== OWNER_ID) {
+    if (!(await hasConsented(uid))) redirect("/consent");
+    if (!(await hasBroker(uid))) redirect("/connect-broker");
+  }
 
   const [account, unread] = await Promise.all([getAccount(), unreadCount(uid)]);
 

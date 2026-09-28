@@ -36,6 +36,6 @@ export async function signup(_prev: FormState, formData: FormData): Promise<Form
     key: "welcome",
   });
   await setSession(res.user.id);
-  // A fresh account has no broker yet — go connect one.
-  redirect("/connect-broker");
+  // First stop: read and sign the user agreement.
+  redirect("/consent");
 }
