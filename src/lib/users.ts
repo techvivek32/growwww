@@ -1,13 +1,8 @@
 import "server-only";
 import { mkdir, readFile, rename, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
-import {
-  randomBytes,
-  scryptSync,
-  timingSafeEqual,
-  createCipheriv,
-  createDecipheriv,
-} from "node:crypto";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { encrypt, decrypt } from "./crypto";
 
 /**
  * Multi-user accounts, persisted to a JSON file next to the app.
@@ -78,32 +73,6 @@ async function write(store: Store): Promise<void> {
 }
 
 /* ------------------------------------------------------------ crypto */
-
-function requireSecret(): string {
-  const s = process.env.AUTH_SECRET?.trim();
-  if (!s) throw new Error("AUTH_SECRET is not set — required to hash passwords and encrypt broker keys");
-  return s;
-}
-
-/** 32-byte AES key derived from the deployment secret. */
-function encKey(): Buffer {
-  return scryptSync(requireSecret(), "mnha-cred-enc-v1", 32);
-}
-
-function encrypt(plain: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encKey(), iv);
-  const ct = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return [iv, ct, tag].map((b) => b.toString("base64")).join(".");
-}
-
-function decrypt(blob: string): string {
-  const [ivB, ctB, tagB] = blob.split(".").map((s) => Buffer.from(s, "base64"));
-  const d = createDecipheriv("aes-256-gcm", encKey(), ivB);
-  d.setAuthTag(tagB);
-  return Buffer.concat([d.update(ctB), d.final()]).toString("utf8");
-}
 
 function hashPassword(pw: string): string {
   const salt = randomBytes(16);

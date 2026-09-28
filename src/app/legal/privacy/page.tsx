@@ -24,7 +24,11 @@ export default function PrivacyPage() {
             <strong>Broker credentials:</strong> the Groww API key and TOTP secret you choose to connect, stored
             <strong> encrypted at rest with AES-256-GCM</strong>. They are used only to read your account and place the
             orders you confirm.<br />
-            <strong>Usage data:</strong> your watchlists and the signals shown to you, to run the product.
+            <strong>Identity-verification data (only if you submit it):</strong> your full name, PAN, date of birth,
+            address, a selfie, and any ID document you upload — used solely to verify your identity. PAN and date of
+            birth are stored encrypted; the selfie and documents are stored outside the public web and are viewable
+            only by you and the reviewer. This is MNHA&apos;s own internal check, not a government or SEBI KYC.<br />
+            <strong>Usage data:</strong> your watchlists, notifications and the signals shown to you, to run the product.
           </p>
         </div>
 
@@ -48,7 +52,8 @@ export default function PrivacyPage() {
           <H>Your choices</H>
           <p>
             You can disconnect your broker (which removes the stored credentials) or delete your account entirely from
-            Settings at any time. Deleting your account removes your stored data from the Service.
+            Settings at any time. Deleting your account removes your stored data — including any identity-verification
+            details, selfie and documents — from the Service.
           </p>
         </div>
 

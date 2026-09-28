@@ -1,0 +1,68 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { currentUserId } from "@/lib/session";
+import { OWNER_ID } from "@/lib/auth";
+import { submitKyc } from "@/lib/kyc";
+import { notify } from "@/lib/notifications";
+import { rateLimit } from "@/lib/ratelimit";
+
+export interface KycState {
+  error?: string;
+  ok?: boolean;
+}
+
+const MAX_BYTES = 5 * 1024 * 1024; // 5 MB per file
+const IMG = new Set(["image/jpeg", "image/png", "image/webp"]);
+const DOC = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+
+async function readFilePart(
+  form: FormData,
+  field: string,
+  allowed: Set<string>,
+  required: boolean,
+): Promise<{ ok: true; value: { buffer: Buffer; name: string } | null } | { ok: false; error: string }> {
+  const f = form.get(field);
+  if (!(f instanceof File) || f.size === 0) {
+    return required ? { ok: false, error: `A ${field} is required.` } : { ok: true, value: null };
+  }
+  if (f.size > MAX_BYTES) return { ok: false, error: `Your ${field} is larger than 5 MB.` };
+  if (!allowed.has(f.type)) return { ok: false, error: `The ${field} must be a JPG, PNG${allowed.has("application/pdf") ? " or PDF" : ""} file.` };
+  return { ok: true, value: { buffer: Buffer.from(await f.arrayBuffer()), name: f.name } };
+}
+
+export async function submitKycAction(_prev: KycState, form: FormData): Promise<KycState> {
+  const uid = await currentUserId();
+  if (!uid) return { error: "Your session expired. Sign in again." };
+  if (uid === OWNER_ID) return { error: "The owner account does not need identity verification." };
+  if (!rateLimit(`kyc:${uid}`, 5, 60 * 60_000).ok) return { error: "Too many attempts. Try again later." };
+
+  if (form.get("consent") !== "on") {
+    return { error: "Please tick the consent box to submit your details for verification." };
+  }
+
+  const selfie = await readFilePart(form, "selfie", IMG, true);
+  if (!selfie.ok) return { error: selfie.error };
+  const doc = await readFilePart(form, "doc", DOC, false);
+  if (!doc.ok) return { error: doc.error };
+
+  const res = await submitKyc(uid, {
+    fullName: String(form.get("fullName") ?? ""),
+    pan: String(form.get("pan") ?? ""),
+    dob: String(form.get("dob") ?? ""),
+    address: String(form.get("address") ?? ""),
+    selfie: selfie.value,
+    doc: doc.value,
+  });
+  if (!res.ok) return { error: res.error };
+
+  await notify(uid, {
+    kind: "account",
+    tone: "neutral",
+    title: "Verification submitted",
+    body: "Your details are in review. We'll schedule a short live video call to confirm your identity.",
+    key: "kyc-submitted",
+  });
+  revalidatePath("/kyc");
+  return { ok: true };
+}

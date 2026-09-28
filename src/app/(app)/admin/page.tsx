@@ -3,9 +3,10 @@ import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
 import { listUsers } from "@/lib/users";
+import { listKyc } from "@/lib/kyc";
 import { engineStatus } from "@/lib/signals/engine";
 import { PageHead, Card, CardHead, Pill } from "@/components/ui";
-import { adminDisconnectBroker, adminDeleteUser } from "./actions";
+import { adminDisconnectBroker, adminDeleteUser, adminKycDecision, adminScheduleKycCall } from "./actions";
 
 export const metadata: Metadata = { title: "Admin · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -37,10 +38,12 @@ export default async function AdminPage() {
   // Owner only. A regular user who guesses the URL is sent back to the app.
   if ((await currentUserId()) !== OWNER_ID) redirect("/stocks/alerts");
 
-  const users = await listUsers();
+  const [users, kyc] = await Promise.all([listUsers(), listKyc()]);
   const engine = engineStatus();
   const connected = users.filter((u) => u.hasBroker).length;
   const last7 = users.filter((u) => withinDays(u.createdAt, 7)).length;
+  const pendingKyc = kyc.filter((k) => k.status === "submitted").length;
+  const emailFor = new Map(users.map((u) => [u.id, u.email]));
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -53,6 +56,7 @@ export default async function AdminPage() {
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Users" value={String(users.length)} />
         <Stat label="Brokers connected" value={String(connected)} sub={`${users.length - connected} pending`} />
+        <Stat label="KYC in review" value={String(pendingKyc)} sub={`${kyc.length} submitted`} />
         <Stat label="New (7 days)" value={String(last7)} />
         <Stat label="Signal engine" value={engine.running ? "Running" : "Idle"} sub={`scan ${ago(engine.lastScan)}`} />
       </div>
@@ -127,9 +131,65 @@ export default async function AdminPage() {
         )}
       </Card>
 
+      {/* KYC review */}
+      <Card pad={false} className="mt-6">
+        <div className="border-b border-line px-5 py-4">
+          <h2 className="text-[15px] font-semibold tracking-tight text-ink">Identity verification ({kyc.length})</h2>
+          <p className="mt-0.5 text-[12px] text-ink3">Review the selfie + document, do the live call, then approve or reject. This is MNHA&apos;s own check, not a government KYC.</p>
+        </div>
+        {kyc.length === 0 ? (
+          <p className="px-5 py-10 text-center text-[13.5px] text-ink3">No submissions yet.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {kyc.map((k) => (
+              <li key={k.userId} className="px-5 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[13.5px] font-semibold text-ink">
+                      {k.fullName}{" "}
+                      <span className={`ml-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold ${
+                        k.status === "approved" ? "bg-upsoft text-up" : k.status === "rejected" ? "bg-downsoft text-down" : "bg-warnsoft text-warn"
+                      }`}>{k.status}</span>
+                    </p>
+                    <p className="tnum text-[11.5px] text-ink3">{emailFor.get(k.userId) ?? k.userId} · PAN {k.panMasked} · DOB {k.dob}</p>
+                    <p className="text-[11.5px] text-ink3">{k.address}</p>
+                  </div>
+                  <div className="flex gap-2 text-[12px]">
+                    {k.hasSelfie && <a href={`/api/kyc/file?user=${k.userId}&kind=selfie`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-line px-2.5 py-1.5 font-medium text-brandtext hover:bg-surfaceh">Selfie</a>}
+                    {k.hasDoc && <a href={`/api/kyc/file?user=${k.userId}&kind=doc`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-line px-2.5 py-1.5 font-medium text-brandtext hover:bg-surfaceh">Document</a>}
+                  </div>
+                </div>
+
+                {/* schedule the live call */}
+                <form action={adminScheduleKycCall} className="mt-3 flex flex-wrap items-end gap-2">
+                  <input type="hidden" name="userId" value={k.userId} />
+                  <label className="text-[11px] text-ink3">Call time
+                    <input name="callAt" type="datetime-local" className="mt-1 block h-9 rounded-md border border-line bg-surface px-2 text-[12px] text-ink" />
+                  </label>
+                  <label className="flex-1 text-[11px] text-ink3">Meeting link
+                    <input name="callLink" type="url" placeholder="https://meet.google.com/…" className="mt-1 block h-9 w-full rounded-md border border-line bg-surface px-2 text-[12px] text-ink" />
+                  </label>
+                  <button className="h-9 rounded-md border border-line px-3 text-[12px] font-medium text-ink2 hover:bg-surfaceh hover:text-ink">Set call</button>
+                </form>
+                {(k.callAt || k.callLink) && <p className="mt-1 text-[11px] text-ink3">Scheduled{k.callAt ? `: ${fmtDate(k.callAt)}` : ""}{k.callLink ? " · link set" : ""}</p>}
+
+                {/* approve / reject */}
+                <form action={adminKycDecision} className="mt-2 flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="userId" value={k.userId} />
+                  <input name="notes" placeholder="Notes (shown to user if rejected)" className="h-9 flex-1 rounded-md border border-line bg-surface px-2.5 text-[12px] text-ink" />
+                  <button name="decision" value="approved" className="h-9 rounded-md bg-brand px-3 text-[12px] font-semibold text-white hover:bg-brandh">Approve</button>
+                  <button name="decision" value="rejected" className="h-9 rounded-md border border-down/40 px-3 text-[12px] font-semibold text-down hover:bg-downsoft">Reject</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
       <p className="mt-4 text-[11.5px] leading-relaxed text-ink3">
-        Deleting a user removes their MNHA account and their encrypted broker credentials. Their money and positions
-        stay with Groww and are unaffected. Broker keys are never decrypted or displayed on this page.
+        Deleting a user removes their MNHA account, encrypted broker credentials, and KYC record + uploaded files.
+        Their money and positions stay with Groww and are unaffected. Broker keys are never decrypted or displayed
+        here; KYC files open only through an owner-gated route.
       </p>
     </div>
   );

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { PageHead, Card, CardHead } from "@/components/ui";
+import Link from "next/link";
 import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
 import { findById, hasBroker } from "@/lib/users";
+import { getKycView } from "@/lib/kyc";
 import { logout } from "@/app/login/actions";
 import ChangePassword from "./ChangePassword";
 import { disconnectBrokerAction, deleteAccountAction } from "./actions";
@@ -15,6 +17,7 @@ export default async function SettingsPage() {
   const isOwner = uid === OWNER_ID;
   const user = uid && !isOwner ? await findById(uid) : null;
   const connected = uid && !isOwner ? await hasBroker(uid) : true;
+  const kyc = uid && !isOwner ? await getKycView(uid) : { status: "none" as const };
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -64,6 +67,30 @@ export default async function SettingsPage() {
           </>
         )}
       </Card>
+
+      {/* Identity verification — users only */}
+      {!isOwner && (
+        <Card className="mb-5">
+          <CardHead
+            title="Identity verification"
+            sub="MNHA's own check (form + selfie + live call) — not a government KYC"
+            right={
+              <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold ${
+                kyc.status === "approved" ? "bg-upsoft text-up" : kyc.status === "rejected" ? "bg-downsoft text-down" : kyc.status === "submitted" ? "bg-warnsoft text-warn" : "bg-surface2 text-ink2"
+              }`}>
+                {kyc.status === "approved" ? "Verified" : kyc.status === "rejected" ? "Rejected" : kyc.status === "submitted" ? "In review" : "Not started"}
+              </span>
+            }
+          />
+          <p className="mb-4 text-[13.5px] leading-relaxed text-ink2">
+            Your PAN and date of birth are stored encrypted; your selfie and documents open only to you and the
+            reviewer. Everything is deleted if you delete your account.
+          </p>
+          <Link href="/kyc" className="inline-flex h-10 items-center rounded-lg border border-line2 px-4 text-[13.5px] font-semibold text-ink hover:bg-surfaceh">
+            {kyc.status === "none" ? "Start verification" : "View verification"}
+          </Link>
+        </Card>
+      )}
 
       {/* Appearance */}
       <Card className="mb-5">

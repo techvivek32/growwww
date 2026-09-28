@@ -22,6 +22,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // KYC uploads (selfie + document) post through a Server Action; the default
+  // 1MB body cap is too small for a photo. Two 5MB files + multipart overhead.
+  experimental: { serverActions: { bodySizeLimit: "11mb" } },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

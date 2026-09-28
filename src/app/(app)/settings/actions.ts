@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { currentUserId, clearSession } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
 import { changePassword, clearBroker, deleteUser } from "@/lib/users";
+import { deleteKyc } from "@/lib/kyc";
 
 export interface PwState {
   error?: string;
@@ -36,6 +37,7 @@ export async function disconnectBrokerAction(): Promise<void> {
 export async function deleteAccountAction(): Promise<void> {
   const uid = await currentUserId();
   if (!uid || uid === OWNER_ID) return;
+  await deleteKyc(uid); // erase KYC record + uploaded files
   await deleteUser(uid);
   await clearSession();
   redirect("/");
