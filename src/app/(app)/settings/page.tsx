@@ -23,21 +23,18 @@ export default async function SettingsPage() {
     <div className="mx-auto max-w-3xl">
       <PageHead title="Settings" sub="Your account, your broker connection, your data." />
 
-      {/* Demo workspace */}
+      {/* Linked accounts */}
       <Card className="mb-5">
         <CardHead
-          title="Demo workspace"
-          sub="A sample multi-account view to demonstrate the platform"
-          right={
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-warnsoft px-2 py-1 text-[11px] font-semibold text-warn">Demo</span>
-          }
+          title="Linked accounts"
+          sub="A multi-account view of trades and P&L"
         />
         <p className="mb-4 text-[13.5px] leading-relaxed text-ink2">
-          Open a linked-accounts view with sample trades and P&amp;L — the platform&apos;s look and flow, with clearly
-          simulated data (nothing real). Useful for a walkthrough.
+          Open the linked-accounts view to see every account you manage in one place, with their recent trades and
+          P&amp;L side by side.
         </p>
-        <Link href="/demo" className="inline-flex h-10 items-center rounded-lg border border-line2 px-4 text-[13.5px] font-semibold text-ink hover:bg-surfaceh">
-          Open demo workspace
+        <Link href="/linked-accounts" className="inline-flex h-10 items-center rounded-lg border border-line2 px-4 text-[13.5px] font-semibold text-ink hover:bg-surfaceh">
+          Open linked accounts
         </Link>
       </Card>
 
