@@ -9,21 +9,17 @@ import MarketClock from "./MarketClock";
 import { AutoTradeToggle } from "./AutoTrade";
 import ProfileMenu from "./ProfileMenu";
 import SearchBox from "./SearchBox";
+import { LogoMark, Wordmark } from "./public/Brand";
+import { MEMBER_HOME, OWNER_HOME } from "@/lib/routes";
 
-function Logo() {
+function Logo({ href }: { href: string }) {
   return (
-    <Link href="/stocks/alerts" className="flex shrink-0 items-center gap-2.5" aria-label="MNHA Financials home">
-      <span
-        className="grid h-9 w-9 place-items-center rounded-full"
-        style={{ background: "linear-gradient(135deg, #00d09c 0%, #00a3ff 100%)" }}
-      >
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4 16.5 9.5 11l3.5 3.5L20 7" />
-        </svg>
+    <Link href={href} className="flex shrink-0 items-center text-ink" aria-label="MNHA Financials home">
+      <span className="sm:hidden">
+        <LogoMark tone="current" />
       </span>
-      <span className="hidden leading-none sm:block">
-        <span className="block text-[16px] font-bold tracking-tight text-ink">MNHA</span>
-        <span className="block text-[9px] font-semibold tracking-[0.16em] text-ink3">FINANCIALS</span>
+      <span className="hidden sm:inline-flex">
+        <Wordmark tone="current" />
       </span>
     </Link>
   );
@@ -34,14 +30,14 @@ function BellLink({ unread, active }: { unread: number; active: boolean }) {
     <Link
       href="/notifications"
       aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
-      className={`relative grid h-9 w-9 place-items-center rounded-full transition-colors hover:bg-surfaceh ${active ? "text-ink" : "text-ink2 hover:text-ink"}`}
+      className={`relative grid h-9 w-9 place-items-center transition-colors hover:bg-surfaceh ${active ? "text-ink" : "text-ink2 hover:text-ink"}`}
     >
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
         <path d="M13.7 21a2 2 0 0 1-3.4 0" />
       </svg>
       {unread > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-down px-1 text-[9px] font-bold text-white">
+        <span className="absolute -top-0.5 -right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-down px-1 text-[9px] font-bold text-onbrand">
           {unread > 9 ? "9+" : unread}
         </span>
       )}
@@ -61,8 +57,10 @@ export default function TopNav({
   unread?: number;
 }) {
   const pathname = usePathname();
-  const trading = NAV_ITEMS.filter((i) => i.group === "trading");
-  const system = NAV_ITEMS.filter((i) => i.group === "system");
+  // Member accounts see only view-only sections — no signals, alerts or order entry.
+  const visible = NAV_ITEMS.filter((i) => isOwner || i.access !== "owner");
+  const trading = visible.filter((i) => i.group === "trading");
+  const system = visible.filter((i) => i.group === "system");
 
   const tab = (i: (typeof NAV_ITEMS)[number], dim = false) => {
     const on = pathname === i.href;
@@ -71,13 +69,13 @@ export default function TopNav({
         key={i.href}
         href={i.href}
         aria-current={on ? "page" : undefined}
-        className={`relative shrink-0 px-3 py-3 text-[13.5px] font-medium whitespace-nowrap transition-colors ${
+        className={`relative shrink-0 px-2.5 py-3 text-[13.5px] font-medium whitespace-nowrap transition-colors ${
           on ? "text-ink" : dim ? "text-ink3 hover:text-ink2" : "text-ink2 hover:text-ink"
         }`}
       >
-        <span className="lg:hidden">{i.short ?? i.label}</span>
-        <span className="hidden lg:inline">{i.label}</span>
-        {on && <span className="absolute inset-x-2 bottom-0 h-[2.5px] rounded-full bg-brand" />}
+        <span className="2xl:hidden">{i.short ?? i.label}</span>
+        <span className="hidden 2xl:inline">{i.label}</span>
+        {on && <span className="absolute inset-x-2 bottom-0 h-[2px] bg-mark" />}
       </Link>
     );
   };
@@ -86,16 +84,18 @@ export default function TopNav({
     <header className="app-header sticky top-0 z-40">
       {/* Row 1 — brand, search, account */}
       <div className="mx-auto flex h-14 max-w-[1360px] items-center gap-4 px-4 lg:px-6">
-        <Logo />
+        <Logo href={isOwner ? OWNER_HOME : MEMBER_HOME} />
 
 
         <div className="ml-auto hidden min-w-0 flex-1 justify-center lg:flex">
           <SearchBox />
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-2 lg:ml-0">
-          <MarketClock />
-          <AutoTradeToggle />
+        <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2 lg:ml-0">
+          <span className="hidden lg:block">
+            <MarketClock />
+          </span>
+          {isOwner && <AutoTradeToggle />}
           <BellLink unread={unread} active={pathname === "/notifications"} />
           <ThemeToggle />
           <ProfileMenu account={account} />
@@ -112,10 +112,10 @@ export default function TopNav({
             {isOwner && tab({ href: "/admin", label: "Admin", short: "Admin", group: "system" }, true)}
           </nav>
 
-          <div className="hidden shrink-0 items-center xl:flex">
+          <div className="hidden shrink-0 items-center 2xl:flex">
             <Link
               href="/broker"
-              className="flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12px] font-medium text-ink2 transition-colors hover:bg-surfaceh hover:text-ink"
+              className="flex items-center gap-1.5 border border-line px-2.5 py-1.5 font-mono text-[11px] tracking-[0.04em] text-ink2 uppercase transition-colors hover:bg-surfaceh hover:text-ink"
             >
               <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-up" : "bg-ink3"}`} />
               {account.broker}

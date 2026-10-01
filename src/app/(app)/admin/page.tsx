@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { currentUserId } from "@/lib/session";
+import type { ReactNode } from "react";
 import { OWNER_ID } from "@/lib/auth";
+import { requireOwnerPage } from "@/lib/access";
 import { listUsers } from "@/lib/users";
 import { listKyc } from "@/lib/kyc";
 import { listConsents, AGREEMENT_VERSION, type ConsentRecord } from "@/lib/consent";
@@ -56,28 +56,42 @@ const LOG_TONE: Record<LedgerStatus, "up" | "down" | "neutral"> = { placed: "up"
 const INV_TONE: Record<InvoiceStatus, "warn" | "up" | "neutral"> = { due: "warn", paid: "up", waived: "neutral" };
 const KYC_TONE = { approved: "up", rejected: "down", submitted: "warn", none: "neutral" } as const;
 
+const eyebrow = "font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase";
+const input = "h-9 border border-line2 bg-surface px-2.5 font-sans text-[12.5px] tracking-normal text-ink normal-case outline-none placeholder:text-ink3 focus:border-ink";
+const btnLine = "h-8 border border-line2 px-2.5 text-[12px] font-medium text-ink2 transition-colors hover:bg-surfaceh hover:text-ink";
+
+/** A row of figures on one hairline grid — the cells share their borders. */
+function Figs({ cols, children }: { cols: string; children: ReactNode }) {
+  return <div className={`grid gap-px border border-line bg-line ${cols}`}>{children}</div>;
+}
+
+/** One cell of a Figs grid. */
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-xl border border-line bg-surface px-4 py-3.5" style={{ boxShadow: "var(--shadow-card)" }}>
-      <p className="text-[11px] tracking-wide text-ink3 uppercase">{label}</p>
-      <p className="tnum mt-0.5 text-[22px] font-semibold text-ink">{value}</p>
-      {sub && <p className="text-[11.5px] text-ink3">{sub}</p>}
+    <div className="min-w-0 bg-surface px-4 py-4">
+      <p className={eyebrow}>{label}</p>
+      <p className="tnum mt-2 text-[22px] leading-none font-semibold tracking-[-0.01em] text-ink">{value}</p>
+      {sub && <p className="mt-1.5 text-[11.5px] leading-snug text-ink3">{sub}</p>}
     </div>
   );
 }
 
-function CardTitle({ title, sub }: { title: string; sub?: string }) {
+/** Card header for a full-bleed table: serif title, the count in mono. */
+function CardTitle({ title, count, sub }: { title: string; count?: string; sub?: string }) {
   return (
     <div className="border-b border-line px-5 py-4">
-      <h2 className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2>
-      {sub && <p className="mt-0.5 text-[12px] text-ink3">{sub}</p>}
+      <h2 className="pub-display text-[22px] leading-tight text-ink">
+        {title}
+        {count !== undefined && <span className="tnum ml-1.5 font-mono text-[13px] text-ink3">({count})</span>}
+      </h2>
+      {sub && <p className="mt-1 max-w-3xl text-[12.5px] leading-relaxed text-ink3">{sub}</p>}
     </div>
   );
 }
 
 export default async function AdminPage() {
-  // Owner only. A regular user who guesses the URL is sent back to the app.
-  if ((await currentUserId()) !== OWNER_ID) redirect("/stocks/alerts");
+  // Owner only. A member who guesses the URL is sent to their own home.
+  await requireOwnerPage();
 
   const [users, kyc, consents, members, invoices, orders, orderStats] = await Promise.all([
     listUsers(),
@@ -139,48 +153,50 @@ export default async function AdminPage() {
   const orderLog = orders.slice(0, 100);
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-6xl">
       <PageHead
         title="Admin"
         sub="Platform overview and user management. Broker keys are encrypted and never shown here."
         right={<Pill tone="violet">Owner</Pill>}
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <Figs cols="mb-10 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
         <Stat label="Users" value={String(users.length)} />
         <Stat label="Brokers connected" value={String(connected)} sub={`${users.length - connected} pending`} />
         <Stat label="KYC in review" value={String(pendingKyc)} sub={`${kyc.length} submitted`} />
         <Stat label="Active members" value={String(activeMembers.length)} sub="performance-fee" />
         <Stat label="New (7 days)" value={String(last7)} />
         <Stat label="Signal engine" value={engine.running ? "Running" : "Idle"} sub={`scan ${ago(engine.lastScan)}`} />
-      </div>
+      </Figs>
 
       {/* ============================================================ Hisab */}
-      <div className="mb-3">
-        <h2 className="text-[20px] leading-tight font-semibold tracking-[-0.02em] text-ink">Hisab</h2>
-        <p className="mt-1 text-[12.5px] text-ink3">
+      <div className="mb-5 border-t border-line pt-6">
+        <h2 className="pub-display text-[32px] leading-tight text-ink">
+          The <em>hisab</em>
+        </h2>
+        <p className="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-ink3">
           The platform&apos;s own books — onboarding, fees billed and orders sent through MNHA. Groww stays the source of
           truth for fills and money; every number here is read from MNHA&apos;s stores, and a dash means not recorded.
         </p>
       </div>
 
       {/* onboarding funnel */}
-      <Card className="mb-3">
+      <Card className="mb-4">
         <CardHead title="Onboarding funnel" sub="Each step as a share of all sign-ups" />
-        <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-5 border-t border-line pt-5 sm:grid-cols-3 lg:grid-cols-5">
           {funnel.map((f) => {
             const p = pctOf(f.n, users.length);
             return (
               <div key={f.label} className="min-w-0">
-                <p className="text-[11.5px] text-ink3">{f.label}</p>
-                <p className="tnum mt-0.5 text-[20px] font-semibold text-ink">
+                <p className={eyebrow}>{f.label}</p>
+                <p className="tnum mt-2 text-[22px] leading-none font-semibold text-ink">
                   {f.n}
-                  <span className="ml-1.5 text-[12px] font-medium text-ink3">{p === null ? "—" : `${p}%`}</span>
+                  <span className="ml-1.5 font-mono text-[11.5px] font-normal text-ink3">{p === null ? "—" : `${p}%`}</span>
                 </p>
-                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface2" aria-hidden="true">
-                  <div className="h-full rounded-full bg-brand" style={{ width: `${p ?? 0}%` }} />
+                <div className="mt-2.5 h-1 bg-surface2" aria-hidden="true">
+                  <div className="h-full bg-mark" style={{ width: `${p ?? 0}%` }} />
                 </div>
-                {f.hint && <p className="mt-1 truncate text-[10.5px] text-ink3">{f.hint}</p>}
+                {f.hint && <p className="mt-1.5 truncate text-[11px] text-ink3" title={f.hint}>{f.hint}</p>}
               </div>
             );
           })}
@@ -188,13 +204,13 @@ export default async function AdminPage() {
       </Card>
 
       {/* money + orders */}
-      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <Figs cols="mb-4 grid-cols-2 sm:grid-cols-4">
         <Stat label="Fees billed" value={inr2(sumFee())} sub={`${invoices.length} settled period${invoices.length === 1 ? "" : "s"}`} />
         <Stat label="Collected" value={inr2(sumFee("paid"))} sub={`${countInv("paid")} paid`} />
         <Stat label="Outstanding" value={inr2(sumFee("due"))} sub={`${countInv("due")} due`} />
         <Stat label="Waived" value={inr2(sumFee("waived"))} sub={`${countInv("waived")} waived / no fee`} />
-      </div>
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      </Figs>
+      <Figs cols="mb-6 grid-cols-1 sm:grid-cols-3">
         <Stat label="Orders placed today" value={String(countStatus(ordersToday, "placed"))} sub="IST calendar day" />
         <Stat label="Rejected today" value={String(countStatus(ordersToday, "rejected"))} sub={`${countStatus(ordersToday, "cancelled")} cancellations today`} />
         <Stat
@@ -202,12 +218,13 @@ export default async function AdminPage() {
           value={String(orders.length)}
           sub={`${countStatus(orders, "placed")} placed · ${countStatus(orders, "rejected")} rejected · ${countStatus(orders, "unknown")} unknown · ${countStatus(orders, "cancelled")} cancel sent`}
         />
-      </div>
+      </Figs>
 
       {/* accounts — one row per user; replaces the old users table, keeps its actions */}
       <Card pad={false} className="mb-6">
         <CardTitle
-          title={`Accounts (${users.length})`}
+          title="Accounts"
+          count={String(users.length)}
           sub="One row per user. Orders count only what was sent through MNHA since the order ledger started; NAV is the last value seen in the member's own session."
         />
         {users.length === 0 ? (
@@ -216,16 +233,16 @@ export default async function AdminPage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1120px] border-collapse text-left">
               <thead>
-                <tr className="border-b border-line text-[12px] text-ink3">
-                  <th className="px-4 py-3 font-semibold">User</th>
-                  <th className="px-4 py-3 font-semibold">Joined</th>
-                  <th className="px-4 py-3 font-semibold">Agreement</th>
-                  <th className="px-4 py-3 font-semibold">KYC</th>
-                  <th className="px-4 py-3 font-semibold">Groww</th>
-                  <th className="px-4 py-3 font-semibold">Orders</th>
-                  <th className="px-4 py-3 font-semibold">Membership</th>
-                  <th className="px-4 py-3 text-right font-semibold">Bills</th>
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                <tr className="border-b border-line font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">
+                  <th className="px-4 py-3 font-medium">User</th>
+                  <th className="px-4 py-3 font-medium">Joined</th>
+                  <th className="px-4 py-3 font-medium">Agreement</th>
+                  <th className="px-4 py-3 font-medium">KYC</th>
+                  <th className="px-4 py-3 font-medium">Groww</th>
+                  <th className="px-4 py-3 font-medium">Orders</th>
+                  <th className="px-4 py-3 font-medium">Membership</th>
+                  <th className="px-4 py-3 text-right font-medium">Bills</th>
+                  <th className="px-4 py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -238,7 +255,7 @@ export default async function AdminPage() {
                   const a = m && m.status === "active" && m.lastNav != null ? accrual(m, m.lastNav) : null;
                   const bills = billsFor.get(u.id);
                   return (
-                    <tr key={u.id} className="border-b border-line/60 align-top">
+                    <tr key={u.id} className="border-b border-line last:border-0 align-top">
                       <td className="px-4 py-3">
                         <p className="text-[13px] font-medium text-ink">{u.email}</p>
                         <p className="tnum text-[11px] text-ink3">{u.id}</p>
@@ -267,9 +284,9 @@ export default async function AdminPage() {
                             {u.brokerStaticIp && u.brokerStaticIp === serverIp ? (
                               <p className="tnum text-ink2" title="Static IP the user confirmed registering on their Groww key">✓ IP {u.brokerStaticIp}</p>
                             ) : u.brokerStaticIp ? (
-                              <p><span className="rounded-md bg-warnsoft px-1.5 py-0.5 text-[10.5px] font-semibold text-warn">confirmed {u.brokerStaticIp} — server now {serverIp ?? "—"}</span></p>
+                              <p><Pill tone="warn">confirmed {u.brokerStaticIp} — server now {serverIp ?? "—"}</Pill></p>
                             ) : (
-                              <p><span className="rounded-md bg-warnsoft px-1.5 py-0.5 text-[10.5px] font-semibold text-warn">IP not confirmed</span></p>
+                              <p><Pill tone="warn">IP not confirmed</Pill></p>
                             )}
                           </div>
                         ) : (
@@ -328,14 +345,14 @@ export default async function AdminPage() {
                           {u.hasBroker && (
                             <form action={adminDisconnectBroker}>
                               <input type="hidden" name="userId" value={u.id} />
-                              <button className="rounded-md border border-line px-2.5 py-1.5 text-[12px] font-medium text-ink2 hover:bg-surfaceh hover:text-ink" title="Remove this user's stored broker credentials">
+                              <button className={btnLine} title="Remove this user's stored broker credentials">
                                 Disconnect
                               </button>
                             </form>
                           )}
                           <form action={adminDeleteUser}>
                             <input type="hidden" name="userId" value={u.id} />
-                            <button className="rounded-md border border-down/40 px-2.5 py-1.5 text-[12px] font-medium text-down hover:bg-downsoft" title="Permanently delete this user">
+                            <button className="h-8 border border-down/50 px-2.5 text-[12px] font-medium text-down transition-colors hover:bg-downsoft" title="Permanently delete this user">
                               Delete
                             </button>
                           </form>
@@ -353,7 +370,8 @@ export default async function AdminPage() {
       {/* fee ledger */}
       <Card pad={false} className="mb-6">
         <CardTitle
-          title={`Fee ledger (${invoices.length})`}
+          title="Fee ledger"
+          count={String(invoices.length)}
           sub="Settled performance periods. Fee only on profit above the member's previous peak — nothing on a loss."
         />
         <div className="space-y-2 border-b border-line px-5 py-4 text-[12px] leading-relaxed text-ink2">
@@ -363,7 +381,7 @@ export default async function AdminPage() {
             a typed or stale value is never used. The last-known NAV below is reference only. Fees are collected out of band
             and are never auto-debited from anyone&apos;s account.
           </p>
-          <p className="rounded-md bg-warnsoft px-3 py-2 text-warn">
+          <p className="border-l-2 border-warn bg-warnsoft px-3 py-2 text-ink">
             Deposits/withdrawals during the period are not netted out — waive the invoice if the gain came from a deposit.
           </p>
         </div>
@@ -402,21 +420,21 @@ export default async function AdminPage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] border-collapse text-left">
               <thead>
-                <tr className="border-b border-line text-[12px] text-ink3">
-                  <th className="px-4 py-3 font-semibold">Member</th>
-                  <th className="px-4 py-3 font-semibold">Period</th>
-                  <th className="px-4 py-3 text-right font-semibold">HWM before</th>
-                  <th className="px-4 py-3 text-right font-semibold">End NAV</th>
-                  <th className="px-4 py-3 text-right font-semibold">Profit above HWM</th>
-                  <th className="px-4 py-3 text-right font-semibold">Fee %</th>
-                  <th className="px-4 py-3 text-right font-semibold">Fee due</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                <tr className="border-b border-line font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">
+                  <th className="px-4 py-3 font-medium">Member</th>
+                  <th className="px-4 py-3 font-medium">Period</th>
+                  <th className="px-4 py-3 text-right font-medium">HWM before</th>
+                  <th className="px-4 py-3 text-right font-medium">End NAV</th>
+                  <th className="px-4 py-3 text-right font-medium">Profit above HWM</th>
+                  <th className="px-4 py-3 text-right font-medium">Fee %</th>
+                  <th className="px-4 py-3 text-right font-medium">Fee due</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {invoices.map((iv) => (
-                  <tr key={iv.id} className="border-b border-line/60">
+                  <tr key={iv.id} className="border-b border-line last:border-0">
                     <td className="px-4 py-3">
                       <p className="text-[12.5px] text-ink">{who(iv.userId)}</p>
                       <p className="tnum text-[10.5px] text-ink3">{iv.id}</p>
@@ -437,14 +455,14 @@ export default async function AdminPage() {
                           <form action={adminMarkInvoice}>
                             <input type="hidden" name="id" value={iv.id} />
                             <input type="hidden" name="status" value="paid" />
-                            <button className="rounded-md border border-up/40 px-2.5 py-1.5 text-[12px] font-medium text-up hover:bg-upsoft" title="Record that this fee was received out of band">
+                            <button className="h-8 border border-up/50 px-2.5 text-[12px] font-medium text-up transition-colors hover:bg-upsoft" title="Record that this fee was received out of band">
                               Mark paid
                             </button>
                           </form>
                           <form action={adminMarkInvoice}>
                             <input type="hidden" name="id" value={iv.id} />
                             <input type="hidden" name="status" value="waived" />
-                            <button className="rounded-md border border-line px-2.5 py-1.5 text-[12px] font-medium text-ink2 hover:bg-surfaceh hover:text-ink" title="Waive this fee (e.g. the gain came from a deposit)">
+                            <button className={btnLine} title="Waive this fee (e.g. the gain came from a deposit)">
                               Waive
                             </button>
                           </form>
@@ -464,7 +482,8 @@ export default async function AdminPage() {
       {/* order log */}
       <Card pad={false} className="mb-6">
         <CardTitle
-          title={`Order log (latest ${orderLog.length} of ${orders.length})`}
+          title="Order log"
+          count={`latest ${orderLog.length} of ${orders.length}`}
           sub="Every order sent through MNHA, recorded server-side when the order action ran. Fills and money live at Groww."
         />
         {orderLog.length === 0 ? (
@@ -473,15 +492,15 @@ export default async function AdminPage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1000px] border-collapse text-left">
               <thead>
-                <tr className="border-b border-line text-[12px] text-ink3">
-                  <th className="px-4 py-3 font-semibold">Time (IST)</th>
-                  <th className="px-4 py-3 font-semibold">User</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Order</th>
-                  <th className="px-4 py-3 font-semibold">Type</th>
-                  <th className="px-4 py-3 text-right font-semibold">Price</th>
-                  <th className="px-4 py-3 font-semibold">Groww order id</th>
-                  <th className="px-4 py-3 font-semibold">Message</th>
+                <tr className="border-b border-line font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">
+                  <th className="px-4 py-3 font-medium">Time (IST)</th>
+                  <th className="px-4 py-3 font-medium">User</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Order</th>
+                  <th className="px-4 py-3 font-medium">Type</th>
+                  <th className="px-4 py-3 text-right font-medium">Price</th>
+                  <th className="px-4 py-3 font-medium">Groww order id</th>
+                  <th className="px-4 py-3 font-medium">Message</th>
                 </tr>
               </thead>
               <tbody>
@@ -491,7 +510,7 @@ export default async function AdminPage() {
                     ? `₹${o.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
                     : o.type === "MARKET" || o.type === "SL_M" ? "MKT" : "—";
                   return (
-                    <tr key={o.id} className="border-b border-line/60">
+                    <tr key={o.id} className="border-b border-line last:border-0">
                       <td className="tnum px-4 py-2.5 text-[12px] whitespace-nowrap text-ink2">{LOG_TIME.format(new Date(o.at))}</td>
                       <td className="max-w-[180px] truncate px-4 py-2.5 text-[12px] text-ink" title={who(o.userId)}>{who(o.userId)}</td>
                       <td className="px-4 py-2.5"><Pill tone={LOG_TONE[o.status]}>{o.status}</Pill></td>
@@ -521,20 +540,21 @@ export default async function AdminPage() {
 
       <Card>
         <CardHead title="Signal engine" sub="Shared research runs on the house account" />
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 text-[13px]">
-          <div><p className="text-ink3">Status</p><p className="font-semibold text-ink">{engine.running ? "Running" : "Idle"}</p></div>
-          <div><p className="text-ink3">Scanning now</p><p className="font-semibold text-ink">{engine.scanning ? "Yes" : "No"}</p></div>
-          <div><p className="text-ink3">Last scan</p><p className="font-semibold text-ink">{ago(engine.lastScan)}</p></div>
-          <div><p className="text-ink3">Edge recomputed</p><p className="font-semibold text-ink">{ago(engine.lastBacktest)}</p></div>
-        </div>
+        <dl className="grid grid-cols-2 gap-4 border-t border-line pt-4 text-[13.5px] sm:grid-cols-4">
+          <div><dt className={eyebrow}>Status</dt><dd className="mt-1.5 font-semibold text-ink">{engine.running ? "Running" : "Idle"}</dd></div>
+          <div><dt className={eyebrow}>Scanning now</dt><dd className="mt-1.5 font-semibold text-ink">{engine.scanning ? "Yes" : "No"}</dd></div>
+          <div><dt className={eyebrow}>Last scan</dt><dd className="tnum mt-1.5 font-semibold text-ink">{ago(engine.lastScan)}</dd></div>
+          <div><dt className={eyebrow}>Edge recomputed</dt><dd className="tnum mt-1.5 font-semibold text-ink">{ago(engine.lastBacktest)}</dd></div>
+        </dl>
       </Card>
 
       {/* KYC review */}
       <Card pad={false} className="mt-6">
-        <div className="border-b border-line px-5 py-4">
-          <h2 className="text-[15px] font-semibold tracking-tight text-ink">Identity verification ({kyc.length})</h2>
-          <p className="mt-0.5 text-[12px] text-ink3">Review the selfie + document, do the live call, then approve or reject. This is MNHA&apos;s own check, not a government KYC.</p>
-        </div>
+        <CardTitle
+          title="Identity verification"
+          count={String(kyc.length)}
+          sub="Review the selfie + document, do the live call, then approve or reject. This is MNHA's own check, not a government KYC."
+        />
         {kyc.length === 0 ? (
           <p className="px-5 py-10 text-center text-[13.5px] text-ink3">No submissions yet.</p>
         ) : (
@@ -545,38 +565,36 @@ export default async function AdminPage() {
                   <div className="min-w-0">
                     <p className="text-[13.5px] font-semibold text-ink">
                       {k.fullName}{" "}
-                      <span className={`ml-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold ${
-                        k.status === "approved" ? "bg-upsoft text-up" : k.status === "rejected" ? "bg-downsoft text-down" : "bg-warnsoft text-warn"
-                      }`}>{k.status}</span>
+                      <Pill tone={KYC_TONE[k.status]} className="ml-1 align-middle">{k.status === "submitted" ? "in review" : k.status}</Pill>
                     </p>
                     <p className="tnum text-[11.5px] text-ink3">{emailFor.get(k.userId) ?? k.userId} · PAN {k.panMasked} · DOB {k.dob}</p>
                     <p className="text-[11.5px] text-ink3">{k.address}</p>
                   </div>
                   <div className="flex gap-2 text-[12px]">
-                    {k.hasSelfie && <a href={`/api/kyc/file?user=${k.userId}&kind=selfie`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-line px-2.5 py-1.5 font-medium text-brandtext hover:bg-surfaceh">Selfie</a>}
-                    {k.hasDoc && <a href={`/api/kyc/file?user=${k.userId}&kind=doc`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-line px-2.5 py-1.5 font-medium text-brandtext hover:bg-surfaceh">Document</a>}
+                    {k.hasSelfie && <a href={`/api/kyc/file?user=${k.userId}&kind=selfie`} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center border border-line2 px-2.5 font-medium text-brandtext hover:bg-surfaceh">Selfie</a>}
+                    {k.hasDoc && <a href={`/api/kyc/file?user=${k.userId}&kind=doc`} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center border border-line2 px-2.5 font-medium text-brandtext hover:bg-surfaceh">Document</a>}
                   </div>
                 </div>
 
                 {/* schedule the live call */}
                 <form action={adminScheduleKycCall} className="mt-3 flex flex-wrap items-end gap-2">
                   <input type="hidden" name="userId" value={k.userId} />
-                  <label className="text-[11px] text-ink3">Call time
-                    <input name="callAt" type="datetime-local" className="mt-1 block h-9 rounded-md border border-line bg-surface px-2 text-[12px] text-ink" />
+                  <label className={eyebrow}>Call time
+                    <input name="callAt" type="datetime-local" className={`mt-1 block ${input}`} />
                   </label>
-                  <label className="flex-1 text-[11px] text-ink3">Meeting link
-                    <input name="callLink" type="url" placeholder="https://meet.google.com/…" className="mt-1 block h-9 w-full rounded-md border border-line bg-surface px-2 text-[12px] text-ink" />
+                  <label className={`flex-1 ${eyebrow}`}>Meeting link
+                    <input name="callLink" type="url" placeholder="https://meet.google.com/…" className={`mt-1 block w-full ${input}`} />
                   </label>
-                  <button className="h-9 rounded-md border border-line px-3 text-[12px] font-medium text-ink2 hover:bg-surfaceh hover:text-ink">Set call</button>
+                  <button className="h-9 border border-line2 px-3 text-[12px] font-medium text-ink2 transition-colors hover:bg-surfaceh hover:text-ink">Set call</button>
                 </form>
                 {(k.callAt || k.callLink) && <p className="mt-1 text-[11px] text-ink3">Scheduled{k.callAt ? `: ${fmtDate(k.callAt)}` : ""}{k.callLink ? " · link set" : ""}</p>}
 
                 {/* approve / reject */}
                 <form action={adminKycDecision} className="mt-2 flex flex-wrap items-center gap-2">
                   <input type="hidden" name="userId" value={k.userId} />
-                  <input name="notes" placeholder="Notes (shown to user if rejected)" className="h-9 flex-1 rounded-md border border-line bg-surface px-2.5 text-[12px] text-ink" />
-                  <button name="decision" value="approved" className="h-9 rounded-md bg-brand px-3 text-[12px] font-semibold text-white hover:bg-brandh">Approve</button>
-                  <button name="decision" value="rejected" className="h-9 rounded-md border border-down/40 px-3 text-[12px] font-semibold text-down hover:bg-downsoft">Reject</button>
+                  <input name="notes" placeholder="Notes (shown to user if rejected)" aria-label="Review notes" className={`flex-1 ${input}`} />
+                  <button name="decision" value="approved" className="h-9 bg-brand px-3 text-[12px] font-semibold text-onbrand transition-colors hover:bg-brandh">Approve</button>
+                  <button name="decision" value="rejected" className="h-9 border border-down/50 px-3 text-[12px] font-semibold text-down transition-colors hover:bg-downsoft">Reject</button>
                 </form>
               </li>
             ))}
@@ -586,36 +604,37 @@ export default async function AdminPage() {
 
       {/* Members */}
       <Card pad={false} className="mt-6">
-        <div className="border-b border-line px-5 py-4">
-          <h2 className="text-[15px] font-semibold tracking-tight text-ink">Members ({members.length})</h2>
-          <p className="mt-0.5 text-[12px] text-ink3">Performance-fee members. Values are the member&apos;s last-known account NAV (their own context) — no guarantee, fee on profit above the high-water mark only.</p>
-        </div>
+        <CardTitle
+          title="Members"
+          count={String(members.length)}
+          sub="Performance-fee members. Values are the member's last-known account NAV (their own context) — no guarantee, fee on profit above the high-water mark only."
+        />
         {members.length === 0 ? (
           <p className="px-5 py-8 text-center text-[13.5px] text-ink3">No members yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[680px] border-collapse text-left">
               <thead>
-                <tr className="border-b border-line text-[12px] text-ink3">
-                  <th className="px-5 py-3 font-semibold">Member</th>
-                  <th className="px-5 py-3 text-right font-semibold">Start</th>
-                  <th className="px-5 py-3 text-right font-semibold">Last NAV</th>
-                  <th className="px-5 py-3 text-right font-semibold">Profit</th>
-                  <th className="px-5 py-3 text-right font-semibold">Fee est.</th>
-                  <th className="px-5 py-3 font-semibold">Status</th>
+                <tr className="border-b border-line font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">
+                  <th className="px-5 py-3 font-medium">Member</th>
+                  <th className="px-5 py-3 text-right font-medium">Start</th>
+                  <th className="px-5 py-3 text-right font-medium">Last NAV</th>
+                  <th className="px-5 py-3 text-right font-medium">Profit</th>
+                  <th className="px-5 py-3 text-right font-medium">Fee est.</th>
+                  <th className="px-5 py-3 font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {members.map((m) => {
                   const a = m.lastNav != null ? accrual(m, m.lastNav) : null;
                   return (
-                    <tr key={m.userId} className="border-b border-line/60">
+                    <tr key={m.userId} className="border-b border-line last:border-0">
                       <td className="px-5 py-3 text-[13px] text-ink">{emailFor.get(m.userId) ?? m.userId}</td>
                       <td className="tnum px-5 py-3 text-right text-[12.5px] text-ink2">{inr(m.startNav)}</td>
                       <td className="tnum px-5 py-3 text-right text-[12.5px] text-ink2">{m.lastNav != null ? inr(m.lastNav) : "—"}</td>
                       <td className={`tnum px-5 py-3 text-right text-[12.5px] ${a && a.profit >= 0 ? "text-up" : "text-down"}`}>{a ? `${a.profit >= 0 ? "+" : ""}${inr(a.profit)}` : "—"}</td>
                       <td className="tnum px-5 py-3 text-right text-[12.5px] text-ink2">{a ? inr(a.feeEstimate) : "—"}</td>
-                      <td className="px-5 py-3 text-[12px]"><span className={`rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold ${m.status === "active" ? "bg-upsoft text-up" : "bg-surface2 text-ink2"}`}>{m.status}</span></td>
+                      <td className="px-5 py-3 text-[12px]"><Pill tone={m.status === "active" ? "up" : "neutral"}>{m.status}</Pill></td>
                     </tr>
                   );
                 })}
@@ -627,28 +646,29 @@ export default async function AdminPage() {
 
       {/* Consent audit */}
       <Card pad={false} className="mt-6">
-        <div className="border-b border-line px-5 py-4">
-          <h2 className="text-[15px] font-semibold tracking-tight text-ink">Consent audit ({consents.length})</h2>
-          <p className="mt-0.5 text-[12px] text-ink3">Immutable record of who accepted which agreement version, when, and from where. Current version: {AGREEMENT_VERSION}.</p>
-        </div>
+        <CardTitle
+          title="Consent audit"
+          count={String(consents.length)}
+          sub={`Immutable record of who accepted which agreement version, when, and from where. Current version: ${AGREEMENT_VERSION}.`}
+        />
         {consents.length === 0 ? (
           <p className="px-5 py-8 text-center text-[13.5px] text-ink3">No consent records yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-left">
               <thead>
-                <tr className="border-b border-line text-[12px] text-ink3">
-                  <th className="px-5 py-3 font-semibold">Signature</th>
-                  <th className="px-5 py-3 font-semibold">User</th>
-                  <th className="px-5 py-3 font-semibold">Lang / Version</th>
-                  <th className="px-5 py-3 font-semibold">When</th>
-                  <th className="px-5 py-3 font-semibold">Media</th>
-                  <th className="px-5 py-3 font-semibold">IP</th>
+                <tr className="border-b border-line font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">
+                  <th className="px-5 py-3 font-medium">Signature</th>
+                  <th className="px-5 py-3 font-medium">User</th>
+                  <th className="px-5 py-3 font-medium">Lang / Version</th>
+                  <th className="px-5 py-3 font-medium">When</th>
+                  <th className="px-5 py-3 font-medium">Media</th>
+                  <th className="px-5 py-3 font-medium">IP</th>
                 </tr>
               </thead>
               <tbody>
                 {consents.map((c, i) => (
-                  <tr key={`${c.userId}-${i}`} className="border-b border-line/60">
+                  <tr key={`${c.userId}-${i}`} className="border-b border-line last:border-0">
                     <td className="px-5 py-3 text-[13px] font-medium text-ink">{c.signatureName}</td>
                     <td className="px-5 py-3 text-[11.5px] text-ink3">{emailFor.get(c.userId) ?? c.userId}</td>
                     <td className="px-5 py-3 text-[12px] text-ink2">{c.language?.toUpperCase() ?? "—"} · {c.agreementVersion}</td>

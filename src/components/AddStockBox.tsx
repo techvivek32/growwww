@@ -73,7 +73,7 @@ export default function AddStockBox({
 
   return (
     <div ref={wrapRef} className="relative w-full max-w-[300px]">
-      <label className="flex h-9 items-center gap-2 rounded-lg border border-line bg-surface2 px-3 focus-within:border-brand">
+      <label className="flex h-9 items-center gap-2 border border-line bg-surface px-3 focus-within:border-brand">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-ink3">
           <path d="M12 5v14M5 12h14" strokeLinecap="round" />
         </svg>
@@ -90,10 +90,7 @@ export default function AddStockBox({
       </label>
 
       {open && hits.length > 0 && (
-        <ul
-          className="absolute top-11 right-0 left-0 z-50 overflow-hidden rounded-xl border border-line bg-surface py-1"
-          style={{ boxShadow: "var(--shadow-pop)" }}
-        >
+        <ul className="absolute top-10 right-0 left-0 z-50 overflow-hidden border border-line2 bg-surface py-1">
           {hits.map((h) => (
             <li key={`${h.kind}-${h.symbol}`}>
               <button

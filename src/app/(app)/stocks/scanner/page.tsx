@@ -8,6 +8,7 @@ import OrderTicket from "@/components/OrderTicket";
 import Link from "next/link";
 import { LivePrice, LivePct } from "@/components/Live";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
+import { requireOwnerPage } from "@/lib/access";
 
 export const metadata: Metadata = { title: "Scanner · MNHA Financials" };
 
@@ -22,6 +23,7 @@ const SETUP_TONE: Record<string, "up" | "warn" | "brand" | "down" | "neutral"> =
 };
 
 export default async function ScannerPage() {
+  await requireOwnerPage();
   const universe = await getUniverse();
   const rows = buildScanRows(universe);
   const tradable = canTrade();
@@ -30,10 +32,9 @@ export default async function ScannerPage() {
     <>
       <PageHead
         title="Scanner"
-        sub="The 32 NSE large caps the engine watches, ranked by today's move."
+        sub="The NSE large caps the engine watches, ranked by today's move."
+        right={<span className="font-mono text-[11px] tracking-[0.08em] text-ink3 uppercase">{rows.length} stocks</span>}
       />
-
-      <p className="mb-5 text-[13px] text-ink3">{rows.length} stocks</p>
 
       <TableWrap>
         <thead>
@@ -56,7 +57,7 @@ export default async function ScannerPage() {
                 <Link href={`/stock/${r.symbol}`} className="flex items-center gap-3 hover:opacity-80">
                   <SymbolChip symbol={r.symbol} size={32} />
                   <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                    <p className="flex items-center gap-1.5 text-[13.5px] font-semibold text-ink">
                       {r.symbol}
                       {r.stale && <Pill tone="warn">Snapshot</Pill>}
                     </p>

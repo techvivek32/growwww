@@ -20,18 +20,19 @@ const NO_TRADE = "Order placement is disabled on this server";
 function Levels({ a }: { a: StockAlert }) {
   const tgtPct = ((a.target - a.entry) / a.entry) * 100;
   const stopPct = ((a.stop - a.entry) / a.entry) * 100;
-  const cell = "min-w-0 rounded-lg border border-line bg-surface2 px-2 py-2.5 text-center";
+  const cell = "min-w-0 border border-line bg-surface2 px-2 py-2.5 text-center";
+  const label = "font-mono text-[10px] tracking-[0.08em] text-ink3 uppercase";
   const value = "tnum mt-1 truncate text-[13.5px] font-semibold sm:text-[14.5px]";
 
   return (
     <div className="grid grid-cols-3 gap-2">
       <div className={cell}>
-        <p className="text-[10px] font-semibold tracking-wider text-ink3 uppercase">Entry · mkt</p>
+        <p className={label}>Entry · mkt</p>
         <p className={`${value} text-ink`}>{fmtMoney(a.entry)}</p>
         <p className="tnum text-[10px] text-ink3">last traded</p>
       </div>
       <div className={cell}>
-        <p className="text-[10px] font-semibold tracking-wider text-ink3 uppercase">Target</p>
+        <p className={label}>Target</p>
         <p className={`${value} text-up`}>{fmtMoney(a.target)}</p>
         <p className="tnum text-[10px] text-up">
           {fmtPct(tgtPct)}
@@ -39,7 +40,7 @@ function Levels({ a }: { a: StockAlert }) {
         </p>
       </div>
       <div className={cell}>
-        <p className="text-[10px] font-semibold tracking-wider text-ink3 uppercase">Stop</p>
+        <p className={label}>Stop</p>
         <p className={`${value} text-down`}>{fmtMoney(a.stop)}</p>
         <p className="tnum text-[10px] text-down">{fmtPct(stopPct)}</p>
       </div>
@@ -75,7 +76,7 @@ export function BestTrade({ a, canTrade }: { a: StockAlert; canTrade: boolean })
   return (
     <Card className="border-brand/40">
       <div className="mb-4 flex items-center gap-2">
-        <span className="text-[11px] font-bold tracking-wider text-brandtext uppercase">
+        <span className="font-mono text-[11px] tracking-[0.08em] text-brandtext uppercase">
           Highest-scoring setup
         </span>
       </div>
@@ -87,7 +88,7 @@ export function BestTrade({ a, canTrade }: { a: StockAlert; canTrade: boolean })
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href={`/stock/${a.symbol}`}
-                className="text-[20px] leading-none font-bold tracking-tight text-ink hover:opacity-75"
+                className="pub-display text-[30px] leading-none text-ink hover:opacity-75"
               >
                 {a.symbol}
               </Link>
@@ -149,7 +150,7 @@ export function AlertCard({ a, canTrade }: { a: StockAlert; canTrade: boolean })
           <div className="flex items-center gap-2">
             <Link
               href={`/stock/${a.symbol}`}
-              className="truncate text-[15px] font-bold tracking-tight text-ink hover:opacity-75"
+              className="truncate text-[15px] font-semibold tracking-tight text-ink hover:opacity-75"
             >
               {a.symbol}
             </Link>

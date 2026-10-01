@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { getFills, isConnected } from "@/lib/api/broker";
+import { getFills } from "@/lib/api/broker";
 import { fmtMoney } from "@/lib/format";
 import { PageHead, StatTile, Pill, SymbolChip } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
-import NotConnected from "@/components/NotConnected";
+import AccountEmpty from "../AccountEmpty";
 
 export const metadata: Metadata = { title: "History · MNHA Financials" };
 
@@ -18,15 +18,13 @@ export default async function HistoryPage() {
   if (fills.length === 0) {
     return (
       <>
-        <PageHead title="Fills" sub="Executed orders, read straight from your Groww account." />
-        <NotConnected
-          connected={isConnected()}
-          what={isConnected() ? "No fills on this account yet" : "No fills to show"}
-          detail={
-            isConnected()
-              ? "Every executed order lands here with its real fill price and time. This account has none yet."
-              : "Fills are read from your Groww account once credentials are configured on the server."
-          }
+        <PageHead title="History" sub="Today's executed orders (fills), read straight from your Groww account." />
+        <AccountEmpty
+          noun="fills"
+          empty={{
+            what: "No fills today",
+            detail: "Groww reports the current day's order book; every order executed today lands here with its real fill price and time.",
+          }}
         />
       </>
     );
@@ -37,11 +35,11 @@ export default async function HistoryPage() {
   return (
     <>
       <PageHead
-        title="Fills"
-        sub="Executed orders with their real fill price and time. Groww's API does not report per-order charges, so none are shown."
+        title="History"
+        sub="Today's executed orders with their real fill price and time. Groww's API reports the current day only, and no per-order charges."
       />
 
-      <div className="mb-5 grid gap-4 sm:grid-cols-3">
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatTile label="Fills" value={String(fills.length)} />
         <StatTile label="Buys" value={String(buys)} />
         <StatTile label="Sells" value={String(fills.length - buys)} />
@@ -62,10 +60,10 @@ export default async function HistoryPage() {
         <tbody>
           {fills.map((f) => (
             <Tr key={f.id}>
-              <Td className="whitespace-nowrap">{f.date ?? "—"}</Td>
+              <Td className="tnum whitespace-nowrap">{f.date ?? "—"}</Td>
               <Td className="tnum whitespace-nowrap">
                 {f.time}
-                <span className="block text-[11px] text-ink3">{f.id}</span>
+                <span className="block font-mono text-[10.5px] text-ink3">{f.id}</span>
               </Td>
               <Td>
                 <div className="flex items-center gap-3">

@@ -8,6 +8,7 @@ import { recordConsent, type Lang } from "@/lib/consent";
 import { hasAllMedia } from "@/lib/consentMedia";
 import { hasBroker } from "@/lib/users";
 import { notify } from "@/lib/notifications";
+import { MEMBER_HOME } from "@/lib/routes";
 
 export interface ConsentState {
   error?: string;
@@ -50,5 +51,5 @@ export async function acceptConsent(_prev: ConsentState, form: FormData): Promis
     key: "consent-accepted",
   });
 
-  redirect((await hasBroker(uid)) ? "/stocks/alerts" : "/connect-broker");
+  redirect((await hasBroker(uid)) ? MEMBER_HOME : "/connect-broker");
 }

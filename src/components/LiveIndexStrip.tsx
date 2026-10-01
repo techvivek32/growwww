@@ -34,16 +34,19 @@ function Cell({ row }: { row: StripRow }) {
 
   return (
     <div className="flex shrink-0 items-baseline gap-2 whitespace-nowrap">
-      <Link href={`/stock/${row.symbol}`} className="text-[12px] font-semibold text-ink hover:text-brandtext">
+      <Link
+        href={`/stock/${row.symbol}`}
+        className="font-mono text-[11px] font-medium tracking-[0.04em] text-ink hover:text-brandtext"
+      >
         {row.symbol}
       </Link>
       {row.stale && (
-        <span className="rounded bg-warnsoft px-1 py-0.5 text-[9px] font-semibold text-warn">
+        <span className="bg-warnsoft px-1 py-0.5 font-mono text-[9px] tracking-[0.06em] text-warn uppercase">
           snap {row.asOf}
         </span>
       )}
       <span
-        className={`tnum rounded px-1 text-[12px] transition-colors duration-500 ${
+        className={`tnum px-1 text-[12px] transition-colors duration-500 ${
           flash === "up" ? "bg-upsoft text-up" : flash === "down" ? "bg-downsoft text-down" : "text-ink2"
         }`}
       >

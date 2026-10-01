@@ -6,6 +6,7 @@ import { fmtNum } from "@/lib/format";
 import { PageHead, Card, CardHead, Pill } from "@/components/ui";
 import TradingViewChart from "@/components/TradingViewChart";
 import OrderTicket from "@/components/OrderTicket";
+import { requireOwnerPage } from "@/lib/access";
 
 export const metadata: Metadata = { title: "Terminal · MNHA Financials" };
 
@@ -32,6 +33,7 @@ export default async function TerminalPage({
 }: {
   searchParams: Promise<{ symbol?: string }>;
 }) {
+  await requireOwnerPage();
   const { symbol: raw } = await searchParams;
   const symbol = raw && SYMBOL_RE.test(raw.toUpperCase()) ? raw.toUpperCase() : "NIFTY";
   const tvSymbol = TV[symbol] ?? `NSE:${symbol}`;
@@ -58,21 +60,20 @@ export default async function TerminalPage({
         title="Terminal"
         sub="Full chart with the live chain and your working orders docked beside it."
         right={
-          <div className="flex flex-wrap gap-1.5">
-            {Object.keys(TV).map((s) => (
+          <nav aria-label="Chart symbol" className="flex flex-wrap border border-line2">
+            {Object.keys(TV).map((s, i) => (
               <Link
                 key={s}
                 href={`/terminal?symbol=${s}`}
-                className={`rounded-full px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
-                  s === symbol
-                    ? "bg-brand text-white"
-                    : "text-ink2 ring-1 ring-line hover:bg-surfaceh hover:text-ink"
-                }`}
+                aria-current={s === symbol ? "page" : undefined}
+                className={`px-3.5 py-2 font-mono text-[11.5px] tracking-[0.06em] transition-colors ${
+                  i > 0 ? "border-l border-line2" : ""
+                } ${s === symbol ? "bg-brand text-onbrand" : "text-ink2 hover:bg-surfaceh hover:text-ink"}`}
               >
                 {s}
               </Link>
             ))}
-          </div>
+          </nav>
         }
       />
 
@@ -89,23 +90,23 @@ export default async function TerminalPage({
                 sub={`Spot ${fmtNum(chain.spot, 2)} · lot ${chain.lotSize}`}
                 right={
                   <Link href={`/fno/chain?u=${chain.underlying}`} className="text-[12.5px] font-medium text-brandtext hover:opacity-75">
-                    Full chain →
+                    Full chain <span className="pub-arrow">→</span>
                   </Link>
                 }
               />
               <table className="w-full border-collapse text-[12.5px]">
                 <thead>
-                  <tr className="text-[11px] text-ink3">
-                    <th className="pb-1.5 text-left font-medium">CE</th>
-                    <th className="pb-1.5 text-center font-medium">Strike</th>
-                    <th className="pb-1.5 text-right font-medium">PE</th>
+                  <tr className="border-b border-line font-mono text-[10px] tracking-[0.08em] text-ink3 uppercase">
+                    <th scope="col" className="pb-2 text-left font-normal">Call</th>
+                    <th scope="col" className="pb-2 text-center font-normal">Strike</th>
+                    <th scope="col" className="pb-2 text-right font-normal">Put</th>
                   </tr>
                 </thead>
                 <tbody>
                   {nearby.map((r) => {
                     const isAtm = r.strike === chain.rows[atmIdx].strike;
                     return (
-                      <tr key={r.strike} className={isAtm ? "bg-brandsoft/60" : ""}>
+                      <tr key={r.strike} className={`border-b border-line last:border-0 ${isAtm ? "bg-brandsoft" : ""}`}>
                         <td className="py-1.5 text-left">
                           {r.ce?.ltp != null ? (
                             <OrderTicket
@@ -152,7 +153,7 @@ export default async function TerminalPage({
               title="Working orders"
               right={
                 <Link href="/portfolio/orders" className="text-[12.5px] font-medium text-brandtext hover:opacity-75">
-                  All orders →
+                  All orders <span className="pub-arrow">→</span>
                 </Link>
               }
             />
@@ -165,7 +166,7 @@ export default async function TerminalPage({
                     <Pill tone={o.side === "BUY" ? "up" : "down"}>{o.side}</Pill>
                     <span className="min-w-0 flex-1 truncate font-semibold text-ink">{o.symbol}</span>
                     <span className="tnum text-ink3">
-                      {o.filled}/{o.qty}
+                      {o.filled}/{o.qty} filled
                     </span>
                     <Pill tone={o.status === "OPEN" ? "brand" : "warn"}>{o.status}</Pill>
                   </li>

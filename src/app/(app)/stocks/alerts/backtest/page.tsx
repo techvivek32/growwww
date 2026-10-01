@@ -3,7 +3,8 @@ import Link from "next/link";
 import { simulatePortfolio, DEFAULT_SIM } from "@/lib/signals/simulate";
 import { hasCredentials } from "@/lib/api/groww";
 import EquityCurve from "@/components/EquityCurve";
-import { PageHead, Card, CardHead, Empty } from "@/components/ui";
+import { PageHead, Card, CardHead, Empty, StatTile } from "@/components/ui";
+import { requireOwnerPage } from "@/lib/access";
 
 export const metadata: Metadata = { title: "Backtest simulation · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -14,19 +15,11 @@ const COST_FUTURES = 0.0012; // futures: ~0.02% STT sell-only + flat brokerage +
 
 const inr = (v: number) => `₹${Math.round(v).toLocaleString("en-IN")}`;
 const pct = (v: number | null) => (v === null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`);
-const toneOf = (v: number | null) => (v === null ? "text-ink" : v >= 0 ? "text-up" : "text-down");
-
-function Stat({ label, value, tone = "text-ink", sub }: { label: string; value: string; tone?: string; sub?: string }) {
-  return (
-    <div className="rounded-lg border border-line bg-surface px-4 py-3">
-      <p className="text-[11px] tracking-wide text-ink3 uppercase">{label}</p>
-      <p className={`tnum mt-0.5 text-[19px] font-semibold ${tone}`}>{value}</p>
-      {sub && <p className="tnum text-[11px] text-ink3">{sub}</p>}
-    </div>
-  );
-}
+const textTone = (v: number | null) => (v === null ? "text-ink" : v >= 0 ? "text-up" : "text-down");
+const tileTone = (v: number | null) => (v === null ? undefined : v >= 0 ? "up" : "down");
 
 export default async function BacktestPage() {
+  await requireOwnerPage();
   if (!hasCredentials()) {
     return (
       <>
@@ -53,27 +46,27 @@ export default async function BacktestPage() {
         sub={`Mean-reversion traded on ${inr(DEFAULT_SIM.startCapital)} across ${futures.years} years of real Groww candles — risk-sized, cost-charged. This is the forward test, run on the past.`}
         right={
           <Link href="/stocks/alerts" className="text-[13px] font-medium text-brandtext hover:opacity-75">
-            ← Signals
+            ← Back to signals
           </Link>
         }
       />
 
       {/* the honest answer */}
       <Card className="mb-6 border-warn/40 bg-warnsoft/40">
-        <div className="flex gap-3">
-          <span className="mt-0.5 text-warn">
+        <div className="flex gap-3.5">
+          <span className="mt-1.5 shrink-0 text-warn">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
             </svg>
           </span>
-          <div className="text-[13px] leading-relaxed text-ink2">
-            <p className="text-[15px] font-semibold text-ink">
-              The honest answer: after costs, this does not reliably make money — nowhere near 20% a month.
+          <div className="min-w-0 text-[13.5px] leading-relaxed text-ink2">
+            <p className="pub-display text-[26px] leading-[1.1] text-ink">
+              The honest answer: after costs, this does not reliably make money — <em>nowhere near 20% a month.</em>
             </p>
-            <p className="mt-1">
+            <p className="mt-3">
               Traded as delivery shares the edge <strong className="text-down">loses</strong> (₹{DEFAULT_SIM.startCapital.toLocaleString("en-IN")} →
               {" "}{inr(delivery.endNet)}, {pct(delivery.totalReturnPct)}) — the 0.2% delivery STT alone eats it. Even through
-              <strong> futures</strong>, where costs are ~5× lower, it lands about <span className={toneOf(maxCagr)}>{pct(maxCagr)}</span> a
+              <strong> futures</strong>, where costs are ~5× lower, it lands about <span className={`tnum ${textTone(maxCagr)}`}>{pct(maxCagr)}</span> a
               year — essentially <strong>breakeven</strong>. I searched 120 parameter sets and optimised directly for net-of-cost
               return; none of them clears the bar on this period.
             </p>
@@ -94,14 +87,18 @@ export default async function BacktestPage() {
 
       {/* the numbers (futures scenario) */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <Stat label="Net return" value={pct(futures.totalReturnPct)} tone={toneOf(futures.totalReturnPct)} sub={`${inr(futures.endNet)} final`} />
-        <Stat label="Annualised (CAGR)" value={pct(futures.cagrPct)} tone={toneOf(futures.cagrPct)} />
-        <Stat label="Max drawdown" value={futures.maxDrawdownPct === null ? "—" : `−${futures.maxDrawdownPct}%`} tone="text-down" />
-        <Stat label="Win rate" value={futures.winRate === null ? "—" : `${futures.winRate}%`} sub={`${futures.wins}W · ${futures.losses}L`} />
-        <Stat label="Trades taken" value={String(futures.taken)} sub={`${futures.skipped} skipped (no slot)`} />
-        <Stat label="Avg hold" value={futures.avgHoldDays === null ? "—" : `${futures.avgHoldDays}d`} />
-        <Stat label="Out-of-sample" value={futures.oos ? pct(futures.oos.returnPct) : "—"} tone={toneOf(futures.oos?.returnPct ?? null)} sub="held-out last 40%" />
-        <Stat label="If delivery instead" value={pct(delivery.totalReturnPct)} tone={toneOf(delivery.totalReturnPct)} sub="costs eat the edge" />
+        <StatTile label="Net return" value={pct(futures.totalReturnPct)} tone={tileTone(futures.totalReturnPct)} sub={`${inr(futures.endNet)} final`} />
+        <StatTile label="Annualised (CAGR)" value={pct(futures.cagrPct)} tone={tileTone(futures.cagrPct)} />
+        <StatTile
+          label="Max drawdown"
+          value={futures.maxDrawdownPct === null ? "—" : `−${futures.maxDrawdownPct}%`}
+          tone={futures.maxDrawdownPct === null ? undefined : "down"}
+        />
+        <StatTile label="Win rate" value={futures.winRate === null ? "—" : `${futures.winRate}%`} sub={`${futures.wins}W · ${futures.losses}L`} />
+        <StatTile label="Trades taken" value={String(futures.taken)} sub={`${futures.skipped} skipped (no slot)`} />
+        <StatTile label="Avg hold" value={futures.avgHoldDays === null ? "—" : `${futures.avgHoldDays}d`} />
+        <StatTile label="Out-of-sample" value={futures.oos ? pct(futures.oos.returnPct) : "—"} tone={tileTone(futures.oos?.returnPct ?? null)} sub="held-out last 40%" />
+        <StatTile label="If delivery instead" value={pct(delivery.totalReturnPct)} tone={tileTone(delivery.totalReturnPct)} sub="costs eat the edge" />
       </div>
 
       {/* monthly */}
@@ -112,12 +109,12 @@ export default async function BacktestPage() {
             <div
               key={m.month}
               title={`${m.month}: ${pct(m.pct)}`}
-              className={`flex min-w-[68px] flex-1 flex-col items-center rounded-md border px-2 py-1.5 ${
+              className={`flex min-w-[72px] flex-1 flex-col items-center border px-2 py-2 ${
                 m.pct >= 0 ? "border-up/30 bg-upsoft/40" : "border-down/30 bg-downsoft/40"
               }`}
             >
-              <span className="text-[10px] text-ink3">{m.month}</span>
-              <span className={`tnum text-[12px] font-semibold ${m.pct >= 0 ? "text-up" : "text-down"}`}>{pct(m.pct)}</span>
+              <span className="font-mono text-[10px] tracking-[0.04em] text-ink3">{m.month}</span>
+              <span className={`tnum mt-0.5 text-[12.5px] font-semibold ${m.pct >= 0 ? "text-up" : "text-down"}`}>{pct(m.pct)}</span>
             </div>
           ))}
         </div>

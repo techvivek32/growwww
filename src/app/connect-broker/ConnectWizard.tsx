@@ -277,12 +277,12 @@ export default function ConnectWizard({ ip }: { ip: string | null }) {
           </p>
         </Step>
 
-        <Step n="3" title="Add our static IP to the key" done={ipAdded}>
+        <Step n="3" title="Optional: add our static IP" done={ipAdded}>
           {ip ? (
             <>
               <p>
-                Groww accepts API orders only from a static IP registered on the key. Orders from this desk leave from our
-                server, at this address:
+                Not needed for a read-only account. Exchange rules require a registered static IP only for orders sent
+                through the API — MNHA places none on your account. If you add it anyway, our server&apos;s address is:
               </p>
               <CopyIp ip={ip} />
               <p>
@@ -299,12 +299,7 @@ export default function ConnectWizard({ ip }: { ip: string | null }) {
                 checked={ipAdded}
                 onChange={setIpAdded}
               />
-              {!ipAdded && (
-                <p className="text-[13.5px] text-pub-dim">
-                  You can connect without it — reading your account works — but Groww will reject orders from the desk
-                  until the IP is on your key.
-                </p>
-              )}
+
             </>
           ) : (
             <p>

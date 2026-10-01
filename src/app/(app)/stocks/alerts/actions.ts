@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, verifyToken } from "@/lib/auth";
 import { runScan, refreshBacktests } from "@/lib/signals/engine";
+import { isOwnerSession } from "@/lib/access";
 
 /**
  * Force a scan + backtest now, rather than waiting for the loop. Handy off
@@ -11,6 +12,7 @@ import { runScan, refreshBacktests } from "@/lib/signals/engine";
  * level. Session-gated like every mutation.
  */
 export async function refreshSignalsAction(): Promise<void> {
+  if (!(await isOwnerSession())) return;
   const jar = await cookies();
   if (!(await verifyToken(jar.get(SESSION_COOKIE)?.value))) return;
 

@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { fmtMoney } from "@/lib/format";
 
 /**
- * The detail-page chart: Groww's plain line with an area fade, coloured by
- * where price sits against the previous close, with the prev-close dashed
- * rule and range tabs. A hover crosshair reads out price and time.
+ * The detail-page chart: a plain line over a flat wash, coloured by where
+ * price sits against the previous close, with the prev-close dashed rule and
+ * range tabs. A hover crosshair reads out price and time.
  *
  * Real data only — the series comes from /api/chart per range and the 1D tab
  * refreshes every 30 seconds while mounted.
@@ -123,15 +123,18 @@ export default function PriceChart({
     <div>
       <div className="relative">
         {hoverIdx !== null && (
-          <div className="pointer-events-none absolute top-0 left-0 rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12px]">
-            <span className="tnum font-semibold text-ink">{fmtMoney(points[hoverIdx])}</span>
-            <span className="ml-2 text-ink3">{fmtWhen(times[hoverIdx], range)}</span>
+          <div className="pointer-events-none absolute top-0 left-0 border border-line2 bg-surface px-2.5 py-1.5 text-[12px]">
+            <span className="tnum font-medium text-ink">{fmtMoney(points[hoverIdx])}</span>
+            <span className="ml-2 font-mono text-[11px] text-ink3">{fmtWhen(times[hoverIdx], range)}</span>
           </div>
         )}
         <svg
           ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}
-          className={`w-full transition-opacity ${loading ? "opacity-40" : ""}`}
+          // Stretch to the card at any width; strokes stay crisp via
+          // non-scaling-stroke and the hover dot is drawn in HTML below.
+          preserveAspectRatio="none"
+          className={`block w-full transition-opacity ${loading ? "opacity-40" : ""}`}
           style={{ height: "min(46vw, 300px)" }}
           role="img"
           aria-label={`${symbol} price chart, ${range}`}
@@ -142,13 +145,6 @@ export default function PriceChart({
           }}
           onMouseLeave={() => setHover(null)}
         >
-          <defs>
-            <linearGradient id={`fade-${symbol}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={stroke} stopOpacity="0.16" />
-              <stop offset="100%" stopColor={stroke} stopOpacity="0" />
-            </linearGradient>
-          </defs>
-
           {prevClose !== null && (
             <line
               x1={PAD}
@@ -158,41 +154,59 @@ export default function PriceChart({
               stroke="var(--c-border-strong)"
               strokeWidth="1"
               strokeDasharray="4 4"
+              vectorEffect="non-scaling-stroke"
             />
           )}
 
-          {area && <path d={area} fill={`url(#fade-${symbol})`} />}
+          {area && <path d={area} fill={stroke} fillOpacity="0.07" />}
           {line && (
-            <path d={line} fill="none" stroke={stroke} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+            <path
+              d={line}
+              fill="none"
+              stroke={stroke}
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
           )}
 
           {hoverIdx !== null && (
-            <>
-              <line
-                x1={x(hoverIdx)}
-                x2={x(hoverIdx)}
-                y1={PAD}
-                y2={H - PAD}
-                stroke="var(--c-border-strong)"
-                strokeWidth="1"
-              />
-              <circle cx={x(hoverIdx)} cy={y(points[hoverIdx])} r="4" fill={stroke} stroke="var(--c-surface)" strokeWidth="2" />
-            </>
+            <line
+              x1={x(hoverIdx)}
+              x2={x(hoverIdx)}
+              y1={PAD}
+              y2={H - PAD}
+              stroke="var(--c-border-strong)"
+              strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
+            />
           )}
         </svg>
+        {hoverIdx !== null && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface"
+            style={{
+              left: `${(x(hoverIdx) / W) * 100}%`,
+              top: `${(y(points[hoverIdx]) / H) * 100}%`,
+              background: stroke,
+            }}
+          />
+        )}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-line pt-3">
         {RANGES.map((r) => (
           <button
             key={r}
             type="button"
             onClick={() => setRange(r)}
             aria-pressed={range === r}
-            className={`rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
+            className={`border px-2.5 py-1 font-mono text-[11.5px] tracking-[0.04em] transition-colors ${
               range === r
-                ? "bg-surfaceh text-ink ring-1 ring-line2"
-                : "text-ink3 hover:bg-surfaceh hover:text-ink"
+                ? "border-brand bg-brand text-onbrand"
+                : "border-transparent text-ink3 hover:border-line hover:text-ink"
             }`}
           >
             {r}

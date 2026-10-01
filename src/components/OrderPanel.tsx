@@ -4,12 +4,13 @@ import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { submitOrder, type OrderState } from "@/app/(app)/trade/actions";
 import { fmtMoney } from "@/lib/format";
+import { useIsOwner } from "./Viewer";
 import type { OrderType, Product, Side } from "@/lib/types";
 
 /**
- * The docked order panel — Groww's right-rail ticket, not a modal.
+ * The docked order panel — a right-rail ticket, not a modal.
  *
- * BUY/SELL tabs, Delivery/Intraday product pills, a quantity row (a lot
+ * BUY/SELL tabs, a Delivery/Intraday product toggle, a quantity row (a lot
  * stepper on FNO), a price-type selector with the "At market" box, and the
  * Balance / Approx req footer above one big action button.
  *
@@ -45,7 +46,7 @@ function ActionButton({ side, label }: { side: Side; label: string }) {
     <button
       type="submit"
       disabled={pending}
-      className={`h-11 w-full rounded-lg text-[14.5px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60 ${
+      className={`h-11 w-full text-[14.5px] font-semibold text-onbrand transition-opacity hover:opacity-90 disabled:opacity-60 ${
         side === "BUY" ? "bg-brand" : "bg-down"
       }`}
     >
@@ -54,7 +55,7 @@ function ActionButton({ side, label }: { side: Side; label: string }) {
   );
 }
 
-export default function OrderPanel({
+function OrderPanelInner({
   instrument,
   balance,
   tradable,
@@ -107,19 +108,19 @@ export default function OrderPanel({
     (!needsTrigger || Number(trigger) > 0);
 
   const pill = (on: boolean) =>
-    `rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
-      on ? "border-brand bg-brandsoft text-brandtext" : "border-line text-ink2 hover:bg-surfaceh"
+    `border px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
+      on ? "border-brand bg-brand text-onbrand" : "border-line text-ink2 hover:bg-surfaceh hover:text-ink"
     }`;
 
   return (
-    <div className="rounded-lg border border-line bg-surface">
+    <div className="border border-line bg-surface">
       {/* header */}
       <div className="flex items-start justify-between gap-2 px-4 pt-3.5">
         <div className="min-w-0">
-          <p className="truncate text-[14px] font-bold tracking-tight text-ink">
+          <p className="pub-display truncate text-[24px] leading-tight text-ink">
             {instrument.displayName}
           </p>
-          <p className="tnum text-[12px] text-ink3">
+          <p className="tnum mt-0.5 text-[12px] text-ink3">
             {instrument.ltp === null ? "price unavailable" : `₹${instrument.ltp.toFixed(2)}`}
             {instrument.changePct != null && (
               <span className={instrument.changePct >= 0 ? "text-up" : "text-down"}>
@@ -136,7 +137,7 @@ export default function OrderPanel({
             type="button"
             onClick={onClose}
             aria-label="Close order panel"
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink3 hover:bg-surfaceh hover:text-ink"
+            className="grid h-7 w-7 shrink-0 place-items-center text-ink3 hover:bg-surfaceh hover:text-ink"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
               <path d="M6 6l12 12M18 6L6 18" />
@@ -155,16 +156,14 @@ export default function OrderPanel({
               setSide(s);
               setConfirming(false);
             }}
-            className={`relative px-4 pb-2.5 text-[13px] font-semibold tracking-wide transition-colors ${
-              side === s ? (s === "BUY" ? "text-brandtext" : "text-down") : "text-ink3 hover:text-ink2"
+            className={`relative px-4 pb-2.5 font-mono text-[11.5px] font-medium tracking-[0.1em] transition-colors ${
+              side === s ? (s === "BUY" ? "text-ink" : "text-down") : "text-ink3 hover:text-ink2"
             }`}
           >
             {s}
             {side === s && (
               <span
-                className={`absolute inset-x-2 -bottom-px h-[2.5px] rounded-full ${
-                  s === "BUY" ? "bg-brand" : "bg-down"
-                }`}
+                className={`absolute inset-x-2 -bottom-px h-[2px] ${s === "BUY" ? "bg-brand" : "bg-down"}`}
               />
             )}
           </button>
@@ -178,7 +177,7 @@ export default function OrderPanel({
               <path d="m5 12.5 4.5 4.5L19 7" />
             </svg>
           </div>
-          <p className="mt-2 text-[14px] font-semibold text-ink">Order placed</p>
+          <p className="pub-display mt-2 text-[22px] leading-tight text-ink">Order placed</p>
           <p className="tnum mt-1 text-[11.5px] break-all text-ink3">{state.orderId}</p>
           <p className="mt-1 text-[12px] text-ink2">
             Status at the broker: <strong className="font-semibold">{state.orderStatus ?? "—"}</strong>
@@ -206,7 +205,7 @@ export default function OrderPanel({
               onClick={() => setProduct(fno ? "NRML" : "CNC")}
               className={pill(product !== "MIS")}
             >
-              Delivery{fno && <span className="ml-1 text-[10px] text-ink3">NRML</span>}
+              Delivery{fno && <span className="ml-1 text-[10px] opacity-70">NRML</span>}
             </button>
             <button type="button" onClick={() => setProduct("MIS")} className={pill(product === "MIS")}>
               Intraday
@@ -225,7 +224,7 @@ export default function OrderPanel({
                   type="button"
                   aria-label="One lot fewer"
                   onClick={() => setLots((v) => String(Math.max(1, (Number(v) || 1) - 1)))}
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-line text-[16px] text-ink2 hover:bg-surfaceh"
+                  className="grid h-9 w-9 place-items-center border border-line text-[16px] text-ink2 hover:bg-surfaceh"
                 >
                   −
                 </button>
@@ -234,13 +233,13 @@ export default function OrderPanel({
                   value={lots}
                   onChange={(e) => setLots(e.target.value.replace(/[^0-9]/g, ""))}
                   aria-label="Lots"
-                  className="h-9 w-16 rounded-lg border border-line bg-surface text-center text-[14px] text-ink outline-none focus:border-brand"
+                  className="tnum h-9 w-16 border border-line bg-surface text-center text-[14px] text-ink outline-none focus:border-brand"
                 />
                 <button
                   type="button"
                   aria-label="One lot more"
                   onClick={() => setLots((v) => String((Number(v) || 0) + 1))}
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-line text-[16px] text-ink2 hover:bg-surfaceh"
+                  className="grid h-9 w-9 place-items-center border border-line text-[16px] text-ink2 hover:bg-surfaceh"
                 >
                   +
                 </button>
@@ -252,7 +251,7 @@ export default function OrderPanel({
                 value={qty}
                 onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ""))}
                 aria-label="Quantity"
-                className="h-9 w-28 rounded-lg border border-line bg-surface px-3 text-right text-[14px] text-ink outline-none focus:border-brand"
+                className="tnum h-9 w-28 border border-line bg-surface px-3 text-right text-[14px] text-ink outline-none focus:border-brand"
               />
             )}
           </div>
@@ -271,7 +270,7 @@ export default function OrderPanel({
                   setConfirming(false);
                 }}
                 aria-label="Order type"
-                className="rounded-md border border-line bg-surface px-1.5 py-1 text-[12.5px] text-ink outline-none focus:border-brand"
+                className="border border-line bg-surface px-1.5 py-1 text-[12.5px] text-ink outline-none focus:border-brand"
               >
                 {TYPES.map((t) => (
                   <option key={t.value} value={t.value}>
@@ -287,10 +286,10 @@ export default function OrderPanel({
                 value={price}
                 onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ""))}
                 aria-label="Limit price"
-                className="h-9 w-28 rounded-lg border border-line bg-surface px-3 text-right text-[14px] text-ink outline-none focus:border-brand"
+                className="tnum h-9 w-28 border border-line bg-surface px-3 text-right text-[14px] text-ink outline-none focus:border-brand"
               />
             ) : (
-              <span className="flex h-9 w-28 items-center justify-end rounded-lg bg-surface2 px-3 text-[13px] text-ink3">
+              <span className="flex h-9 w-28 items-center justify-end bg-surface2 px-3 text-[13px] text-ink3">
                 At market
               </span>
             )}
@@ -304,13 +303,13 @@ export default function OrderPanel({
                 value={trigger}
                 onChange={(e) => setTrigger(e.target.value.replace(/[^0-9.]/g, ""))}
                 aria-label="Trigger price"
-                className="h-9 w-28 rounded-lg border border-line bg-surface px-3 text-right text-[14px] text-ink outline-none focus:border-brand"
+                className="tnum h-9 w-28 border border-line bg-surface px-3 text-right text-[14px] text-ink outline-none focus:border-brand"
               />
             </div>
           )}
 
           {state.status === "error" && (
-            <p role="alert" className="mt-3 rounded-lg border border-down/30 bg-downsoft px-3 py-2 text-[12px] leading-snug text-down">
+            <p role="alert" className="mt-3 border border-down/30 bg-downsoft px-3 py-2 text-[12px] leading-snug text-down">
               {state.message}
             </p>
           )}
@@ -328,7 +327,7 @@ export default function OrderPanel({
 
           <div className="mt-3">
             {!tradable ? (
-              <p className="rounded-lg bg-surface2 px-3 py-2.5 text-center text-[12px] text-ink3">
+              <p className="bg-surface2 px-3 py-2.5 text-center text-[12px] text-ink3">
                 Order placement is disabled on this server
               </p>
             ) : !confirming ? (
@@ -336,7 +335,7 @@ export default function OrderPanel({
                 type="button"
                 disabled={!ready}
                 onClick={() => setConfirming(true)}
-                className={`h-11 w-full rounded-lg text-[14.5px] font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`h-11 w-full text-[14.5px] font-semibold text-onbrand transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
                   side === "BUY" ? "bg-brand" : "bg-down"
                 }`}
               >
@@ -351,7 +350,7 @@ export default function OrderPanel({
                 <button
                   type="button"
                   onClick={() => setConfirming(false)}
-                  className="h-9 w-full rounded-lg border border-line text-[12.5px] font-medium text-ink2 hover:bg-surfaceh"
+                  className="h-9 w-full border border-line text-[12.5px] font-medium text-ink2 hover:bg-surfaceh"
                 >
                   Back
                 </button>
@@ -362,4 +361,9 @@ export default function OrderPanel({
       )}
     </div>
   );
+}
+
+/** Order entry exists only on the owner's desk; member accounts are view-only. */
+export default function OrderPanel(props: Parameters<typeof OrderPanelInner>[0]) {
+  return useIsOwner() ? <OrderPanelInner {...props} /> : null;
 }

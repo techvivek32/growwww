@@ -9,85 +9,83 @@
 :root {
   color-scheme: light;
 
-  /* A whisper-grey page with pure-white cards: the card lifts off the canvas
-     by tone as well as a hairline border — the quiet depth premium fintech
-     UIs use, without a heavy drop shadow. */
-  --c-bg:            #f6f7f9;
-  --c-surface:       #ffffff;
-  --c-surface-2:     #f1f3f6;
-  --c-surface-hover: #f2f4f7;
+  /* Editorial light — warm paper, ink type, hairline rules. The same design
+     language as the public site, in its daylight version. */
+  --c-bg:            #f3efe6;
+  --c-surface:       #fbf9f4;
+  --c-surface-2:     #eee9dd;
+  --c-surface-hover: #f1ece1;
 
-  --c-border:        #e8eaee;
-  --c-border-strong: #d3d7dd;
+  --c-border:        #e0d9ca;
+  --c-border-strong: #c9c0ae;
 
-  --c-text:          #101114;
-  --c-text-2:        #444a58;
-  --c-text-3:        #79808d;
+  --c-text:          #15140f;
+  --c-text-2:        #4a463d;
+  --c-text-3:        #6e695e;
 
-  /* Groww brand */
-  --c-brand:         #00d09c;
-  --c-brand-hover:   #00b386;
-  --c-brand-soft:    #e6faf4;
-  --c-brand-text:    #00875f;
+  /* Primary actions are ink on paper; links carry the vermilion accent. */
+  --c-brand:         #15140f;
+  --c-brand-hover:   #2d2a22;
+  --c-brand-soft:    #eee9dd;
+  --c-brand-text:    #b23a1c;
+  --c-on-brand:      #fbf9f4;
+  --c-mark:          #d9471f;
 
-  /* Groww secondary (used for F&O / info accents) */
-  --c-violet:        #5367ff;
-  --c-violet-soft:   #eef0ff;
+  --c-violet:        #6a4f7a;
+  --c-violet-soft:   #ece5ee;
 
-  --c-up:            #00b386;
-  --c-up-soft:       #e7f7f1;
-  --c-down:          #eb5b3c;
-  --c-down-soft:     #fdeeea;
+  --c-up:            #2c6a47;
+  --c-up-soft:       #e2ece4;
+  --c-down:          #b23a1c;
+  --c-down-soft:     #f5e2da;
 
-  --c-warn:          #f5a623;
-  --c-warn-soft:     #fef5e6;
+  --c-warn:          #8f570c;
+  --c-warn-soft:     #f5ead6;
 
-  /* Elevation-1 for cards (barely there), a real lift for floating layers,
-     and a hairline shadow that lets the sticky header sit above content. */
-  --shadow-card:     0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.05);
-  --shadow-pop:      0 12px 40px -8px rgba(16, 24, 40, 0.18), 0 2px 8px rgba(16, 24, 40, 0.08);
-  --shadow-header:   0 6px 20px -14px rgba(16, 24, 40, 0.16);
-  --ring:            0 0 0 3px color-mix(in srgb, var(--c-brand) 32%, transparent);
+  --shadow-card:     none;
+  --shadow-pop:      0 18px 44px -14px rgba(21, 20, 15, 0.22), 0 2px 8px rgba(21, 20, 15, 0.08);
+  --shadow-header:   none;
+  --ring:            0 0 0 2px #fbf9f4, 0 0 0 4px #d9471f;
 }
 
 .dark {
   color-scheme: dark;
 
-  /* A near-black canvas with cards a clear step lighter, so a card reads as a
-     card — the old palette made page and surface the same colour and the
-     cards vanished. */
-  --c-bg:            #0c0d10;
-  --c-surface:       #15171c;
-  --c-surface-2:     #1c1f26;
-  --c-surface-hover: #22262f;
+  /* Editorial dark — exactly the public site's ink palette. */
+  --c-bg:            #15140f;
+  --c-surface:       #1d1b16;
+  --c-surface-2:     #26231c;
+  --c-surface-hover: #2a2720;
 
-  --c-border:        #262a32;
-  --c-border-strong: #383d47;
+  --c-border:        #3a362d;
+  --c-border-strong: #5a5446;
 
-  --c-text:          #e7e9ec;
-  --c-text-2:        #a2a8b4;
-  --c-text-3:        #6f7682;
+  --c-text:          #eee9dd;
+  --c-text-2:        #aba493;
+  --c-text-3:        #938e80;
 
-  --c-brand:         #00d09c;
-  --c-brand-hover:   #22e0b0;
-  --c-brand-soft:    #0d2c26;
-  --c-brand-text:    #22c79b;
+  --c-brand:         #eee9dd;
+  --c-brand-hover:   #ffffff;
+  --c-brand-soft:    #26231c;
+  --c-brand-text:    #f08a63;
+  --c-on-brand:      #15140f;
+  --c-mark:          #d9471f;
 
-  --c-violet:        #7b8aff;
-  --c-violet-soft:   #1c2140;
+  --c-violet:        #c2adc4;
+  --c-violet-soft:   rgba(181, 154, 184, 0.14);
 
-  --c-up:            #22c79b;
-  --c-up-soft:       #0d2c26;
-  --c-down:          #ff6b4d;
-  --c-down-soft:     #33170f;
+  --c-up:            #8fcfa6;
+  --c-up-soft:       rgba(143, 207, 166, 0.12);
+  --c-down:          #f08a63;
+  --c-down-soft:     rgba(217, 71, 31, 0.14);
 
-  --c-warn:          #f5a623;
-  --c-warn-soft:     #33260d;
+  --c-warn:          #f2a25e;
+  --c-warn-soft:     rgba(242, 162, 94, 0.12);
 
-  --shadow-card:     0 1px 2px rgba(0, 0, 0, 0.32), 0 1px 3px rgba(0, 0, 0, 0.28);
-  --shadow-pop:      0 16px 48px -8px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.5);
-  --shadow-header:   0 8px 24px -16px rgba(0, 0, 0, 0.8);
-  --ring:            0 0 0 3px color-mix(in srgb, var(--c-brand) 40%, transparent);
+  --shadow-card:     none;
+  --shadow-pop:      0 18px 50px -12px rgba(0, 0, 0, 0.6);
+  --shadow-header:   none;
+  --ring:            0 0 0 2px #15140f, 0 0 0 4px #d9471f;
 }
 
 @theme inline {
@@ -107,6 +105,8 @@
   --color-brandh:        var(--c-brand-hover);
   --color-brandsoft:     var(--c-brand-soft);
   --color-brandtext:     var(--c-brand-text);
+  --color-onbrand:       var(--c-on-brand);
+  --color-mark:          var(--c-mark);
 
   --color-violet:        var(--c-violet);
   --color-violetsoft:    var(--c-violet-soft);
@@ -119,8 +119,8 @@
   --color-warn:          var(--c-warn);
   --color-warnsoft:      var(--c-warn-soft);
 
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: var(--font-mono-jb), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: var(--font-isans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-plexmono), ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 /* In the base layer, so Tailwind's border-colour utilities can override it. */
@@ -169,7 +169,8 @@ body { overflow-x: clip; }
 body {
   background: var(--c-bg);
   color: var(--c-text);
-  font-family: var(--font-sans);
+  /* Raw font variables (set on <body> by next/font), not the @theme alias. */
+  font-family: var(--font-isans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -274,12 +275,14 @@ html:has(.pub) { scroll-padding-top: 4.5rem; }
 .pub .legal a { color: #eee9dd; text-decoration: underline; text-decoration-color: #d9471f; text-decoration-thickness: 2px; text-underline-offset: 4px; }
 .pub ::selection { background: #d9471f; color: #eee9dd; }
 .pub summary { list-style: none; }
-/* Editorial = square corners; reused app components inside .pub follow suit. */
-.pub [class*="rounded"]:not(.rounded-full) { border-radius: 0; }
 .pub summary::-webkit-details-marker { display: none; }
 
 /* Display serif: tight, condensed; <em> inside turns italic. */
 .pub-display { font-family: var(--font-iserif), "Times New Roman", Georgia, serif; font-weight: 400; letter-spacing: -0.012em; }
+/* Editorial everywhere: square corners (dots and avatars stay round). */
+[class*="rounded"]:not(.rounded-full) { border-radius: 0; }
+/* Numbers set in the mono, tabular. */
+.mono-num { font-family: var(--font-plexmono), ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 .pub-display em { font-style: italic; }
 
 /* The square-thumb range slider. --pct is set inline for the filled track. */

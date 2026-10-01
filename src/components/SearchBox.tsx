@@ -77,7 +77,7 @@ export default function SearchBox() {
 
   return (
     <div ref={wrapRef} className="relative w-full max-w-[400px]">
-      <label className="flex h-9 items-center gap-2 rounded-lg border border-line bg-surface2 px-3 focus-within:border-brand">
+      <label className="flex h-9 items-center gap-2 border border-line bg-surface2 px-3 focus-within:border-brand">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-ink3">
           <circle cx="11" cy="11" r="7" />
           <path d="m20 20-3.2-3.2" strokeLinecap="round" />
@@ -107,7 +107,7 @@ export default function SearchBox() {
           className="min-w-0 flex-1 bg-transparent text-[13.5px] text-ink outline-none placeholder:text-ink3"
           aria-label="Search instruments"
         />
-        <kbd className="hidden rounded border border-line bg-surface px-1.5 py-0.5 text-[10px] font-medium text-ink3 xl:block">
+        <kbd className="hidden border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink3 xl:block">
           Ctrl K
         </kbd>
       </label>
@@ -115,8 +115,7 @@ export default function SearchBox() {
       {open && hits.length > 0 && (
         <ul
           role="listbox"
-          className="absolute top-11 right-0 left-0 z-50 overflow-hidden rounded-xl border border-line bg-surface py-1"
-          style={{ boxShadow: "var(--shadow-pop)" }}
+          className="absolute top-10 right-0 left-0 z-50 overflow-hidden border border-line2 bg-surface py-1"
         >
           {hits.map((h, i) => (
             <li key={`${h.kind}-${h.symbol}`} role="option" aria-selected={i === active}>
@@ -133,7 +132,7 @@ export default function SearchBox() {
                   <span className="block truncate text-[13.5px] font-semibold text-ink">{h.symbol}</span>
                   <span className="block truncate text-[11.5px] text-ink3">{h.name}</span>
                 </span>
-                <span className="shrink-0 text-[10.5px] font-semibold tracking-wide text-ink3 uppercase">
+                <span className="shrink-0 font-mono text-[10px] tracking-[0.08em] text-ink3 uppercase">
                   {h.kind}
                 </span>
               </button>

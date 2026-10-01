@@ -34,7 +34,7 @@ export default function LinkedAccountsBoard({ accounts }: { accounts: LinkedAcco
               a.id === active ? "border-brand bg-brandsoft" : "border-line bg-surface hover:bg-surfaceh"
             }`}
           >
-            <span className="grid h-8 w-8 place-items-center rounded-full bg-brand text-[12px] font-bold text-white">
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-brand text-[12px] font-bold text-onbrand">
               {a.name.split(" ").map((w) => w[0]).slice(0, 2).join("")}
             </span>
             <span className="leading-tight">

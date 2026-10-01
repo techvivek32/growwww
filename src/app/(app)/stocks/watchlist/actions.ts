@@ -1,9 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { SESSION_COOKIE, verifyToken } from "@/lib/auth";
+import { isOwnerSession } from "@/lib/access";
 import { addSymbol, createList, deleteList, removeSymbol } from "@/lib/watchlists";
 import { equityName } from "@/lib/instruments";
 import { INDEX_TICKERS } from "@/lib/api/yahoo";
@@ -16,9 +15,10 @@ import { INDEX_TICKERS } from "@/lib/api/yahoo";
 
 const SYMBOL_RE = /^[A-Z0-9&-]{1,30}$/;
 
+/** The watchlists are one shared store, so only the owner's account edits them;
+ *  member accounts view them read-only. */
 async function signedIn(): Promise<boolean> {
-  const jar = await cookies();
-  return verifyToken(jar.get(SESSION_COOKIE)?.value);
+  return isOwnerSession();
 }
 
 export async function createListAction(form: FormData): Promise<void> {

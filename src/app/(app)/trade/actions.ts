@@ -58,6 +58,8 @@ function fail(message: string): OrderState {
 export async function submitOrder(_prev: OrderState, form: FormData): Promise<OrderState> {
   const userId = await currentUserId();
   if (!userId) return fail("Your session expired. Sign in again.");
+  // Member accounts are view-only: manual order entry is the owner's desk only.
+  if (userId !== OWNER_ID) return fail("Manual orders are not available on this account.");
   // Throttle the order path so a stuck client or a script cannot machine-gun
   // the broker: at most 30 submissions a minute per user.
   if (!rateLimit(`order:${userId}`, 30, 60_000).ok) {
@@ -174,6 +176,7 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
 export async function cancelOrderAction(_prev: OrderState, form: FormData): Promise<OrderState> {
   const userId = await currentUserId();
   if (!userId) return fail("Your session expired. Sign in again.");
+  if (userId !== OWNER_ID) return fail("Manual orders are not available on this account.");
   if (!rateLimit(`cancel:${userId}`, 30, 60_000).ok) {
     return fail("Too many cancellations in a short window. Pause a moment and retry.");
   }

@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
+import { OWNER_ID } from "@/lib/auth";
 import { listForUser } from "@/lib/notifications";
-import { PageHead, Card, Empty } from "@/components/ui";
+import { PageHead, Card } from "@/components/ui";
 import { markAllReadAction } from "./actions";
 
 export const metadata: Metadata = { title: "Notifications · MNHA Financials" };
@@ -26,6 +27,7 @@ const dot: Record<string, string> = {
 export default async function NotificationsPage() {
   const uid = await currentUserId();
   if (!uid) redirect("/login");
+  const isOwner = uid === OWNER_ID;
   const items = await listForUser(uid);
   const anyUnread = items.some((i) => !i.read);
 
@@ -33,11 +35,15 @@ export default async function NotificationsPage() {
     <div className="mx-auto max-w-2xl">
       <PageHead
         title="Notifications"
-        sub="Your account and order events. Only your own — never anyone else's."
+        sub={
+          isOwner
+            ? "Your account and order events. Only your own — never anyone else's."
+            : "Your account events — Groww link, verification and membership. Only your own."
+        }
         right={
           anyUnread ? (
             <form action={markAllReadAction}>
-              <button type="submit" className="inline-flex h-9 items-center rounded-lg border border-line px-3.5 text-[12.5px] font-semibold text-ink2 hover:bg-surfaceh hover:text-ink">
+              <button type="submit" className="inline-flex h-9 items-center border border-line2 px-3.5 text-[12.5px] font-semibold text-ink2 transition-colors hover:bg-surfaceh hover:text-ink">
                 Mark all read
               </button>
             </form>
@@ -46,19 +52,29 @@ export default async function NotificationsPage() {
       />
 
       {items.length === 0 ? (
-        <Card pad={false}>
-          <Empty title="Nothing yet" hint="Order confirmations, broker connection status and account events will show up here." />
-        </Card>
+        <div className="pt-10 pb-14 text-center">
+          <p className="pub-display text-[30px] leading-tight text-ink">
+            Nothing <em>yet.</em>
+          </p>
+          <p className="mx-auto mt-2 max-w-sm text-[13.5px] leading-relaxed text-ink3">
+            {isOwner
+              ? "Order confirmations, broker connection status and account events will show up here."
+              : "Changes to your Groww link, your verification and your membership will show up here."}
+          </p>
+        </div>
       ) : (
         <Card pad={false}>
           <ul className="divide-y divide-line">
             {items.map((n) => (
-              <li key={n.id} className={`flex gap-3 px-4 py-3.5 ${n.read ? "" : "bg-brandsoft/25"}`}>
-                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot[n.tone] ?? "bg-ink3"}`} />
+              <li key={n.id} className={`flex gap-3 border-l-2 px-4 py-3.5 ${n.read ? "border-transparent" : "border-mark bg-brandsoft/40"}`}>
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot[n.tone] ?? "bg-ink3"}`} aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-[13.5px] font-semibold text-ink">{n.title}</p>
-                    <span className="shrink-0 text-[11px] text-ink3">{ago(n.createdAt)}</span>
+                    <p className="text-[13.5px] font-semibold text-ink">
+                      {n.title}
+                      {!n.read && <span className="sr-only"> (unread)</span>}
+                    </p>
+                    <span className="tnum shrink-0 font-mono text-[11px] text-ink3">{ago(n.createdAt)}</span>
                   </div>
                   <p className="mt-0.5 text-[13px] leading-relaxed text-ink2">{n.body}</p>
                 </div>

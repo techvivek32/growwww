@@ -9,13 +9,16 @@ export interface NavItem {
   /** Shorter label used once the rail has to scroll on small screens. */
   short?: string;
   group: "trading" | "system";
+  /** "owner": shown only on the owner's account (signals, alerts, order entry). */
+  access?: "owner";
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/stocks/alerts", label: "Stock Alerts", short: "Alerts", group: "trading" },
-  { href: "/fno/alerts", label: "F&O", short: "F&O", group: "trading" },
+  { href: "/ai", label: "MNHA AI", short: "MNHA AI", group: "trading" },
+  { href: "/stocks/alerts", label: "Stock Alerts", short: "Alerts", group: "trading", access: "owner" },
+  { href: "/fno/alerts", label: "F&O", short: "F&O", group: "trading", access: "owner" },
   { href: "/fno/chain", label: "Option Chain", short: "Chain", group: "trading" },
-  { href: "/stocks/scanner", label: "Scanner", group: "trading" },
+  { href: "/stocks/scanner", label: "Scanner", group: "trading", access: "owner" },
   { href: "/stocks/watchlist", label: "Watchlist", group: "trading" },
   { href: "/indices", label: "Indices", group: "trading" },
   { href: "/portfolio/holdings", label: "Portfolio", group: "trading" },
@@ -23,7 +26,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/portfolio/orders", label: "Orders", group: "trading" },
   { href: "/portfolio/history", label: "History", group: "trading" },
   { href: "/portfolio/analysis", label: "Analysis", group: "trading" },
-  { href: "/terminal", label: "Terminal", group: "trading" },
+  { href: "/terminal", label: "Terminal", group: "trading", access: "owner" },
   { href: "/membership", label: "Membership", group: "system" },
   { href: "/broker", label: "Broker", group: "system" },
   { href: "/settings", label: "Settings", group: "system" },

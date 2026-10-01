@@ -58,9 +58,9 @@ export function AutoTradeToggle() {
       aria-checked={on}
       aria-label="Auto trade"
       onClick={on ? stop : start}
-      className={`flex h-9 shrink-0 items-center gap-2 rounded-full border px-2.5 text-[12px] font-semibold transition-colors ${
+      className={`flex h-8 shrink-0 items-center gap-2 border px-2.5 font-mono text-[11px] tracking-[0.04em] uppercase transition-colors ${
         on
-          ? "border-brand bg-brandsoft text-brandtext"
+          ? "border-mark bg-brandsoft text-brandtext"
           : "border-line text-ink2 hover:bg-surfaceh hover:text-ink"
       }`}
     >
@@ -68,12 +68,8 @@ export function AutoTradeToggle() {
         <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5Z" />
       </svg>
       <span className="hidden whitespace-nowrap sm:inline">Auto trade</span>
-      <span
-        className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${on ? "bg-brand" : "bg-line2"}`}
-      >
-        <span
-          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${on ? "left-3.5" : "left-0.5"}`}
-        />
+      <span className={`relative h-3.5 w-6 shrink-0 transition-colors ${on ? "bg-mark" : "bg-line2"}`} aria-hidden="true">
+        <span className={`absolute top-0.5 h-2.5 w-2.5 bg-surface transition-all ${on ? "left-3" : "left-0.5"}`} />
       </span>
     </button>
   );
@@ -121,20 +117,17 @@ function AutoTradeCover() {
       aria-label="Auto trade is armed"
       className="fixed inset-0 z-[100] flex items-center justify-center bg-bg/95 p-4 backdrop-blur-sm"
     >
-      <div
-        className="w-full max-w-lg rounded-2xl border border-line bg-surface p-7 text-center"
-        style={{ boxShadow: "var(--shadow-pop)" }}
-      >
+      <div className="w-full max-w-lg border border-line2 bg-surface p-7 text-center">
         <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-brandsoft">
-          <span className="live-dot grid h-10 w-10 place-items-center rounded-full bg-brand">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+          <span className="live-dot grid h-10 w-10 place-items-center rounded-full bg-mark text-onbrand">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5Z" />
             </svg>
           </span>
         </div>
 
-        <h2 className="mt-5 text-[22px] leading-tight font-bold tracking-tight text-ink">
-          Auto trade is armed
+        <h2 className="pub-display mt-5 text-[32px] leading-tight text-ink">
+          Auto trade is <em>armed</em>
         </h2>
         <p className="mx-auto mt-2 max-w-sm text-[13.5px] leading-relaxed text-ink2">
           Order placement is <strong className="font-semibold text-ink">not enabled</strong> in this
@@ -142,22 +135,22 @@ function AutoTradeCover() {
           under your hands.
         </p>
 
-        <p className="tnum mt-5 text-[12px] text-ink3">armed {mm}:{ss}</p>
+        <p className="tnum mt-5 font-mono text-[11px] tracking-[0.08em] text-ink3 uppercase">armed {mm}:{ss}</p>
 
         <button
           ref={stopRef}
           type="button"
           onClick={stop}
-          className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-down text-[16px] font-bold text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-down"
+          className="mt-5 flex h-14 w-full items-center justify-center gap-2 bg-down text-[16px] font-semibold text-onbrand transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-down"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <rect x="6" y="6" width="12" height="12" rx="2" />
+            <rect x="6" y="6" width="12" height="12" />
           </svg>
           Stop
         </button>
 
         <p className="mt-3 text-[11px] text-ink3">
-          Press <kbd className="rounded border border-line bg-surface2 px-1 py-0.5 font-medium">Esc</kbd> to stop
+          Press <kbd className="border border-line bg-surface2 px-1 py-0.5 font-mono font-medium">Esc</kbd> to stop
         </p>
       </div>
     </div>

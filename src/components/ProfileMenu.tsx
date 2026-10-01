@@ -50,7 +50,7 @@ export default function ProfileMenu({ account }: { account: Account }) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Account — ${account.name}`}
-        className="ml-1 grid h-9 w-9 place-items-center rounded-full bg-violetsoft text-[12px] font-semibold text-violet transition-opacity hover:opacity-85"
+        className="ml-1 grid h-9 w-9 place-items-center rounded-full bg-brand font-mono text-[11.5px] font-medium tracking-[0.04em] text-onbrand transition-colors hover:bg-brandh focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mark"
       >
         {initials}
       </button>
@@ -58,29 +58,28 @@ export default function ProfileMenu({ account }: { account: Account }) {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-xl border border-line bg-surface"
-          style={{ boxShadow: "var(--shadow-pop)" }}
+          className="absolute right-0 z-50 mt-2 w-64 overflow-hidden border border-line2 bg-surface"
         >
           <div className="flex items-center gap-3 border-b border-line px-4 py-3.5">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-violetsoft text-[13px] font-semibold text-violet">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand font-mono text-[12.5px] font-medium tracking-[0.04em] text-onbrand">
               {initials}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-[13.5px] font-semibold text-ink">{account.name}</p>
-              <p className="truncate text-[11.5px] text-ink3">{account.email}</p>
+              <p className="pub-display truncate text-[19px] leading-tight text-ink">{account.name}</p>
+              <p className="mt-0.5 truncate text-[11.5px] text-ink3">{account.email}</p>
             </div>
           </div>
 
           <dl className="space-y-2 border-b border-line px-4 py-3">
             <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-[12.5px] text-ink3">Broker</dt>
+              <dt className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">Broker</dt>
               <dd className="text-[12.5px] font-medium text-ink">
                 {account.broker}
                 {account.balance === null && <span className="text-ink3"> · not connected</span>}
               </dd>
             </div>
             <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-[12.5px] text-ink3">Available cash</dt>
+              <dt className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">Available cash</dt>
               <dd className={`tnum text-[12.5px] font-medium ${account.balance === null ? "text-ink3" : "text-ink"}`}>
                 {account.balance === null ? "—" : fmtMoney(account.balance)}
               </dd>

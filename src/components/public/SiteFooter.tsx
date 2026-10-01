@@ -8,7 +8,7 @@ const COLS: { head: string; links: [string, string][] }[] = [
       ["/#path", "How it works"],
       ["/#desk", "The desk"],
       ["/#try", "Risk maths"],
-      ["/#membership", "Membership"],
+      ["/#ai", "MNHA AI"],
       ["/#faq", "Questions"],
     ],
   },
@@ -40,10 +40,10 @@ export default function SiteFooter() {
           <div className="lg:col-span-5">
             <LogoMark tone="ink" size={30} />
             <p className="pub-display mt-5 max-w-sm text-[28px] leading-[1.05]">
-              Measure the edge. Then take the trade <em>yourself.</em>
+              Your Groww account, in plain <em>sight.</em>
             </p>
             <p className="mt-5 font-plex text-[10.5px] tracking-[0.12em] text-[#6d685d] uppercase">
-              Your account · Your orders · No guaranteed returns
+              Read-only · No tips · No guaranteed returns
             </p>
           </div>
           <div className="grid grid-cols-2 gap-10 sm:grid-cols-3 lg:col-span-7">

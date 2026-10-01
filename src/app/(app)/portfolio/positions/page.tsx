@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
-import { getPositions, isConnected, canTrade } from "@/lib/api/broker";
+import { getPositions, canTrade } from "@/lib/api/broker";
+import { isOwnerSession } from "@/lib/access";
 import { fmtMoney, fmtMoneySigned, fmtPct, toneText } from "@/lib/format";
 import { PageHead, StatTile, Pill, SymbolChip } from "@/components/ui";
 import OrderTicket from "@/components/OrderTicket";
 import Link from "next/link";
 import { LivePrice } from "@/components/Live";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
-import NotConnected from "@/components/NotConnected";
+import AccountEmpty from "../AccountEmpty";
 
 export const metadata: Metadata = { title: "Positions · MNHA Financials" };
 
@@ -16,21 +17,19 @@ export const dynamic = "force-dynamic";
 const PRODUCT_TONE = { MIS: "warn", CNC: "brand", NRML: "violet" } as const;
 
 export default async function PositionsPage() {
-  const positions = await getPositions();
+  const [positions, isOwner] = await Promise.all([getPositions(), isOwnerSession()]);
   const tradable = canTrade();
 
   if (positions.length === 0) {
     return (
       <>
         <PageHead title="Positions" sub="Open intraday and F&O positions." />
-        <NotConnected
-          connected={isConnected()}
-          what={isConnected() ? "No open positions" : "No positions to show"}
-          detail={
-            isConnected()
-              ? "Your Groww account has nothing working right now. Open positions appear here with live P&L."
-              : "Positions are read from your Groww account once credentials are configured on the server."
-          }
+        <AccountEmpty
+          noun="open positions"
+          empty={{
+            what: "No open positions",
+            detail: "Your Groww account has nothing working right now. Open positions appear here with live P&L.",
+          }}
         />
       </>
     );
@@ -47,6 +46,7 @@ export default async function PositionsPage() {
   );
   const exposure = priced.reduce((s, p) => s + p.ltp * p.qty, 0);
   const unpriced = positions.length - priced.length;
+  const realised = positions.reduce((s, p) => s + p.realised, 0);
 
   return (
     <>
@@ -55,17 +55,18 @@ export default async function PositionsPage() {
         sub="Open intraday and F&O positions. MIS legs are auto-squared off by Groww before close."
       />
 
-      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
           label="Open P&L"
           value={priced.length ? fmtMoneySigned(pnl, 0) : "—"}
-          tone={pnl >= 0 ? "up" : "down"}
+          tone={priced.length ? (pnl >= 0 ? "up" : "down") : undefined}
           sub={`${positions.length} positions${unpriced ? ` · ${unpriced} awaiting a price` : ""}`}
         />
         <StatTile label="Exposure" value={priced.length ? fmtMoney(exposure, 0) : "—"} />
         <StatTile
           label="Realised today"
-          value={fmtMoneySigned(positions.reduce((s, p) => s + p.realised, 0), 0)}
+          value={fmtMoneySigned(realised, 0)}
+          tone={realised > 0 ? "up" : realised < 0 ? "down" : undefined}
         />
         <StatTile label="Instruments" value={String(positions.length)} />
       </div>
@@ -80,7 +81,7 @@ export default async function PositionsPage() {
             <Th align="right">Avg</Th>
             <Th align="right">LTP</Th>
             <Th align="right">P&L</Th>
-            <Th align="right">Action</Th>
+            {isOwner && <Th align="right">Action</Th>}
           </tr>
         </thead>
         <tbody>
@@ -92,17 +93,17 @@ export default async function PositionsPage() {
                 <Td>
                   <Link
                     href={`/stock/${p.symbol.replace(/\s.*/, "")}`}
-                    className="flex items-center gap-3 hover:opacity-80"
+                    className="group flex items-center gap-3"
                   >
-                    <SymbolChip symbol={p.symbol.replace(/\s.*/, "")} size={36} />
-                    <span className="text-[13.5px] font-semibold text-ink">{p.symbol}</span>
+                    <SymbolChip symbol={p.symbol.replace(/\s.*/, "")} size={34} />
+                    <span className="text-[13.5px] font-semibold text-ink group-hover:text-brandtext">{p.symbol}</span>
                   </Link>
                 </Td>
                 <Td align="center"><Pill tone={PRODUCT_TONE[p.product]}>{p.product}</Pill></Td>
                 <Td align="center"><Pill tone={p.side === "BUY" ? "up" : "down"}>{p.side}</Pill></Td>
                 <Td align="right" className="tnum">{p.qty}</Td>
                 <Td align="right" className="tnum">{fmtMoney(p.avg)}</Td>
-                <Td align="right" className="font-medium text-ink">
+                <Td align="right" className="tnum font-medium text-ink">
                   {p.ltp === null ? (
                     "—"
                   ) : (
@@ -124,16 +125,19 @@ export default async function PositionsPage() {
                     </>
                   )}
                 </Td>
-                <Td align="right">
-                  <OrderTicket
-                    symbol={p.symbol.replace(/\s.*/, "")}
-                    ltp={p.ltp}
-                    side="SELL"
-                    suggestedPrice={p.ltp}
-                    trigger={{ label: "Exit", variant: "outline" }}
-                    disabledReason={tradable ? undefined : "Order placement is disabled on this server"}
-                  />
-                </Td>
+                {isOwner && (
+                  <Td align="right">
+                    <OrderTicket
+                      symbol={p.symbol.replace(/\s.*/, "")}
+                      ltp={p.ltp}
+                      side={p.side === "SELL" ? "BUY" : "SELL"}
+                      segment={/(CE|PE|FUT)$/.test(p.symbol) ? "FNO" : "CASH"}
+                      suggestedPrice={p.ltp}
+                      trigger={{ label: "Exit", variant: "outline" }}
+                      disabledReason={tradable ? undefined : "Order placement is disabled on this server"}
+                    />
+                  </Td>
+                )}
               </Tr>
             );
           })}

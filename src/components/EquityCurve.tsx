@@ -46,13 +46,11 @@ export default function EquityCurve({
   const fmtInr = (v: number) => `₹${Math.round(v).toLocaleString("en-IN")}`;
 
   return (
-    <div className="w-full overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H + 24}`} className="w-full min-w-[560px]" role="img" aria-label="Equity curve, gross vs net of costs">
+    <div className="w-full">
+      {/* scales to the card at every width, so the end of the run — the part that matters — is never scrolled off */}
+      <svg viewBox={`0 0 ${W} ${H}`} className="block w-full" role="img" aria-label="Equity curve, gross vs net of costs">
         {/* starting-capital baseline */}
         <line x1={padL} y1={baseY} x2={W - padR} y2={baseY} stroke="var(--c-border-strong)" strokeWidth="1" strokeDasharray="2 5" />
-        <text x={padL} y={baseY - 5} fontSize="10.5" fill="var(--c-text-3)">
-          start {fmtInr(startCapital)}
-        </text>
 
         {/* gross (pre-cost) — muted */}
         <path d={path(gross)} fill="none" stroke="var(--c-text-3)" strokeWidth="1.5" strokeOpacity="0.7" strokeDasharray="4 3" />
@@ -70,20 +68,26 @@ export default function EquityCurve({
             </>
           );
         })()}
-
-        {/* x-axis endpoints */}
-        <text x={padL} y={H + 16} fontSize="10.5" fill="var(--c-text-3)">{fmtDate(t0)}</text>
-        <text x={W - padR} y={H + 16} fontSize="10.5" fill="var(--c-text-3)" textAnchor="end">{fmtDate(t1)}</text>
       </svg>
+      {/* x-axis endpoints as HTML, so they stay one readable size however wide the plot scales */}
+      <div className="mt-1 flex justify-between px-2 font-mono text-[11px] tracking-[0.04em] text-ink3">
+        <span>{fmtDate(t0)}</span>
+        <span>{fmtDate(t1)}</span>
+      </div>
 
-      <div className="mt-1 flex items-center gap-5 px-2 text-[11.5px] text-ink3">
+      <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-line px-2 pt-3 text-[12px] text-ink3">
+        {/* the start level lives in the legend, not on the plot, where the curve begins on top of it */}
         <span className="inline-flex items-center gap-1.5">
-          <svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke="var(--c-text-3)" strokeWidth="1.5" strokeDasharray="4 3" /></svg>
-          Gross · {fmtInr(gross.at(-1)?.equity ?? startCapital)}
+          <svg width="20" height="6" aria-hidden="true"><line x1="0" y1="3" x2="20" y2="3" stroke="var(--c-border-strong)" strokeWidth="1" strokeDasharray="2 5" /></svg>
+          Start · <span className="tnum">{fmtInr(startCapital)}</span>
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke={netUp ? "var(--c-up)" : "var(--c-down)"} strokeWidth="2.4" /></svg>
-          Net of costs · <strong className={netUp ? "text-up" : "text-down"}>{fmtInr(netEnd)}</strong>
+          <svg width="20" height="6" aria-hidden="true"><line x1="0" y1="3" x2="20" y2="3" stroke="var(--c-text-3)" strokeWidth="1.5" strokeDasharray="4 3" /></svg>
+          Gross · <span className="tnum">{fmtInr(gross.at(-1)?.equity ?? startCapital)}</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <svg width="20" height="6" aria-hidden="true"><line x1="0" y1="3" x2="20" y2="3" stroke={netUp ? "var(--c-up)" : "var(--c-down)"} strokeWidth="2.4" /></svg>
+          Net of costs · <strong className={`tnum ${netUp ? "text-up" : "text-down"}`}>{fmtInr(netEnd)}</strong>
         </span>
       </div>
     </div>

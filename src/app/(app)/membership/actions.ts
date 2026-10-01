@@ -16,6 +16,8 @@ export interface MemberState {
 export async function enrollAction(_prev: MemberState, _form: FormData): Promise<MemberState> {
   const uid = await currentUserId();
   if (!uid || uid === OWNER_ID) return { error: "Sign in as a user account first." };
+  // Not offered while member accounts are read-only (MNHA trades nothing for them).
+  if (uid) return { error: "Membership is not offered while your account is read-only." };
 
   // The starting mark anchors every future fee, so it must be a complete reading.
   const nav = await getNavStrict();

@@ -5,7 +5,8 @@ import { fmtNum } from "@/lib/format";
 import MarketMood from "@/components/MarketMood";
 import NotConnected from "@/components/NotConnected";
 import OrderTicket from "@/components/OrderTicket";
-import { PageHead, Card, CardHead, Pill } from "@/components/ui";
+import { PageHead, Card, CardHead, Pill, Empty } from "@/components/ui";
+import { requireOwnerPage } from "@/lib/access";
 
 export const metadata: Metadata = { title: "F&O · MNHA Financials" };
 
@@ -24,6 +25,7 @@ function fmtExpiry(iso: string): string {
  * does not carry, and a made-up one would be worse than none.
  */
 export default async function FnoPage() {
+  await requireOwnerPage();
   const chain = await getOptionChain("NIFTY");
 
   if (!chain) {
@@ -55,6 +57,13 @@ export default async function FnoPage() {
     0,
   );
   const nearby = chain.rows.slice(Math.max(0, atmIdx - 2), atmIdx + 3);
+  // Only legs the feed actually priced; an unpriced leg is left out rather than shown at a made-up value.
+  const priced = nearby.flatMap((r) =>
+    (["ce", "pe"] as const).flatMap((side) => {
+      const leg = r[side];
+      return leg && leg.ltp !== null ? [{ r, side, leg, ltp: leg.ltp }] : [];
+    }),
+  );
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_352px]">
@@ -65,29 +74,34 @@ export default async function FnoPage() {
           right={
             <Link
               href="/fno/chain"
-              className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-[13.5px] font-semibold text-white hover:bg-brandh"
+              className="inline-flex h-9 items-center gap-1.5 bg-brand px-4 text-[13.5px] font-semibold text-onbrand hover:bg-brandh"
             >
-              Full option chain
+              Full option chain <span className="pub-arrow">→</span>
             </Link>
           }
         />
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          {nearby.flatMap((r) =>
-            (["ce", "pe"] as const).map((side) => {
-              const leg = r[side];
-              if (!leg || leg.ltp === null) return null;
+        {priced.length === 0 ? (
+          <Card pad={false}>
+            <Empty
+              title="No live premiums around the money just now"
+              hint="The strike grid loaded but the feed returned no prices for the nearest strikes. Reload to retry, or open the full chain."
+            />
+          </Card>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {priced.map(({ r, side, leg, ltp }) => {
               const name = `${chain.underlying} ${fmtNum(r.strike)} ${side.toUpperCase()}`;
               return (
                 <Card key={leg.tradingSymbol} className="flex items-center gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-[14.5px] font-bold tracking-tight text-ink">{name}</p>
+                      <p className="tnum text-[15px] font-semibold tracking-tight text-ink">{name}</p>
                       <Pill tone={side === "ce" ? "up" : "down"}>{side.toUpperCase()}</Pill>
                       {r.strike === chain.rows[atmIdx].strike && <Pill tone="brand">ATM</Pill>}
                     </div>
-                    <p className="mt-1 text-[12px] text-ink3">
-                      OI {leg.oi === null ? "—" : fmtNum(leg.oi)}
+                    <p className="tnum mt-1 text-[12px] text-ink3">
+                      <span className="font-mono text-[10px] tracking-[0.08em] uppercase">OI</span> {leg.oi === null ? "—" : fmtNum(leg.oi)}
                       {leg.oiChgPct !== null && (
                         <span className={leg.oiChgPct >= 0 ? "text-up" : "text-down"}>
                           {" "}
@@ -98,7 +112,7 @@ export default async function FnoPage() {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="tnum text-[16px] font-semibold text-ink">₹{leg.ltp.toFixed(2)}</p>
+                    <p className="tnum text-[17px] font-semibold text-ink">₹{ltp.toFixed(2)}</p>
                     <p
                       className={`tnum text-[12px] ${
                         leg.changePct === null ? "text-ink3" : leg.changePct >= 0 ? "text-up" : "text-down"
@@ -112,7 +126,7 @@ export default async function FnoPage() {
                   <OrderTicket
                     symbol={leg.tradingSymbol}
                     company={`${name} · ${fmtExpiry(chain.expiry)}`}
-                    ltp={leg.ltp}
+                    ltp={ltp}
                     segment="FNO"
                     lotSize={chain.lotSize}
                     trigger={{ label: "Buy", variant: "outline" }}
@@ -120,9 +134,9 @@ export default async function FnoPage() {
                   />
                 </Card>
               );
-            }),
-          )}
-        </div>
+            })}
+          </div>
+        )}
 
         <Card className="mt-5">
           <CardHead

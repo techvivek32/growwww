@@ -3,7 +3,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 /**
- * Light is the default because Groww is a light-first product. The choice is
+ * Light (warm paper) is the default; dark is the ink theme. The choice is
  * remembered per browser; a viewer who never chooses stays on light,
  * regardless of their OS setting.
  *
@@ -46,7 +46,7 @@ export default function ThemeToggle() {
       type="button"
       onClick={toggle}
       aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
-      className="grid h-9 w-9 place-items-center rounded-full text-ink2 transition-colors hover:bg-surfaceh hover:text-ink"
+      className="grid h-9 w-9 place-items-center text-ink2 transition-colors hover:bg-surfaceh hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mark"
     >
       {dark ? (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">

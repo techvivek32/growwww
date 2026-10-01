@@ -7,7 +7,7 @@ import { enrollAction, type MemberState } from "./actions";
 function Btn() {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={pending} className="inline-flex h-11 items-center justify-center rounded-lg bg-brand px-6 text-[14.5px] font-semibold text-white hover:bg-brandh disabled:opacity-60">
+    <button type="submit" disabled={pending} className="inline-flex h-11 items-center justify-center bg-brand px-6 text-[14.5px] font-semibold text-onbrand transition-colors hover:bg-brandh disabled:opacity-60">
       {pending ? "Starting…" : "Start membership"}
     </button>
   );

@@ -10,7 +10,7 @@ function Btn() {
     <button
       type="submit"
       disabled={pending}
-      className="h-9 rounded-md bg-brand px-3 text-[12px] font-semibold text-white hover:bg-brandh disabled:opacity-60"
+      className="h-8 bg-brand px-3 text-[12px] font-semibold text-onbrand transition-colors hover:bg-brandh disabled:opacity-60"
     >
       {pending ? "Reading live NAV…" : "Settle now (reads live NAV)"}
     </button>

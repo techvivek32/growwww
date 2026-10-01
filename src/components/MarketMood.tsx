@@ -39,7 +39,7 @@ export default async function MarketMood() {
                 <Sparkline points={ix.spark} up={ix.change >= 0} baseline={ix.prevClose} w={56} h={20} />
               )}
               <div className="w-[116px] text-right">
-                <p className="text-[13px] font-semibold text-ink">
+                <p className="text-[13px] font-medium text-ink">
                   {ix.stale ? (
                     <span className="tnum">{fmtNum(ix.last, 2)}</span>
                   ) : (
@@ -78,12 +78,12 @@ export default async function MarketMood() {
         </p>
         <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-3">
           <div>
-            <dt className="text-[11px] text-ink3">Session</dt>
-            <dd className="text-[13px] font-medium text-ink">09:15 – 15:30 IST</dd>
+            <dt className="font-mono text-[10.5px] tracking-[0.06em] text-ink3 uppercase">Session</dt>
+            <dd className="tnum mt-0.5 text-[13px] font-medium text-ink">09:15 – 15:30 IST</dd>
           </div>
           <div>
-            <dt className="text-[11px] text-ink3">Exchange</dt>
-            <dd className="text-[13px] font-medium text-ink">NSE</dd>
+            <dt className="font-mono text-[10.5px] tracking-[0.06em] text-ink3 uppercase">Exchange</dt>
+            <dd className="mt-0.5 text-[13px] font-medium text-ink">NSE</dd>
           </div>
         </dl>
       </Card>

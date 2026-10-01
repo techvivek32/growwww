@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getOptionChain, getAccount, isConnected, canTrade } from "@/lib/api/broker";
-import { PageHead } from "@/components/ui";
+import { isOwnerSession } from "@/lib/access";
+import { PageHead, Pill } from "@/components/ui";
 import ChainBoard from "@/components/ChainBoard";
 import NotConnected from "@/components/NotConnected";
 
@@ -9,15 +10,22 @@ export const metadata: Metadata = { title: "Option Chain · MNHA Financials" };
 // Live FNO quotes and the live account — never bake this at build time.
 export const dynamic = "force-dynamic";
 
+function fmtExpiry(iso: string): string {
+  return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" }).format(
+    new Date(`${iso}T00:00:00`),
+  );
+}
+
 export default async function OptionChainPage({
   searchParams,
 }: {
   searchParams: Promise<{ u?: string; e?: string }>;
 }) {
   const params = await searchParams;
-  const [chain, account] = await Promise.all([
+  const [chain, account, owner] = await Promise.all([
     getOptionChain(params.u, params.e),
     getAccount(),
+    isOwnerSession(),
   ]);
 
   if (!chain) {
@@ -37,5 +45,16 @@ export default async function OptionChainPage({
     );
   }
 
-  return <ChainBoard chain={chain} balance={account.balance} tradable={canTrade()} />;
+  return (
+    <>
+      <PageHead
+        title="Option chain"
+        sub={`${chain.underlying} · expiry ${fmtExpiry(chain.expiry)} · lot size ${chain.lotSize > 0 ? chain.lotSize : "—"}. Live strikes, premiums and open interest${
+          owner ? " — pick any leg to open its order ticket." : "."
+        }`}
+        right={owner ? undefined : <Pill>View only</Pill>}
+      />
+      <ChainBoard chain={chain} balance={account.balance} tradable={canTrade()} />
+    </>
+  );
 }

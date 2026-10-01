@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { submitOrder, type OrderState } from "@/app/(app)/trade/actions";
 import { fmtMoney } from "@/lib/format";
+import { useIsOwner } from "./Viewer";
 import type { OrderType, Product, Side } from "@/lib/types";
 
 /**
@@ -43,7 +44,7 @@ function Submit({ label }: { label: string }) {
     <button
       type="submit"
       disabled={pending}
-      className="h-12 flex-1 rounded-lg bg-brand text-[15px] font-semibold text-white transition-colors hover:bg-brandh disabled:opacity-60"
+      className="h-12 flex-1 rounded-lg bg-brand text-[15px] font-semibold text-onbrand transition-colors hover:bg-brandh disabled:opacity-60"
     >
       {pending ? "Sending…" : label}
     </button>
@@ -52,9 +53,9 @@ function Submit({ label }: { label: string }) {
 
 const field =
   "h-11 w-full rounded-lg border border-line bg-surface px-3 text-[14px] text-ink outline-none transition-colors focus:border-brand";
-const labelCls = "mb-1.5 block text-[12px] font-semibold text-ink2";
+const labelCls = "mb-1.5 block font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase";
 
-export default function OrderTicket({
+function OrderTicketInner({
   symbol,
   company,
   ltp,
@@ -124,10 +125,10 @@ export default function OrderTicket({
 
   const btn =
     trigger.variant === "danger"
-      ? "bg-down text-white hover:opacity-90"
+      ? "bg-down text-onbrand hover:opacity-90"
       : trigger.variant === "outline"
         ? "border border-line2 text-ink hover:bg-surfaceh"
-        : "bg-brand text-white hover:bg-brandh";
+        : "bg-brand text-onbrand hover:bg-brandh";
 
   return (
     <>
@@ -139,7 +140,7 @@ export default function OrderTicket({
         }}
         disabled={Boolean(disabledReason)}
         title={disabledReason}
-        className={`inline-flex h-9 items-center justify-center rounded-lg px-3.5 text-[13px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${btn} ${trigger.full ? "w-full" : ""}`}
+        className={`tnum inline-flex h-9 items-center justify-center px-3.5 text-[13px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${btn} ${trigger.full ? "w-full" : ""}`}
       >
         {trigger.label}
       </button>
@@ -151,17 +152,17 @@ export default function OrderTicket({
           aria-label={`${side} ${symbol}`}
           className="fixed inset-0 z-[90] flex items-end justify-center bg-bg/80 p-0 backdrop-blur-sm sm:items-center sm:p-4"
         >
-          <div
-            className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-line bg-surface sm:rounded-2xl"
-            style={{ boxShadow: "var(--shadow-pop)" }}
-          >
+          <div className="max-h-[92vh] w-full max-w-md overflow-y-auto border border-line2 bg-surface text-left">
             {/* header */}
             <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
               <div className="min-w-0">
-                <p className="text-[16px] font-bold tracking-tight text-ink">
-                  {side === "BUY" ? "Buy" : "Sell"} {symbol}
+                <p className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">
+                  Order ticket · {exchange} {fno ? "F&O" : "cash"}
                 </p>
-                <p className="truncate text-[12.5px] text-ink3">
+                <p className="pub-display mt-1 truncate text-[28px] leading-none text-ink">
+                  {side === "BUY" ? "Buy" : "Sell"} <em>{symbol}</em>
+                </p>
+                <p className="tnum mt-1.5 truncate text-[12.5px] text-ink3">
                   {company ?? "NSE"} · {ltp === null ? "price unavailable" : `LTP ${fmtMoney(ltp)}`}
                 </p>
               </div>
@@ -170,7 +171,7 @@ export default function OrderTicket({
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink3 hover:bg-surfaceh hover:text-ink"
+                className="grid h-8 w-8 shrink-0 place-items-center border border-transparent text-ink3 hover:border-line hover:bg-surfaceh hover:text-ink"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M6 6l12 12M18 6L6 18" />
@@ -185,8 +186,8 @@ export default function OrderTicket({
                     <path d="m5 12.5 4.5 4.5L19 7" />
                   </svg>
                 </div>
-                <p className="mt-3 text-center text-[15px] font-semibold text-ink">Order placed</p>
-                <dl className="mt-4 space-y-2 rounded-lg border border-line bg-surface2 px-3.5 py-3 text-[12.5px]">
+                <p className="pub-display mt-3 text-center text-[26px] leading-tight text-ink">Order placed</p>
+                <dl className="mt-4 space-y-2 border border-line bg-surface2 px-3.5 py-3 text-[12.5px]">
                   <div className="flex justify-between gap-3">
                     <dt className="text-ink3">Order id</dt>
                     <dd className="tnum font-medium break-all text-ink">{state.orderId ?? "—"}</dd>
@@ -357,7 +358,7 @@ export default function OrderTicket({
                       type="button"
                       disabled={!ready}
                       onClick={() => setReview(true)}
-                      className="mt-4 h-12 w-full rounded-lg bg-brand text-[15px] font-semibold text-white transition-colors hover:bg-brandh disabled:cursor-not-allowed disabled:opacity-50"
+                      className="mt-4 h-12 w-full rounded-lg bg-brand text-[15px] font-semibold text-onbrand transition-colors hover:bg-brandh disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Review order
                     </button>
@@ -369,7 +370,7 @@ export default function OrderTicket({
                       <strong className="font-semibold">
                         {fno ? `${lotsNum} lot${lotsNum > 1 ? "s" : ""} (${qtyNum} qty)` : qtyNum}
                       </strong>{" "}
-                      of <strong className="font-semibold">{symbol}</strong> on NSE as{" "}
+                      of <strong className="font-semibold">{symbol}</strong> on {exchange} as{" "}
                       <strong className="font-semibold">
                         {PRODUCTS.find((p) => p.value === product)?.label.toLowerCase()}
                       </strong>
@@ -428,4 +429,9 @@ export default function OrderTicket({
       )}
     </>
   );
+}
+
+/** Order entry exists only on the owner's desk; member accounts are view-only. */
+export default function OrderTicket(props: Parameters<typeof OrderTicketInner>[0]) {
+  return useIsOwner() ? <OrderTicketInner {...props} /> : null;
 }

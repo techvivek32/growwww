@@ -9,7 +9,7 @@ function Btn() {
     <button
       type="submit"
       disabled={pending}
-      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3.5 text-[12.5px] font-semibold text-ink2 transition-colors hover:bg-surfaceh hover:text-ink disabled:opacity-60"
+      className="inline-flex h-9 items-center gap-1.5 border border-line2 px-3.5 text-[12.5px] font-semibold text-ink transition-colors hover:bg-surfaceh disabled:cursor-wait disabled:opacity-60"
     >
       <svg
         width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"

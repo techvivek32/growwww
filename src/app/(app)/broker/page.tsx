@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getAccount, getConnectionStatus } from "@/lib/api/broker";
+import { registeredIp } from "@/lib/api/groww";
+import { isOwnerSession } from "@/lib/access";
+import { currentUserId } from "@/lib/session";
+import { findById } from "@/lib/users";
 import { fmtMoney } from "@/lib/format";
 import { PageHead, Card, CardHead, Pill } from "@/components/ui";
 
@@ -8,22 +13,30 @@ export const metadata: Metadata = { title: "Broker · MNHA Financials" };
 // Reads the live broker account — never bake this at build time.
 export const dynamic = "force-dynamic";
 
+const label = "font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase";
+
 function Dot({ on }: { on: boolean }) {
   return (
-    <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-surface2 text-ink3">
+    <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center border ${on ? "border-up/50 bg-upsoft text-up" : "border-line2 text-ink3"}`}>
       {on ? (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--c-up)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="m5 12.5 4.5 4.5L19 7" />
         </svg>
       ) : (
-        <span className="h-1.5 w-1.5 rounded-full bg-ink3" />
+        <span className="h-1.5 w-1.5 bg-ink3" aria-hidden="true" />
       )}
     </span>
   );
 }
 
+interface Step {
+  on: boolean;
+  label: string;
+  detail: string;
+}
+
 /** Each row's tick reflects a distinct, verifiable fact — not one boolean. */
-function buildSteps(status: { credentials: boolean; live: boolean; ipPinned: boolean }) {
+function ownerSteps(status: { credentials: boolean; live: boolean; ipPinned: boolean }): Step[] {
   return [
     {
       on: status.credentials,
@@ -45,6 +58,37 @@ function buildSteps(status: { credentials: boolean; live: boolean; ipPinned: boo
   ];
 }
 
+/** The same three facts, about the member's own key. */
+function memberSteps(status: { credentials: boolean; live: boolean }, serverIp: string | null, confirmedIp: string | null): Step[] {
+  const ipOk = serverIp !== null && confirmedIp === serverIp;
+  return [
+    {
+      on: status.credentials,
+      label: "Your Groww key is on file",
+      detail: "Stored encrypted, used only for your own account, and never displayed.",
+    },
+    {
+      on: status.live,
+      label: "Live read verified",
+      detail: status.live
+        ? "A TOTP-authenticated read of your Groww account succeeded just now — which also shows your Groww API subscription is active."
+        : "Groww did not answer a read of your account just now. If this persists, re-connect from Settings.",
+    },
+    {
+      on: ipOk,
+      label: "Our server IP is on your key",
+      detail:
+        serverIp === null
+          ? "Our server address is not configured yet."
+          : ipOk
+            ? `You confirmed adding ${serverIp} to your Groww key.`
+            : confirmedIp
+              ? `You confirmed ${confirmedIp}, but the server now uses ${serverIp} — update it on Groww.`
+              : `Not confirmed. Add ${serverIp} on your Groww key — reading works without it, but Groww refuses orders from a key that lacks it.`,
+    },
+  ];
+}
+
 const LIMITS = [
   { k: "Order types", v: "MARKET · LIMIT · SL · SL_M" },
   { k: "Products", v: "CNC · MIS · NRML" },
@@ -55,77 +99,79 @@ const LIMITS = [
 ];
 
 export default async function BrokerPage() {
-  const [account, status] = await Promise.all([getAccount(), getConnectionStatus()]);
-  const steps = buildSteps(status);
-  // "Connected" means a live call succeeded — not that env vars exist.
+  const [account, status, isOwner, uid] = await Promise.all([getAccount(), getConnectionStatus(), isOwnerSession(), currentUserId()]);
+  const user = !isOwner && uid ? await findById(uid) : null;
+  const serverIp = registeredIp();
+  const confirmedIp = user?.broker?.ipConfirmedAt ? (user.broker.staticIp ?? null) : null;
+  const steps = isOwner ? ownerSteps(status) : memberSteps(status, serverIp, confirmedIp);
+
+  // "Connected" means a live call succeeded — not that a key exists.
   const pill = status.live
     ? { tone: "up" as const, text: "Connected" }
     : status.credentials
-      ? { tone: "warn" as const, text: "Credentials set — API call failing" }
+      ? { tone: "warn" as const, text: isOwner ? "Credentials set — API call failing" : "Key on file — not answering" }
       : { tone: "neutral" as const, text: "Not connected" };
+
+  const facts: { k: string; v: string | null; num?: boolean }[] = [
+    { k: "Account", v: account.name },
+    { k: "Available cash", v: account.balance === null ? null : fmtMoney(account.balance), num: true },
+    { k: "Margin used", v: account.usedMargin === null ? null : fmtMoney(account.usedMargin), num: true },
+    { k: "Client code", v: account.ucc, num: true },
+    { k: "Segments", v: account.segments.length ? account.segments.join(" · ") : null },
+    { k: "Session", v: "09:15–15:30", num: true },
+  ];
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHead title="Broker" sub="How MNHA Financials connects to your Groww account." />
+      <PageHead
+        title="Broker"
+        sub={
+          isOwner
+            ? "How MNHA Financials connects to your Groww account."
+            : "Your Groww link, read-only. Your money and positions stay with Groww."
+        }
+      />
 
       <Card className="mb-5">
-        <CardHead
-          title="Groww"
-          sub={account.email}
-          right={<Pill tone={pill.tone}>{pill.text}</Pill>}
-        />
+        <CardHead title="Groww" sub={account.email} right={<Pill tone={pill.tone}>{pill.text}</Pill>} />
 
-        <dl className="grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-3 lg:grid-cols-6">
-          <div>
-            <dt className="text-[12px] text-ink3">Account</dt>
-            <dd className="mt-1 text-[14.5px] font-semibold text-ink">{account.name}</dd>
-          </div>
-          <div>
-            <dt className="text-[12px] text-ink3">Available cash</dt>
-            <dd className={`tnum mt-1 text-[14.5px] font-semibold ${account.balance === null ? "text-ink3" : "text-ink"}`}>
-              {account.balance === null ? "—" : fmtMoney(account.balance)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[12px] text-ink3">Margin used</dt>
-            <dd className={`tnum mt-1 text-[14.5px] font-semibold ${account.usedMargin === null ? "text-ink3" : "text-ink"}`}>
-              {account.usedMargin === null ? "—" : fmtMoney(account.usedMargin)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[12px] text-ink3">Client code</dt>
-            <dd className={`tnum mt-1 text-[14.5px] font-semibold ${account.ucc === null ? "text-ink3" : "text-ink"}`}>
-              {account.ucc ?? "—"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[12px] text-ink3">Segments</dt>
-            <dd className="mt-1 text-[14.5px] font-semibold text-ink">
-              {account.segments.length ? account.segments.join(" · ") : "—"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[12px] text-ink3">Session</dt>
-            <dd className="mt-1 text-[14.5px] font-semibold text-ink">09:15–15:30</dd>
-          </div>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-5 border-t border-line pt-5 sm:grid-cols-3">
+          {facts.map((f) => (
+            <div key={f.k} className="min-w-0">
+              <dt className={label}>{f.k}</dt>
+              <dd className={`mt-1.5 text-[14.5px] font-semibold break-words ${f.num ? "tnum" : ""} ${f.v === null ? "text-ink3" : "text-ink"}`}>
+                {f.v ?? "—"}
+              </dd>
+            </div>
+          ))}
         </dl>
 
         {!status.live && (
           <div className="mt-5 border-t border-line pt-5">
-            <p className="text-[12.5px] leading-relaxed text-ink3">
-              Connecting is server configuration, not a button: set GROWW_API_KEY, GROWW_API_SECRET and
-              GROWW_TOTP_SECRET in the server environment (see .env.example). Until a live call succeeds,
-              account screens stay empty rather than showing a number nobody can stand behind.
-            </p>
+            {isOwner ? (
+              <p className="text-[12.5px] leading-relaxed text-ink3">
+                Connecting is server configuration, not a button: set GROWW_API_KEY, GROWW_API_SECRET and
+                GROWW_TOTP_SECRET in the server environment (see .env.example). Until a live call succeeds,
+                account screens stay empty rather than showing a number nobody can stand behind.
+              </p>
+            ) : (
+              <p className="text-[12.5px] leading-relaxed text-ink3">
+                We could not read your Groww account just now, so these stay empty rather than showing a number nobody
+                can stand behind. Your money is unaffected.{" "}
+                <Link href="/settings" className="font-semibold text-brandtext hover:underline">
+                  Re-connect from Settings →
+                </Link>
+              </p>
+            )}
           </div>
         )}
       </Card>
 
-      <Card className="mb-5">
+      <Card className={isOwner ? "mb-5" : ""}>
         <CardHead title="Connection checks" sub="Each tick is verified separately, just now" />
-        <ul className="space-y-3.5">
+        <ul className="divide-y divide-line border-t border-line">
           {steps.map((s) => (
-            <li key={s.label} className="flex gap-3">
+            <li key={s.label} className="flex gap-3 py-3.5">
               <Dot on={s.on} />
               <div className="min-w-0">
                 <p className="text-[13.5px] font-semibold text-ink">{s.label}</p>
@@ -136,17 +182,20 @@ export default async function BrokerPage() {
         </ul>
       </Card>
 
-      <Card>
-        <CardHead title="Groww API limits" sub="What the integration paces itself against" />
-        <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-          {LIMITS.map((c) => (
-            <div key={c.k} className="border-b border-line pb-3 last:border-0">
-              <dt className="text-[12px] text-ink3">{c.k}</dt>
-              <dd className="mt-0.5 text-[13.5px] font-medium text-ink">{c.v}</dd>
-            </div>
-          ))}
-        </dl>
-      </Card>
+      {/* Order types and rate limits are the house desk's concern; member accounts are view-only. */}
+      {isOwner && (
+        <Card>
+          <CardHead title="Groww API limits" sub="What the integration paces itself against" />
+          <dl className="grid gap-x-6 sm:grid-cols-2">
+            {LIMITS.map((c) => (
+              <div key={c.k} className="border-t border-line py-3">
+                <dt className={label}>{c.k}</dt>
+                <dd className="mt-1 text-[13.5px] font-medium text-ink">{c.v}</dd>
+              </div>
+            ))}
+          </dl>
+        </Card>
+      )}
     </div>
   );
 }

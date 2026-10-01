@@ -6,6 +6,7 @@ import { SESSION_COOKIE, SESSION_MAX_AGE, OWNER_ID, issueToken, isOwnerLogin } f
 import { verifyLogin, hasBroker } from "@/lib/users";
 import { hasConsented } from "@/lib/consent";
 import { rateLimit, rateReset } from "@/lib/ratelimit";
+import { MEMBER_HOME } from "@/lib/routes";
 
 export interface FormState {
   error?: string;
@@ -53,7 +54,7 @@ export async function login(_prev: FormState, formData: FormData): Promise<FormS
   await setSession(user.id);
   // Agreement first, then broker, then the terminal.
   if (!(await hasConsented(user.id))) redirect("/consent");
-  redirect((await hasBroker(user.id)) ? "/stocks/alerts" : "/connect-broker");
+  redirect((await hasBroker(user.id)) ? MEMBER_HOME : "/connect-broker");
 }
 
 export async function logout() {

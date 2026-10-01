@@ -28,13 +28,14 @@ export default async function KycPage() {
     <div className="mx-auto max-w-xl">
       <PageHead title="Identity verification" sub="A quick check so we know who's on the platform." right={badge} />
 
-      <Card className="mb-5 border-line bg-surface2">
-        <p className="text-[12.5px] leading-relaxed text-ink2">
-          This is <strong>MNHA&apos;s own</strong> verification — a form, a selfie, and a short live video call — not a
-          government or SEBI KYC, and it doesn&apos;t touch your money or positions (those stay with Groww). Your PAN and
-          date of birth are stored <strong>encrypted</strong>; you can delete everything from Settings at any time.
+      <div className="mb-6 border-l-2 border-mark bg-surface px-5 py-4">
+        <p className="text-[13px] leading-relaxed text-ink2">
+          This is <strong className="text-ink">MNHA&apos;s own</strong> verification — a form, a selfie, and a short live
+          video call — not a government or SEBI KYC, and it doesn&apos;t touch your money or positions (those stay with
+          Groww). Your PAN and date of birth are stored <strong className="text-ink">encrypted</strong>; you can delete
+          everything from Settings at any time.
         </p>
-      </Card>
+      </div>
 
       {kyc.status === "none" && (
         <Card>
@@ -51,12 +52,12 @@ export default async function KycPage() {
             on a short live video call.
           </p>
           {kyc.callAt || kyc.callLink ? (
-            <div className="mt-4 rounded-lg border border-brand/40 bg-brandsoft/40 px-4 py-3">
-              <p className="text-[12px] font-semibold text-brandtext uppercase tracking-wide">Your verification call</p>
-              {kyc.callAt && <p className="mt-1 text-[14px] font-semibold text-ink">{fmt(kyc.callAt)}</p>}
+            <div className="mt-5 border-y border-line py-4">
+              <p className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">Your verification call</p>
+              {kyc.callAt && <p className="pub-display tnum mt-1.5 text-[24px] leading-tight text-ink">{fmt(kyc.callAt)}</p>}
               {kyc.callLink && (
-                <a href={kyc.callLink} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[13px] font-semibold text-brandtext hover:opacity-75 break-all">
-                  Join the call →
+                <a href={kyc.callLink} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-[13px] font-semibold break-all text-brandtext hover:underline">
+                  Join the call <span className="pub-arrow">→</span>
                 </a>
               )}
             </div>
@@ -76,7 +77,7 @@ export default async function KycPage() {
       {kyc.status === "rejected" && (
         <Card>
           <CardHead title="Not verified" sub="We couldn't confirm your details." />
-          {kyc.review?.notes && <p className="mb-4 rounded-lg border border-down/30 bg-downsoft px-3 py-2.5 text-[13px] text-ink2">{kyc.review.notes}</p>}
+          {kyc.review?.notes && <p className="mb-4 border-l-2 border-down bg-downsoft px-3.5 py-2.5 text-[13px] leading-relaxed text-ink">{kyc.review.notes}</p>}
           <p className="mb-4 text-[13px] text-ink3">You can correct the details and submit again.</p>
           <KycForm />
         </Card>

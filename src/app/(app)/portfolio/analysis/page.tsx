@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { getTrades, isConnected } from "@/lib/api/broker";
+import { getTrades } from "@/lib/api/broker";
 import { fmtMoney, fmtMoneySigned, toneText } from "@/lib/format";
 import { PageHead, StatTile, Card, CardHead, SymbolChip } from "@/components/ui";
-import NotConnected from "@/components/NotConnected";
+import AccountEmpty from "../AccountEmpty";
 
 export const metadata: Metadata = { title: "Analysis · MNHA Financials" };
 
@@ -17,12 +17,15 @@ export default async function AnalysisPage() {
       <>
         <PageHead
           title="Analysis"
-          sub="Realised performance from FIFO-matched round-trips — a buy and a sell in the same instrument."
+          sub="Today's realised round-trips, FIFO-matched from real fills — Groww reports the current day only."
         />
-        <NotConnected
-          connected={isConnected()}
-          what="No closed round-trips yet"
-          detail="Win rate and P&L are computed only from a matched buy and sell. Nothing is estimated, so nothing appears until a position has actually been opened and closed."
+        <AccountEmpty
+          noun="closed round-trips"
+          empty={{
+            what: "No round-trips closed today",
+            detail:
+              "Win rate and P&L are computed only from a matched buy and sell. Nothing is estimated, so nothing appears until a position has actually been opened and closed.",
+          }}
         />
       </>
     );
@@ -59,14 +62,14 @@ export default async function AnalysisPage() {
     <>
       <PageHead
         title="Analysis"
-        sub="FIFO-matched round-trips from real fills. All figures are gross — Groww's API does not report per-trade charges."
+        sub="Today's FIFO-matched round-trips from real fills. Gross figures — Groww's API reports the current day only, and no per-trade charges."
       />
 
-      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
           label="Gross P&L (before charges)"
           value={fmtMoneySigned(total, 0)}
-          tone={total >= 0 ? "up" : "down"}
+          tone={total > 0 ? "up" : total < 0 ? "down" : undefined}
           sub={`${trades.length} round-trips`}
         />
         <StatTile
@@ -89,27 +92,26 @@ export default async function AnalysisPage() {
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>
           <CardHead title="Best and worst round-trip" sub="Gross, before charges" />
-          <div className="space-y-3">
-            {(trades.length === 1 ? [{ label: "Only trade", t: best, tone: toneText(grossOf(best)) }] : [
-              { label: "Best", t: best, tone: "text-up" },
-              { label: "Worst", t: worst, tone: "text-down" },
-            ]).map(({ label, t, tone }) => (
-              <div
-                key={label}
-                className="flex items-center gap-3 rounded-lg border border-line bg-surface2 px-3 py-3"
-              >
-                <SymbolChip symbol={t.symbol} size={36} />
+          <ul className="border-t border-line">
+            {(trades.length === 1 ? [{ label: "Only trade", t: best }] : [
+              { label: "Best", t: best },
+              { label: "Worst", t: worst },
+            ]).map(({ label, t }) => (
+              <li key={label} className="flex items-center gap-3 border-b border-line py-3.5 last:border-b-0">
+                <SymbolChip symbol={t.symbol} size={34} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11.5px] text-ink3">{label}</p>
-                  <p className="text-[14px] font-semibold text-ink">{t.symbol}</p>
-                  <p className="text-[11.5px] text-ink3">
+                  <p className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">{label}</p>
+                  <p className="mt-0.5 text-[14px] font-semibold text-ink">{t.symbol}</p>
+                  <p className="tnum text-[11.5px] text-ink3">
                     {t.date || "—"} · {t.qty} qty · {fmtMoney(t.entry)} → {fmtMoney(t.exit)}
                   </p>
                 </div>
-                <p className={`tnum text-[16px] font-semibold ${tone}`}>{fmtMoneySigned(grossOf(t), 0)}</p>
-              </div>
+                <p className={`tnum shrink-0 text-[16px] font-semibold ${toneText(grossOf(t))}`}>
+                  {fmtMoneySigned(grossOf(t), 0)}
+                </p>
+              </li>
             ))}
-          </div>
+          </ul>
         </Card>
 
         <Card>
@@ -117,14 +119,14 @@ export default async function AnalysisPage() {
           <ul className="space-y-2.5">
             {bySymbol.map((s) => (
               <li key={s.symbol} className="flex items-center gap-3">
-                <span className="w-24 shrink-0 truncate text-[12.5px] font-semibold text-ink">{s.symbol}</span>
-                <span className="relative h-5 flex-1 rounded bg-surface2">
+                <span className="w-20 shrink-0 truncate text-[12.5px] font-semibold text-ink sm:w-24">{s.symbol}</span>
+                <span className="relative h-4 flex-1 bg-surface2">
                   <span
-                    className={`absolute inset-y-0 left-0 rounded ${s.gross >= 0 ? "bg-up/35" : "bg-down/35"}`}
+                    className={`absolute inset-y-0 left-0 ${s.gross >= 0 ? "bg-up/40" : "bg-down/40"}`}
                     style={{ width: `${(Math.abs(s.gross) / maxAbs) * 100}%` }}
                   />
                 </span>
-                <span className={`tnum w-24 shrink-0 text-right text-[12.5px] font-semibold ${toneText(s.gross)}`}>
+                <span className={`tnum w-20 shrink-0 text-right text-[12.5px] font-semibold sm:w-24 ${toneText(s.gross)}`}>
                   {fmtMoneySigned(s.gross, 0)}
                 </span>
               </li>

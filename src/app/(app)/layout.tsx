@@ -9,6 +9,7 @@ import TopNav from "@/components/TopNav";
 import IndexStrip from "@/components/IndexStrip";
 import { AutoTradeProvider } from "@/components/AutoTrade";
 import { LiveTicksProvider } from "@/components/LiveTicks";
+import { ViewerProvider } from "@/components/Viewer";
 
 // The nav shows live account state.
 export const dynamic = "force-dynamic";
@@ -32,21 +33,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   const [account, unread] = await Promise.all([getAccount(), unreadCount(uid)]);
+  const isOwner = uid === OWNER_ID;
 
   return (
+    <ViewerProvider isOwner={isOwner}>
     <AutoTradeProvider>
       <LiveTicksProvider>
-      <TopNav account={account} connected={account.balance !== null} isOwner={uid === OWNER_ID} unread={unread} />
+      <TopNav account={account} connected={account.balance !== null} isOwner={isOwner} unread={unread} />
       <IndexStrip />
       <main className="mx-auto max-w-[1360px] px-4 py-6 lg:px-6 lg:py-8">{children}</main>
       <footer className="mx-auto max-w-[1360px] px-4 pb-10 lg:px-6">
         <p className="border-t border-line pt-5 text-[11.5px] leading-relaxed text-ink3">
-          MNHA Financials is a decision-support terminal, not investment advice. Setups are generated from price and
-          volume data and can be wrong. Orders you confirm here are placed on your own Groww account — you place
-          them, you own them.
+          {isOwner
+            ? "MNHA Financials is a decision-support terminal, not investment advice. Setups are generated from price and volume data and can be wrong. Orders you confirm here are placed on your own Groww account — you place them, you own them."
+            : "MNHA Financials shows your own Groww account, read-only. Nothing here is investment advice, and no order is placed from this page. Your money and positions stay with Groww."}
         </p>
       </footer>
       </LiveTicksProvider>
     </AutoTradeProvider>
+    </ViewerProvider>
   );
 }

@@ -2,9 +2,15 @@
  * The MNHA mark: three stepped, slanted bars — a rising chart read as a stack.
  * `tone` picks cream (on ink), ink (on cream/paper) or the art colours.
  */
-export function LogoMark({ tone = "cream", size = 26 }: { tone?: "cream" | "ink" | "art"; size?: number }) {
+export function LogoMark({ tone = "cream", size = 26 }: { tone?: "cream" | "ink" | "art" | "current"; size?: number }) {
   const fills =
-    tone === "art" ? ["#4A615C", "#CE431D", "#E8AF7E"] : tone === "ink" ? ["#15140f", "#15140f", "#15140f"] : ["#eee9dd", "#eee9dd", "#eee9dd"];
+    tone === "art"
+      ? ["#4A615C", "#CE431D", "#E8AF7E"]
+      : tone === "ink"
+        ? ["#15140f", "#15140f", "#15140f"]
+        : tone === "current"
+          ? ["currentColor", "currentColor", "currentColor"]
+          : ["#eee9dd", "#eee9dd", "#eee9dd"];
   return (
     <svg width={size} height={(size * 24) / 28} viewBox="0 0 28 24" aria-hidden="true" focusable="false">
       <path d="M2 22h15l4-5H6Z" fill={fills[0]} />
@@ -15,11 +21,15 @@ export function LogoMark({ tone = "cream", size = 26 }: { tone?: "cream" | "ink"
 }
 
 /** "MNHA" in the display serif with an italic "Financials". */
-export function Wordmark({ tone = "cream", className = "" }: { tone?: "cream" | "ink"; className?: string }) {
+export function Wordmark({ tone = "cream", className = "" }: { tone?: "cream" | "ink" | "current"; className?: string }) {
   return (
     <span className={`inline-flex items-center gap-2.5 ${className}`}>
       <LogoMark tone={tone} />
-      <span className={`pub-display text-[22px] leading-none whitespace-nowrap sm:text-[25px] ${tone === "ink" ? "text-pub-ink" : "text-pub-cream"}`}>
+      <span
+        className={`pub-display text-[22px] leading-none whitespace-nowrap sm:text-[25px] ${
+          tone === "ink" ? "text-pub-ink" : tone === "current" ? "" : "text-pub-cream"
+        }`}
+      >
         MNHA <em className={tone === "cream" ? "max-[379px]:hidden" : ""}>Financials</em>
       </span>
     </span>

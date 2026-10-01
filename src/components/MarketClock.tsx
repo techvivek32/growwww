@@ -26,16 +26,14 @@ export default function MarketClock() {
   }, []);
 
   if (!state) {
-    return (
-      <div className="hidden h-8 w-56 animate-pulse rounded-full bg-surface2 sm:block" aria-hidden="true" />
-    );
+    return <div className="hidden h-8 w-56 animate-pulse border border-line bg-surface2 sm:block" aria-hidden="true" />;
   }
 
   return (
-    <div className="hidden items-center gap-2 rounded-full border border-line bg-surface2 py-1.5 pr-3 pl-2.5 sm:flex">
-      <span className={`h-2 w-2 rounded-full ${DOT[state.phase]} ${state.isLive ? "live-dot" : ""}`} />
-      <span className="text-[12px] font-semibold text-ink">{state.label}</span>
-      <span className="tnum text-[12px] text-ink3">
+    <div className="hidden h-8 items-center gap-2 border border-line px-2.5 font-mono text-[11px] tracking-[0.04em] whitespace-nowrap sm:flex">
+      <span className={`h-1.5 w-1.5 rounded-full ${DOT[state.phase]} ${state.isLive ? "live-dot" : ""}`} aria-hidden="true" />
+      <span className="font-medium text-ink uppercase">{state.label}</span>
+      <span className="tnum text-ink3">
         {state.date} · {state.clock}
       </span>
     </div>

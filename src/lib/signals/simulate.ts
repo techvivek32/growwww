@@ -169,7 +169,8 @@ function run(trades: SimTrade[], p: SimParams, withCost: boolean): {
   for (const pos of open) {
     cash += pos.notional + pos.netPnl;
     reserved -= pos.notional;
-    curve.push({ t: pos.exitTime, equity: cash });
+    // Money still committed to positions that close later is part of equity.
+    curve.push({ t: pos.exitTime, equity: cash + reserved });
   }
   return { curve, end: cash, taken, skipped, wins, losses, costPaid, holdDaysTotal };
 }

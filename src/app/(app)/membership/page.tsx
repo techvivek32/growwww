@@ -20,6 +20,18 @@ const inr2 = (v: number) => `₹${v.toLocaleString("en-IN", { minimumFractionDig
 const DAY_MON = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", timeZone: "Asia/Kolkata" });
 const fmtDay = (ms: number) => DAY_MON.format(new Date(ms));
 const isPast = (ts: number) => Date.now() >= ts;
+/** One cell of the hairline figure grid. */
+function Fig({ label, value, tone = "ink", note }: { label: string; value: string; tone?: "ink" | "up" | "down" | "muted"; note?: string }) {
+  const cls = tone === "up" ? "text-up" : tone === "down" ? "text-down" : tone === "muted" ? "text-ink3" : "text-ink";
+  return (
+    <div className="min-w-0 bg-surface px-4 py-4 sm:px-5">
+      <p className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">{label}</p>
+      <p className={`tnum mt-2 text-[20px] leading-none font-semibold tracking-[-0.01em] ${cls}`}>{value}</p>
+      {note && <p className="mt-1.5 text-[11.5px] text-ink3">{note}</p>}
+    </div>
+  );
+}
+
 const BILL: Record<InvoiceStatus, { label: string; tone: "warn" | "up" | "neutral" }> = {
   due: { label: "Due", tone: "warn" },
   paid: { label: "Paid", tone: "up" },
@@ -54,48 +66,55 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
   }
   const acc = active && membership && navInfo ? accrual(membership, navInfo.nav) : null;
   const bills = await listInvoices(uid);
+  // Member accounts are view-only today: MNHA places no trades for them, so a
+  // performance fee would be charged on gains MNHA had no part in.
+  const readOnly = true;
 
   return (
     <div className="mx-auto max-w-2xl">
       <PageHead
         title="Membership"
-        sub="A performance-fee plan — we earn only when you profit."
+        sub="A performance-fee plan. Not offered while your account is read-only."
         right={active ? <Pill tone="up">Active</Pill> : <Pill tone="neutral">Not enrolled</Pill>}
       />
 
       {/* the honest terms */}
-      <Card className="mb-5 border-warn/40 bg-warnsoft/40">
-        <p className="text-[13px] leading-relaxed text-ink2">
+      <div className="mb-6 border-l-2 border-mark bg-surface px-5 py-4">
+        <p className="text-[13.5px] leading-relaxed text-ink2">
           <strong className="text-ink">No guarantee. No loss cover.</strong> This is a performance-fee membership,
           not a guaranteed-return scheme (those are prohibited in India). A loss is entirely yours. Your money stays
           in your own Groww account — we take no custody. We charge a fee <strong>only on profit above your previous
           peak</strong> (a high-water mark), so you are never charged twice for the same gains.
         </p>
-      </Card>
+      </div>
 
       {leaveFlag === "retry" && (
-        <p role="alert" className="mb-4 rounded-lg border border-down/30 bg-downsoft px-3.5 py-2.5 text-[12.5px] text-down">
+        <p role="alert" className="mb-4 border-l-2 border-down bg-downsoft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink">
           We couldn&apos;t value your whole account from Groww (for example a holding with no NSE price, or Groww not
           answering), so the period could not be closed. Try again shortly; if it keeps failing, contact support.
         </p>
       )}
       {leaveFlag === "reconnect" && (
-        <p role="alert" className="mb-4 rounded-lg border border-down/30 bg-downsoft px-3.5 py-2.5 text-[12.5px] text-down">
+        <p role="alert" className="mb-4 border-l-2 border-down bg-downsoft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink">
           Your Groww key isn&apos;t connected, so we can&apos;t read the value needed to close the period.{" "}
-          <a href="/connect-broker?reconnect=1" className="font-semibold underline">Re-connect Groww</a>, then leave — or
+          <a href="/connect-broker?reconnect=1" className="font-semibold text-brandtext underline">Re-connect Groww</a>, then leave — or
           contact support.
         </p>
       )}
 
       {active && membership ? (
         <>
-          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Card><p className="text-[11px] text-ink3 uppercase">Start value</p><p className="tnum mt-1 text-[18px] font-semibold text-ink">{inr(membership.startNav)}</p></Card>
-            <Card><p className="text-[11px] text-ink3 uppercase">Current value</p><p className="tnum mt-1 text-[18px] font-semibold text-ink">{navInfo ? inr(navInfo.nav) : "—"}</p></Card>
-            <Card><p className="text-[11px] text-ink3 uppercase">High-water mark</p><p className="tnum mt-1 text-[18px] font-semibold text-ink">{inr(membership.highWaterMark)}</p></Card>
-            <Card><p className="text-[11px] text-ink3 uppercase">Above / below your peak</p><p className={`tnum mt-1 text-[18px] font-semibold ${acc ? (acc.profit >= 0 ? "text-up" : "text-down") : "text-ink3"}`}>{acc ? `${acc.profit >= 0 ? "+" : ""}${inr(acc.profit)}` : "—"}</p></Card>
-            <Card><p className="text-[11px] text-ink3 uppercase">Fee ({membership.feePct}%) — est.</p><p className="tnum mt-1 text-[18px] font-semibold text-ink">{acc ? inr(acc.feeEstimate) : "—"}</p><p className="text-[10.5px] text-ink3">only above your peak</p></Card>
-            <Card><p className="text-[11px] text-ink3 uppercase">Period ends</p><p className="tnum mt-1 text-[18px] font-semibold text-ink">{fmtDay(membership.periodEndsAt)}</p></Card>
+          <div className="mb-5 grid grid-cols-2 gap-px border border-line bg-line sm:grid-cols-3">
+            <Fig label="Start value" value={inr(membership.startNav)} />
+            <Fig label="Current value" value={navInfo ? inr(navInfo.nav) : "—"} tone={navInfo ? "ink" : "muted"} />
+            <Fig label="High-water mark" value={inr(membership.highWaterMark)} />
+            <Fig
+              label="Above / below peak"
+              value={acc ? `${acc.profit >= 0 ? "+" : ""}${inr(acc.profit)}` : "—"}
+              tone={acc ? (acc.profit >= 0 ? "up" : "down") : "muted"}
+            />
+            <Fig label={`Fee (${membership.feePct}%) — est.`} value={acc ? inr(acc.feeEstimate) : "—"} tone={acc ? "ink" : "muted"} note="only above your peak" />
+            <Fig label="Period ends" value={fmtDay(membership.periodEndsAt)} />
           </div>
 
           <Card className="mb-5">
@@ -114,7 +133,7 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
                 <>Your live account value is unavailable right now. </>
               )}
               The fee is an estimate; it is not deducted from your account and there is no auto-charge — settlement is
-              handled separately. Your capital and trades remain fully your own.
+              handled separately. Your capital and positions remain fully your own.
             </p>
           </Card>
 
@@ -123,7 +142,7 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
             moment, and nothing if you are below it.
           </p>
           <form action={leaveAction}>
-            <button type="submit" className="inline-flex h-10 items-center rounded-lg border border-line2 px-4 text-[13.5px] font-semibold text-ink hover:bg-surfaceh">
+            <button type="submit" className="inline-flex h-10 items-center border border-line2 px-4 text-[13.5px] font-semibold text-ink transition-colors hover:bg-surfaceh">
               Leave membership
             </button>
           </form>
@@ -134,13 +153,25 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
             title="Performance-fee membership"
             sub={`${DEFAULT_FEE_PCT}% of profit above your high-water mark · ${DEFAULT_PERIOD_DAYS}-day periods`}
           />
-          <ul className="mb-5 space-y-2 text-[13.5px] text-ink2">
-            <li>• Suggested capital to make it worthwhile: <strong>{inr(SUGGESTED_MIN_CAPITAL)}+</strong> — kept in <strong>your own</strong> Groww account.</li>
-            <li>• Fee of <strong>{DEFAULT_FEE_PCT}%</strong> applies only to profit above your previous peak. No profit, no fee.</li>
-            <li>• A loss is entirely yours — there is no guarantee and no loss cover.</li>
-            <li>• Leave any time; your account is always yours.</li>
-          </ul>
-          {navInfo ? (
+          <ol className="mb-6 border-t border-line text-[13.5px] leading-relaxed text-ink2">
+            {[
+              <>Suggested capital to make it worthwhile: <strong className="tnum text-ink">{inr(SUGGESTED_MIN_CAPITAL)}+</strong> — kept in <strong className="text-ink">your own</strong> Groww account.</>,
+              <>A fee of <strong className="text-ink">{DEFAULT_FEE_PCT}%</strong> applies only to profit above your previous peak. No profit, no fee.</>,
+              <>A loss is entirely yours — there is no guarantee and no loss cover.</>,
+              <>Leave any time; your account is always yours.</>,
+            ].map((line, i) => (
+              <li key={i} className="grid grid-cols-[2rem_1fr] border-b border-line py-3">
+                <span className="font-mono text-[11px] leading-[1.9] text-ink3">{String(i + 1).padStart(2, "0")}</span>
+                <span>{line}</span>
+              </li>
+            ))}
+          </ol>
+          {readOnly ? (
+            <p className="text-[13px] leading-relaxed text-ink3">
+              Membership is not offered while your account is read-only. MNHA places no trades for you, so there is
+              nothing to charge a fee on.
+            </p>
+          ) : navInfo ? (
             <>
               <p className="mb-3 text-[12.5px] text-ink3">
                 Your account value now: <strong className="text-ink">{inr(navInfo.nav)}</strong>
@@ -151,7 +182,11 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
               <EnrollButton />
             </>
           ) : (
-            <p className="text-[13px] text-ink3">Connect your broker first — we need to read your account value to set your starting mark.</p>
+            <p className="border-l-2 border-warn bg-warnsoft px-3.5 py-2.5 text-[13px] leading-relaxed text-ink2">
+              We could not read your account value from Groww just now, and it is needed to set your starting mark. Try
+              again shortly; if it keeps failing,{" "}
+              <a href="/connect-broker?reconnect=1" className="font-semibold text-brandtext underline">re-connect Groww</a>.
+            </p>
           )}
         </Card>
       )}
@@ -159,8 +194,10 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
       {(active || bills.length > 0) && (
         <Card pad={false} className="mt-5">
           <div className="border-b border-line px-5 py-4">
-            <h2 className="text-[15px] font-semibold tracking-tight text-ink">Your bills ({bills.length})</h2>
-            <p className="mt-0.5 text-[12px] leading-relaxed text-ink3">
+            <h2 className="pub-display text-[22px] leading-tight text-ink">
+              Your bills <span className="tnum font-mono text-[13px] text-ink3">({bills.length})</span>
+            </h2>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-ink3">
               One line per closed period. No fee on a loss, and a fee only on profit above your previous peak. Bills are
               collected separately — nothing is ever auto-debited from your account. If a gain came from money you
               added rather than from trading, tell us and the fee is waived.
@@ -174,16 +211,16 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
             <div className="overflow-x-auto">
               <table className="w-full min-w-[520px] border-collapse text-left">
                 <thead>
-                  <tr className="border-b border-line text-[12px] text-ink3">
-                    <th className="px-5 py-3 font-semibold">Period</th>
-                    <th className="px-5 py-3 text-right font-semibold">Profit above peak</th>
-                    <th className="px-5 py-3 text-right font-semibold">Fee</th>
-                    <th className="px-5 py-3 font-semibold">Status</th>
+                  <tr className="border-b border-line font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">
+                    <th className="px-5 py-3 font-medium">Period</th>
+                    <th className="px-5 py-3 text-right font-medium">Profit above peak</th>
+                    <th className="px-5 py-3 text-right font-medium">Fee</th>
+                    <th className="px-5 py-3 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {bills.map((b) => (
-                    <tr key={b.id} className="border-b border-line/60">
+                    <tr key={b.id} className="border-b border-line last:border-0">
                       <td className="tnum px-5 py-3 text-[12.5px] whitespace-nowrap text-ink2">{fmtDay(b.periodStart)} → {fmtDay(b.periodEnd)}</td>
                       <td className={`tnum px-5 py-3 text-right text-[12.5px] ${b.profitAboveHwm > 0 ? "text-up" : "text-ink3"}`}>{inr(b.profitAboveHwm)}</td>
                       <td className="tnum px-5 py-3 text-right text-[12.5px] font-semibold text-ink">

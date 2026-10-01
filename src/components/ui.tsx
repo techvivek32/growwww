@@ -38,7 +38,7 @@ export function CardHead({
   return (
     <div className="mb-4 flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <h2 className="text-[16px] leading-snug font-semibold tracking-[-0.01em] text-ink">{title}</h2>
+        <h2 className="pub-display text-[22px] leading-tight text-ink">{title}</h2>
         {sub && <p className="mt-1 text-[13px] leading-snug text-ink3">{sub}</p>}
       </div>
       {right && <div className="shrink-0">{right}</div>}
@@ -58,7 +58,7 @@ export function SectionHead({
 }) {
   return (
     <div className={`mb-4 flex items-baseline justify-between gap-4 ${className}`}>
-      <h2 className="text-[20px] leading-tight font-semibold tracking-[-0.02em] text-ink">{title}</h2>
+      <h2 className="pub-display text-[28px] leading-tight text-ink">{title}</h2>
       {right}
     </div>
   );
@@ -88,7 +88,7 @@ export function Pill({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold whitespace-nowrap ${TONE[tone]} ${className}`}
+      className={`inline-flex items-center gap-1 px-2 py-1 font-mono text-[10.5px] font-medium tracking-[0.06em] whitespace-nowrap uppercase ${TONE[tone]} ${className}`}
     >
       {children}
     </span>
@@ -128,8 +128,8 @@ export function Button({
     "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50";
   const sizes = { sm: "h-9 px-3.5 text-[13px]", md: "h-11 px-5 text-[14.5px]" };
   const variants = {
-    primary: "bg-brand text-white hover:bg-brandh",
-    danger: "bg-down text-white hover:opacity-90",
+    primary: "bg-brand text-onbrand hover:bg-brandh",
+    danger: "bg-down text-onbrand hover:opacity-90",
     outline: "border border-line2 text-ink hover:bg-surfaceh",
     ghost: "text-ink2 hover:bg-surfaceh hover:text-ink",
   };
@@ -161,7 +161,7 @@ export function StatTile({
   const valueTone = tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-ink";
   return (
     <Card>
-      <p className="text-[12.5px] font-medium text-ink3">{label}</p>
+      <p className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">{label}</p>
       <p className={`tnum mt-2 text-[24px] leading-none font-semibold tracking-[-0.02em] ${valueTone}`}>
         {value}
       </p>
@@ -247,8 +247,8 @@ export function Change({
 /** Groww shows a square logo tile per stock. The colour is derived from the
  *  symbol so the same stock always gets the same tile. */
 const CHIP_COLORS = [
-  "#5367ff", "#00b386", "#eb5b3c", "#f5a623",
-  "#8b5cf6", "#0ea5e9", "#e11d48", "#0f766e",
+  "#4a615c", "#ce431d", "#7d6282", "#7d7340",
+  "#b4521f", "#3f4f5f", "#a85540", "#6b5a3e",
 ];
 
 export function SymbolChip({ symbol, size = 40 }: { symbol: string; size?: number }) {
@@ -278,10 +278,10 @@ export function PageHead({
   right?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+    <div className="mb-7 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-5">
       <div className="min-w-0">
-        <h1 className="text-[24px] leading-tight font-semibold tracking-[-0.02em] text-ink">{title}</h1>
-        {sub && <p className="mt-1.5 max-w-2xl text-[13.5px] leading-relaxed text-ink3">{sub}</p>}
+        <h1 className="pub-display text-[36px] leading-[1.02] text-ink sm:text-[44px]">{title}</h1>
+        {sub && <p className="mt-2.5 max-w-2xl text-[14.5px] leading-relaxed text-ink2">{sub}</p>}
       </div>
       {right}
     </div>

@@ -7,6 +7,7 @@ import { hasBroker } from "@/lib/users";
 import { logout } from "@/app/login/actions";
 import AuthShell from "@/components/public/AuthShell";
 import ConsentFlow from "./ConsentFlow";
+import { MEMBER_HOME } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "User agreement · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export default async function ConsentPage() {
   const uid = await currentUserId();
   if (!uid) redirect("/login");
   if (uid === OWNER_ID) redirect("/admin");
-  if (await hasConsented(uid)) redirect((await hasBroker(uid)) ? "/stocks/alerts" : "/connect-broker");
+  if (await hasConsented(uid)) redirect((await hasBroker(uid)) ? MEMBER_HOME : "/connect-broker");
 
   return (
     <AuthShell

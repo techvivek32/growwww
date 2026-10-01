@@ -9,6 +9,7 @@ import { rateLimit } from "@/lib/ratelimit";
 import { notify } from "@/lib/notifications";
 import { probeConnection, registeredIp, type ProbeStage } from "@/lib/api/groww";
 import { classify } from "./parse";
+import { MEMBER_HOME } from "@/lib/routes";
 
 export type Check = "ok" | "fail" | "skip";
 
@@ -98,5 +99,5 @@ export async function connectBroker(_prev: FormState, formData: FormData): Promi
     body: "Your Groww account is linked. Your keys are encrypted and used only for your account.",
     key: "broker-connected",
   });
-  redirect("/stocks/alerts");
+  redirect(MEMBER_HOME);
 }

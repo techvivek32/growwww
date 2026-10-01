@@ -11,6 +11,26 @@ export const metadata: Metadata = { title: "Indices · MNHA Financials" };
 // Live levels — never bake this at build time.
 export const dynamic = "force-dynamic";
 
+type Index = Awaited<ReturnType<typeof getIndices>>[number];
+
+/** Level, live unless the row is a snapshot fallback. */
+function Level({ ix }: { ix: Index }) {
+  return ix.stale ? (
+    <span className="tnum">{fmtNum(ix.last, 2)}</span>
+  ) : (
+    <LivePrice symbol={ix.symbol} initial={ix.last} plain />
+  );
+}
+
+/** Day change — a snapshot's change is not today's, so it shows as a dash. */
+function DayChange({ ix }: { ix: Index }) {
+  return ix.stale ? (
+    <span className="tnum text-ink3">—</span>
+  ) : (
+    <LiveChange symbol={ix.symbol} initialChange={ix.change} initialPct={ix.changePct} />
+  );
+}
+
 /**
  * The benchmarks this terminal actually prices — the five wired into the
  * live feed. A longer list would be rows nothing here can keep honest, so
@@ -26,57 +46,77 @@ export default async function IndicesPage() {
         sub="NSE and BSE benchmarks, priced live. Open one for its chart, and the option chain where it trades derivatives."
       />
 
-      <TableWrap>
-        <thead>
-          <tr>
-            <Th>Index</Th>
-            <Th align="right">Level</Th>
-            <Th align="right">Change</Th>
-            <Th align="right">High</Th>
-            <Th align="right">Low</Th>
-            <Th align="right">Prev close</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {indices.map((ix) => (
-            <Tr key={ix.symbol}>
-              <Td>
-                <Link href={`/stock/${ix.symbol}`} className="flex items-center gap-3 hover:opacity-80">
-                  <SymbolChip symbol={ix.symbol} size={32} />
-                  <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 text-[13.5px] font-semibold text-ink">
-                      {ix.symbol}
-                      {ix.stale && <Pill tone="warn">Snap {ix.asOf}</Pill>}
-                    </p>
-                    <p className="truncate text-[11.5px] text-ink3">{ix.name}</p>
-                  </div>
-                </Link>
-              </Td>
-              <Td align="right" className="font-semibold text-ink">
-                {ix.stale ? (
-                  <span className="tnum">{fmtNum(ix.last, 2)}</span>
-                ) : (
-                  <LivePrice symbol={ix.symbol} initial={ix.last} plain />
-                )}
-              </Td>
-              <Td align="right">
-                {ix.stale ? (
-                  <span className="tnum text-ink3">—</span>
-                ) : (
-                  <LiveChange symbol={ix.symbol} initialChange={ix.change} initialPct={ix.changePct} />
-                )}
-              </Td>
-              <Td align="right" className="tnum text-ink2">
-                {ix.dayHigh === null ? "—" : fmtNum(ix.dayHigh, 2)}
-              </Td>
-              <Td align="right" className="tnum text-ink2">
-                {ix.dayLow === null ? "—" : fmtNum(ix.dayLow, 2)}
-              </Td>
-              <Td align="right" className="tnum text-ink2">{fmtNum(ix.prevClose, 2)}</Td>
-            </Tr>
-          ))}
-        </tbody>
-      </TableWrap>
+      {/* phones: one row per index — name, level, day change */}
+      <ul className="border border-line bg-surface md:hidden">
+        {indices.map((ix) => (
+          <li key={ix.symbol} className="border-b border-line last:border-0">
+            <Link href={`/stock/${ix.symbol}`} className="flex items-center gap-3 px-4 py-3.5 active:bg-surfaceh">
+              <SymbolChip symbol={ix.symbol} size={32} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5 text-[13.5px] font-semibold text-ink">
+                  {ix.symbol}
+                  {ix.stale && <Pill tone="warn">Snap {ix.asOf}</Pill>}
+                </span>
+                <span className="block truncate text-[11.5px] text-ink3">{ix.name}</span>
+              </span>
+              <span className="shrink-0 text-right">
+                <span className="block text-[14px] font-medium text-ink">
+                  <Level ix={ix} />
+                </span>
+                <span className="block text-[11.5px]">
+                  <DayChange ix={ix} />
+                </span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+
+      <div className="hidden md:block">
+        <TableWrap>
+          <thead>
+            <tr>
+              <Th>Index</Th>
+              <Th align="right">Level</Th>
+              <Th align="right">Change</Th>
+              <Th align="right">High</Th>
+              <Th align="right">Low</Th>
+              <Th align="right">Prev close</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {indices.map((ix) => (
+              <Tr key={ix.symbol}>
+                <Td>
+                  <Link href={`/stock/${ix.symbol}`} className="flex items-center gap-3 hover:opacity-80">
+                    <SymbolChip symbol={ix.symbol} size={32} />
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1.5 text-[13.5px] font-semibold text-ink">
+                        {ix.symbol}
+                        {ix.stale && <Pill tone="warn">Snap {ix.asOf}</Pill>}
+                      </p>
+                      <p className="truncate text-[11.5px] text-ink3">{ix.name}</p>
+                    </div>
+                  </Link>
+                </Td>
+                <Td align="right" className="font-medium text-ink">
+                  <Level ix={ix} />
+                </Td>
+                <Td align="right">
+                  <DayChange ix={ix} />
+                </Td>
+                <Td align="right" className="tnum text-ink2">
+                  {ix.dayHigh === null ? "—" : fmtNum(ix.dayHigh, 2)}
+                </Td>
+                <Td align="right" className="tnum text-ink2">
+                  {ix.dayLow === null ? "—" : fmtNum(ix.dayLow, 2)}
+                </Td>
+                <Td align="right" className="tnum text-ink2">{fmtNum(ix.prevClose, 2)}</Td>
+              </Tr>
+            ))}
+          </tbody>
+        </TableWrap>
+      </div>
     </>
   );
 }

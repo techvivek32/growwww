@@ -6,7 +6,7 @@ const LINKS: [string, string][] = [
   ["/#path", "How it works"],
   ["/#desk", "The desk"],
   ["/#try", "Risk maths"],
-  ["/#membership", "Membership"],
+  ["/#ai", "MNHA AI"],
   ["/#faq", "FAQ"],
 ];
 

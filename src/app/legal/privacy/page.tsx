@@ -28,7 +28,7 @@ export default function PrivacyPage() {
             address, a selfie, and any ID document you upload — used solely to verify your identity. PAN and date of
             birth are stored encrypted; the selfie and documents are stored outside the public web and are viewable
             only by you and the reviewer. This is MNHA&apos;s own internal check, not a government or SEBI KYC.<br />
-            <strong>Usage data:</strong> your watchlists, notifications and the signals shown to you, to run the product.
+            <strong>Usage data:</strong> your notifications and the screens you use, to run the product.
           </p>
         </div>
 

@@ -8,6 +8,7 @@ import { registeredIp } from "@/lib/api/groww";
 import { logout } from "@/app/login/actions";
 import AuthShell from "@/components/public/AuthShell";
 import ConnectWizard from "./ConnectWizard";
+import { MEMBER_HOME } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "Connect Groww · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export default async function ConnectBrokerPage({ searchParams }: { searchParams
   if (!(await hasConsented(uid))) redirect("/consent");
   // Already connected: straight to the desk, unless re-connecting on purpose.
   const { reconnect } = await searchParams;
-  if (!reconnect && (await hasBroker(uid))) redirect("/stocks/alerts");
+  if (!reconnect && (await hasBroker(uid))) redirect(MEMBER_HOME);
 
   return (
     <AuthShell

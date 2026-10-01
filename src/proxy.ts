@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, verifyToken } from "@/lib/auth";
+import { OWNER_ID, SESSION_COOKIE, sessionUserId } from "@/lib/auth";
+import { MEMBER_HOME, isOwnerOnly } from "@/lib/routes";
 
 /**
  * Gate the whole terminal behind a valid session. The matcher below excludes
@@ -9,8 +10,17 @@ import { SESSION_COOKIE, verifyToken } from "@/lib/auth";
  * This is the `proxy` file convention — `middleware` is deprecated in Next 16.
  */
 export async function proxy(req: NextRequest) {
-  const ok = await verifyToken(req.cookies.get(SESSION_COOKIE)?.value);
-  if (ok) return NextResponse.next();
+  const uid = await sessionUserId(req.cookies.get(SESSION_COOKIE)?.value);
+  if (uid) {
+    // Member accounts are view-only: owner-only sections send them home.
+    if (uid !== OWNER_ID && isOwnerOnly(req.nextUrl.pathname)) {
+      const home = req.nextUrl.clone();
+      home.pathname = MEMBER_HOME;
+      home.search = "";
+      return NextResponse.redirect(home);
+    }
+    return NextResponse.next();
+  }
 
   const url = req.nextUrl.clone();
   url.pathname = "/login";

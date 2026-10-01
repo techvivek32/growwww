@@ -32,7 +32,7 @@ export async function signup(_prev: FormState, formData: FormData): Promise<Form
     kind: "account",
     tone: "up",
     title: "Welcome to MNHA Financials",
-    body: "Connect your Groww account to bring the terminal to life. You confirm every order yourself — nothing trades on its own.",
+    body: "Connect your Groww account to see it here, read-only. MNHA places no orders on your account.",
     key: "welcome",
   });
   await setSession(res.user.id);

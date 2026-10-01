@@ -28,7 +28,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
         {error.digest && <p className="tnum mt-2 text-[11px] text-ink3">ref {error.digest}</p>}
         <button
           onClick={reset}
-          className="mt-6 inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-semibold text-white hover:bg-brandh"
+          className="mt-6 inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-semibold text-onbrand hover:bg-brandh"
         >
           Try again
         </button>

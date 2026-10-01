@@ -7,6 +7,7 @@ import OrderTicket from "@/components/OrderTicket";
 import RefreshSignals from "@/components/RefreshSignals";
 import { PageHead, Pill, Card, Empty, SectionHead } from "@/components/ui";
 import { marketState } from "@/lib/market";
+import { requireOwnerPage } from "@/lib/access";
 
 export const metadata: Metadata = { title: "Signals · MNHA Financials" };
 
@@ -21,11 +22,16 @@ function ago(ts: number | null): string {
   return `${Math.floor(s / 3600)}h ago`;
 }
 
+/** Mono small-caps labels — the editorial voice for every stat caption. */
+const LABEL = "font-mono text-[10px] tracking-[0.08em] text-ink3 uppercase";
+const EYEBROW = "font-mono text-[11px] tracking-[0.08em] text-ink3 uppercase";
+
 function num(v: number | null, digits = 2, suffix = ""): string {
   return v === null ? "—" : `${v.toFixed(digits)}${suffix}`;
 }
 
 export default async function SignalsPage() {
+  await requireOwnerPage();
   const [cards, signals] = await Promise.all([scorecards(), openSignalsTagged()]);
   const status = engineStatus();
   const tradable = canTrade();
@@ -46,9 +52,9 @@ export default async function SignalsPage() {
             <div className="flex items-center gap-2">
               <Link
                 href="/stocks/alerts/backtest"
-                className="inline-flex h-9 items-center rounded-lg border border-line px-3.5 text-[12.5px] font-semibold text-ink2 hover:bg-surfaceh hover:text-ink"
+                className="inline-flex h-9 items-center gap-1.5 border border-line2 px-3.5 text-[12.5px] font-semibold text-ink hover:bg-surfaceh"
               >
-                Backtest on ₹1L →
+                Backtest on ₹1L <span className="pub-arrow">→</span>
               </Link>
               <RefreshSignals />
             </div>
@@ -59,13 +65,15 @@ export default async function SignalsPage() {
         <div className="mb-6 flex flex-wrap items-center gap-2 text-[12px] text-ink3">
           <Pill tone={status.running ? "up" : "neutral"}>{status.running ? "Engine running" : "Engine idle"}</Pill>
           <Pill tone={mkt.isLive ? "up" : "neutral"}>{mkt.label}</Pill>
-          <span>Daily setups scanned once a session, intraday on a 3-min loop</span>
-          <span>· last scan {ago(status.lastScan)}</span>
-          <span>· edge recomputed {ago(status.lastBacktest)}</span>
+          <span className="leading-relaxed">
+            Daily setups scanned once a session, intraday on a 3-min loop · last scan{" "}
+            <span className="tnum">{ago(status.lastScan)}</span> · edge recomputed{" "}
+            <span className="tnum">{ago(status.lastBacktest)}</span>
+          </span>
         </div>
 
         {/* strategy scorecards */}
-        <SectionHead title="Strategy scorecard" right={<span className="text-[13px] text-ink3">{cards.length} setups</span>} />
+        <SectionHead title="Strategy scorecard" right={<span className={EYEBROW}>{cards.length} setups</span>} />
         {warmingUp ? (
           <Card pad={false}>
             <Empty
@@ -79,28 +87,28 @@ export default async function SignalsPage() {
               <Card key={c.strategy}>
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-[14.5px] font-bold tracking-tight text-ink">{c.label}</h3>
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                      <h3 className="pub-display text-[22px] leading-tight text-ink">{c.label}</h3>
                       <Pill tone={c.edge ? "up" : "warn"}>{c.edge ? "Active" : "Retired"}</Pill>
                     </div>
-                    <p className="mt-1 text-[12px] leading-relaxed text-ink3">{c.description}</p>
+                    <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink3">{c.description}</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">
                   <div>
-                    <p className="text-[10.5px] tracking-wide text-ink3 uppercase">Backtest win</p>
-                    <p className="tnum text-[15px] font-semibold text-ink">{num(c.backtest?.winRate ?? null, 0, "%")}</p>
+                    <p className={LABEL}>Backtest win</p>
+                    <p className="tnum mt-1 text-[16px] font-semibold text-ink">{num(c.backtest?.winRate ?? null, 0, "%")}</p>
                     <p className="tnum text-[10.5px] text-ink3">{c.backtest?.trades ?? 0} trades</p>
                   </div>
                   <div>
-                    <p className="text-[10.5px] tracking-wide text-ink3 uppercase">Profit factor</p>
-                    <p className="tnum text-[15px] font-semibold text-ink">{num(c.backtest?.profitFactor ?? null, 2)}</p>
+                    <p className={LABEL}>Profit factor</p>
+                    <p className="tnum mt-1 text-[16px] font-semibold text-ink">{num(c.backtest?.profitFactor ?? null, 2)}</p>
                     <p className="tnum text-[10.5px] text-ink3">exp {num(c.backtest?.expectancy ?? null, 2, "R")}</p>
                   </div>
                   <div>
-                    <p className="text-[10.5px] tracking-wide text-ink3 uppercase">Live win</p>
-                    <p className={`tnum text-[15px] font-semibold ${c.liveWinRate === null ? "text-ink3" : "text-ink"}`}>
+                    <p className={LABEL}>Live win</p>
+                    <p className={`tnum mt-1 text-[16px] font-semibold ${c.liveWinRate === null ? "text-ink3" : "text-ink"}`}>
                       {num(c.liveWinRate, 0, "%")}
                     </p>
                     <p className="tnum text-[10.5px] text-ink3">{c.liveResolved} done · {c.liveOpen} open</p>
@@ -122,9 +130,9 @@ export default async function SignalsPage() {
         <SectionHead
           title="Signals now"
           className="mt-9"
-          right={<span className="text-[13px] text-ink3">{signals.length} open · {edgeCount} from edge-backed setups</span>}
+          right={<span className={EYEBROW}>{signals.length} open · {edgeCount} edge-backed</span>}
         />
-        <p className="mb-4 -mt-2 text-[12.5px] leading-relaxed text-ink3">
+        <p className="mb-6 -mt-1 max-w-3xl text-[13px] leading-relaxed text-ink3">
           Every setup that has fired, both directions — manual trading, your call. The{" "}
           <span className="font-semibold text-up">Edge</span> tag means that strategy currently has a measured positive edge;{" "}
           <span className="font-semibold text-ink2">No edge</span> means it fires but has not paid in its backtest and live record combined (measured before costs), so treat it as
@@ -147,7 +155,10 @@ export default async function SignalsPage() {
               (grp) =>
                 grp.rows.length > 0 && (
                   <div key={grp.title}>
-                    <h3 className="mb-3 text-[13.5px] font-semibold text-ink2">{grp.title} · {grp.rows.length}</h3>
+                    <h3 className="mb-3 flex items-baseline justify-between gap-3 border-b border-line pb-2">
+                      <span className="pub-display text-[22px] leading-tight text-ink">{grp.title}</span>
+                      <span className={EYEBROW}>{grp.rows.length} open</span>
+                    </h3>
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                       {grp.rows.map((s) => {
                         const isIndex = s.segment === "FNO";
@@ -155,38 +166,40 @@ export default async function SignalsPage() {
                           <Card key={s.id} className="flex flex-col">
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
-                                <p className="text-[14.5px] font-bold tracking-tight text-ink">{s.symbol}</p>
-                                <p className="text-[11.5px] text-ink3">{s.stratLabel}</p>
+                                <p className="text-[15px] font-semibold tracking-tight text-ink">{s.symbol}</p>
+                                <p className="mt-0.5 text-[12px] text-ink3">{s.stratLabel}</p>
                               </div>
-                              <div className="flex shrink-0 flex-col items-end gap-1">
+                              <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                                 <Pill tone={s.side === "LONG" ? "up" : "down"}>{s.side}</Pill>
                                 <Pill tone={s.edge ? "up" : "neutral"}>{s.edge ? "Edge" : "No edge"}</Pill>
                               </div>
                             </div>
 
-                            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                            <div className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">
                               <div>
-                                <p className="text-[10px] text-ink3 uppercase">Entry</p>
-                                <p className="tnum text-[13px] font-semibold text-ink">{s.entry.toFixed(2)}</p>
+                                <p className={LABEL}>Entry</p>
+                                <p className="tnum mt-1 text-[13.5px] font-semibold text-ink">{s.entry.toFixed(2)}</p>
                               </div>
                               <div>
-                                <p className="text-[10px] text-ink3 uppercase">Stop</p>
-                                <p className="tnum text-[13px] font-semibold text-down">{s.stop.toFixed(2)}</p>
+                                <p className={LABEL}>Stop</p>
+                                <p className="tnum mt-1 text-[13.5px] font-semibold text-down">{s.stop.toFixed(2)}</p>
                               </div>
                               <div>
-                                <p className="text-[10px] text-ink3 uppercase">Target</p>
-                                <p className="tnum text-[13px] font-semibold text-up">{s.target.toFixed(2)}</p>
+                                <p className={LABEL}>Target</p>
+                                <p className="tnum mt-1 text-[13.5px] font-semibold text-up">{s.target.toFixed(2)}</p>
                               </div>
                             </div>
-                            <p className="mt-2 text-[11.5px] text-ink3">{s.reason} · {s.rr.toFixed(1)}R</p>
+                            <p className="mt-3 flex-1 text-[12px] leading-snug text-ink3">
+                              {s.reason} · <span className="tnum">{s.rr.toFixed(1)}R</span>
+                            </p>
 
                             <div className="mt-3 border-t border-line pt-3">
                               {isIndex ? (
                                 <Link
                                   href={`/fno/chain?u=${s.symbol}`}
-                                  className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-line text-[13px] font-semibold text-brandtext hover:bg-surfaceh"
+                                  className="inline-flex h-9 w-full items-center justify-center gap-1.5 border border-line2 text-[13px] font-semibold text-ink hover:bg-surfaceh"
                                 >
-                                  Trade via {s.side === "LONG" ? "Call" : "Put"} — open chain
+                                  Trade via {s.side === "LONG" ? "Call" : "Put"} — open chain <span className="pub-arrow">→</span>
                                 </Link>
                               ) : (
                                 <OrderTicket
