@@ -4,9 +4,22 @@ import { revalidatePath } from "next/cache";
 import { placeOrder, cancelOrder, canTrade } from "@/lib/api/broker";
 import { lotSizeOf } from "@/lib/instruments";
 import { currentUserId } from "@/lib/session";
+import { OWNER_ID } from "@/lib/auth";
+import { hasBroker } from "@/lib/users";
 import { rateLimit } from "@/lib/ratelimit";
 import { notify } from "@/lib/notifications";
+import { appendOrder } from "@/lib/ledger";
 import type { OrderType, Product, Side } from "@/lib/types";
+
+/** The ledger is our bookkeeping, not the order path: a failed write must
+ *  never turn an order Groww accepted into an error on screen. */
+async function record(e: Parameters<typeof appendOrder>[0]): Promise<void> {
+  try {
+    await appendOrder(e);
+  } catch (err) {
+    console.error("[ledger] append failed:", err instanceof Error ? err.message : err);
+  }
+}
 
 /**
  * Order placement, server-side.
@@ -50,7 +63,11 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
   if (!rateLimit(`order:${userId}`, 30, 60_000).ok) {
     return fail("Too many orders in a short window. Pause a moment and retry.");
   }
-  if (!canTrade()) return fail("Order placement is disabled, or no broker is connected on this account.");
+  // canTrade() alone reads the server's house account when no user context
+  // is set, so a user's own connection is checked explicitly.
+  if (!canTrade() || (userId !== OWNER_ID && !(await hasBroker(userId)))) {
+    return fail("Order placement is disabled, or no broker is connected on this account.");
+  }
 
   const symbol = String(form.get("symbol") ?? "").trim().toUpperCase();
   const segment = String(form.get("segment") ?? "CASH") === "FNO" ? ("FNO" as const) : ("CASH" as const);
@@ -107,15 +124,34 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
   revalidatePath("/portfolio/holdings");
 
   const label = `${side} ${qty} ${symbol}`;
-  if (!result.ok) {
+  // The platform's own append-only record of this order ("hisab") — only for
+  // requests that actually went to Groww; a local refusal is not an order.
+  if (result.outcome !== "refused") await record({
+    userId, status: result.outcome, symbol, side, qty, type, product, segment, exchange,
+    price, orderId: result.orderId ?? null, message: result.outcome === "placed" ? (result.status ?? null) : (result.message ?? result.status ?? null),
+  });
+  if (result.outcome === "refused") return fail(result.message ?? "Nothing was sent to Groww.");
+  if (result.outcome === "unknown") {
+    await notify(userId, {
+      kind: "order",
+      tone: "warn",
+      title: "Order status unknown",
+      body: `${label} — ${result.message ?? "Check the order book in Groww before retrying."}`,
+      key: result.referenceId ? `unk-${result.referenceId}` : undefined,
+    });
+    return fail(result.message ?? "Order status unknown — check the order book in Groww before retrying.");
+  }
+  if (result.outcome !== "placed") {
+    // Includes an order Groww accepted but the exchange then rejected.
+    const why = result.message ?? (result.status ? `Status: ${result.status}` : "Groww rejected the order.");
     await notify(userId, {
       kind: "order",
       tone: "down",
       title: "Order rejected",
-      body: `${label} — ${result.message ?? "Groww rejected the order."}`,
+      body: `${label} — ${why}`,
       key: result.referenceId ? `rej-${result.referenceId}` : undefined,
     });
-    return fail(result.message ?? "Groww rejected the order.");
+    return fail(why);
   }
 
   await notify(userId, {
@@ -151,6 +187,10 @@ export async function cancelOrderAction(_prev: OrderState, form: FormData): Prom
   revalidatePath("/portfolio/orders");
 
   if (res.ok) {
+    await record({
+      userId, status: "cancelled", symbol: "", side: "", qty: 0, type: "", product: "", segment, exchange: "",
+      price: null, orderId, message: "Cancellation sent",
+    });
     await notify(userId, { kind: "order", tone: "neutral", title: "Cancellation sent", body: `Order ${orderId}` });
     return { status: "ok", message: "Cancellation sent." };
   }

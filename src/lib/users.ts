@@ -29,7 +29,23 @@ export interface User {
   passwordHash: string;
   createdAt: number;
   /** Present once the user has connected their own Groww API. Encrypted. */
-  broker?: { apiKeyEnc: string; totpEnc: string; connectedAt: number };
+  broker?: {
+    apiKeyEnc: string;
+    totpEnc: string;
+    connectedAt: number;
+    /** The static IP the user confirmed registering on their Groww key. */
+    staticIp?: string;
+    ipConfirmedAt?: number;
+    /** Groww's client code (UCC), read live at connect time. */
+    ucc?: string | null;
+  };
+}
+
+/** Non-secret facts recorded alongside a broker connection. */
+export interface BrokerMeta {
+  staticIp?: string;
+  ipConfirmed?: boolean;
+  ucc?: string | null;
 }
 
 interface Store {
@@ -48,17 +64,22 @@ function enqueue<T>(job: () => Promise<T>): Promise<T> {
 }
 
 async function read(): Promise<Store> {
+  let raw: string;
   try {
-    const raw = await readFile(FILE, "utf8");
-    const parsed = JSON.parse(raw) as Store;
-    if (!Array.isArray(parsed.users)) return { users: [] };
-    return parsed;
-  } catch {
-    return { users: [] };
+    raw = await readFile(FILE, "utf8");
+  } catch (e) {
+    // Only a missing file means "no users yet". Any other failure must NOT be
+    // read as empty — the next write would wipe every account (and its .bak).
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return { users: [] };
+    throw e;
   }
+  const parsed = JSON.parse(raw) as Store;
+  if (!Array.isArray(parsed.users)) throw new Error("users: malformed store");
+  return parsed;
 }
 
-async function write(store: Store): Promise<void> {
+/** `scrubBackup`: on erasure, overwrite the .bak too, so deleted data does not linger in the backup. */
+async function write(store: Store, scrubBackup = false): Promise<void> {
   await mkdir(path.dirname(FILE), { recursive: true });
   // Keep the last good copy before overwriting — this file holds accounts and
   // encrypted broker keys, so a bad write must never be the only version left.
@@ -70,6 +91,7 @@ async function write(store: Store): Promise<void> {
   const tmp = `${FILE}.tmp`;
   await writeFile(tmp, JSON.stringify(store, null, 2), "utf8");
   await rename(tmp, FILE);
+  if (scrubBackup) await copyFile(FILE, `${FILE}.bak`);
 }
 
 /* ------------------------------------------------------------ crypto */
@@ -141,17 +163,21 @@ export async function verifyLogin(email: string, password: string): Promise<User
 }
 
 /** Store (encrypted) the user's own Groww API credentials. */
-export async function setBroker(userId: string, apiKey: string, totpSecret: string): Promise<boolean> {
+export async function setBroker(userId: string, apiKey: string, totpSecret: string, meta: BrokerMeta = {}): Promise<boolean> {
   return enqueue(async () => {
     const store = await read();
     const user = store.users.find((u) => u.id === userId);
     if (!user) return false;
+    const replacing = Boolean(user.broker);
     user.broker = {
       apiKeyEnc: encrypt(apiKey.trim()),
       totpEnc: encrypt(totpSecret.trim()),
       connectedAt: Date.now(),
+      staticIp: meta.staticIp,
+      ipConfirmedAt: meta.ipConfirmed ? Date.now() : undefined,
+      ucc: meta.ucc ?? null,
     };
-    await write(store);
+    await write(store, replacing); // replaced keys must not linger in the .bak
     return true;
   });
 }
@@ -162,7 +188,7 @@ export async function clearBroker(userId: string): Promise<void> {
     const user = store.users.find((u) => u.id === userId);
     if (user) {
       delete user.broker;
-      await write(store);
+      await write(store, true); // the old encrypted keys must not linger in the .bak
     }
   });
 }
@@ -191,6 +217,9 @@ export interface UserSummary {
   createdAt: number;
   hasBroker: boolean;
   brokerConnectedAt: number | null;
+  /** The static IP the user confirmed on their Groww key, if they did. */
+  brokerStaticIp: string | null;
+  brokerUcc: string | null;
 }
 
 /** Admin listing — safe fields only. Never the password hash or the keys. */
@@ -203,6 +232,8 @@ export async function listUsers(): Promise<UserSummary[]> {
       createdAt: u.createdAt,
       hasBroker: Boolean(u.broker),
       brokerConnectedAt: u.broker?.connectedAt ?? null,
+      brokerStaticIp: u.broker?.ipConfirmedAt ? (u.broker.staticIp ?? null) : null,
+      brokerUcc: u.broker?.ucc ?? null,
     }))
     .sort((a, b) => b.createdAt - a.createdAt);
 }
@@ -229,7 +260,8 @@ export async function changePassword(
 export async function deleteUser(userId: string): Promise<void> {
   return enqueue(async () => {
     const store = await read();
+    const before = store.users.length;
     store.users = store.users.filter((u) => u.id !== userId);
-    await write(store);
+    if (store.users.length !== before) await write(store, true);
   });
 }

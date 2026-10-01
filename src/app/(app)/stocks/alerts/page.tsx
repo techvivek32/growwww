@@ -127,7 +127,7 @@ export default async function SignalsPage() {
         <p className="mb-4 -mt-2 text-[12.5px] leading-relaxed text-ink3">
           Every setup that has fired, both directions — manual trading, your call. The{" "}
           <span className="font-semibold text-up">Edge</span> tag means that strategy currently has a measured positive edge;{" "}
-          <span className="font-semibold text-ink2">No edge</span> means it fires but has not paid after costs, so treat it as
+          <span className="font-semibold text-ink2">No edge</span> means it fires but has not paid in its backtest and live record combined (measured before costs), so treat it as
           information, not a recommendation.
         </p>
         {signals.length === 0 ? (

@@ -123,7 +123,10 @@
   --font-mono: var(--font-mono-jb), ui-monospace, "SF Mono", Menlo, monospace;
 }
 
-* { border-color: var(--c-border); }
+/* In the base layer, so Tailwind's border-colour utilities can override it. */
+@layer base {
+  *, ::before, ::after { border-color: var(--c-border); }
+}
 
 html, body { height: 100%; }
 
@@ -134,7 +137,10 @@ html, body { height: 100%; }
    never show it (:focus-visible), keyboard users always do. The box-shadow
    follows each element's own border-radius, so pills and circles stay round. */
 :focus-visible {
-  outline: none;
+  /* Transparent outline: invisible normally, but forced-colours (High
+     Contrast) mode paints it, where box-shadows are dropped. */
+  outline: 2px solid transparent;
+  outline-offset: 2px;
   box-shadow: var(--ring);
 }
 
@@ -198,3 +204,93 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ============================================================
+   Public site — editorial theme (the marketing surface + onboarding).
+   Scoped to a `.pub` wrapper: it redefines the same --c-* tokens, so every
+   bg-bg / text-ink / border-line utility inside re-skins, while the
+   terminal's :root / .dark tokens stay exactly as they are.
+   ============================================================ */
+
+@theme inline {
+  --color-pub-ink:    #15140f;
+  --color-pub-ink2:   #26231c;
+  --color-pub-card:   #1d1b16;
+  --color-pub-hair:   #3a362d;
+  --color-pub-cream:  #eee9dd;
+  --color-pub-paper:  #fbf9f4;
+  --color-pub-muted:  #aba493;
+  --color-pub-dim:    #8c877a;
+  --color-pub-faint:  #6c6a62;
+  --color-pub-accent: #d9471f;
+  --color-pub-coral:  #f08a63;
+  --color-pub-peach:  #f2a25e;
+  --color-pub-up:     #2c6a47;
+  --color-pub-down:   #b23a1c;
+  --color-pub-upl:    #8fcfa6;
+
+  --font-display: var(--font-iserif), "Times New Roman", Georgia, serif;
+  --font-pub:     var(--font-isans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-plex:    var(--font-plexmono), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.pub {
+  color-scheme: dark;
+
+  --c-bg:            #15140f;
+  --c-surface:       #1d1b16;
+  --c-surface-2:     #26231c;
+  --c-surface-hover: #2a2720;
+  --c-border:        #3a362d;
+  --c-border-strong: #5a5446;
+  --c-text:          #eee9dd;
+  --c-text-2:        #aba493;
+  --c-text-3:        #8c877a;
+  --c-brand:         #eee9dd;
+  --c-brand-hover:   #ffffff;
+  --c-brand-soft:    #26231c;
+  --c-brand-text:    #f08a63;
+  --c-up:            #8fcfa6;
+  --c-up-soft:       rgba(143, 207, 166, 0.12);
+  --c-down:          #f08a63;
+  --c-down-soft:     rgba(217, 71, 31, 0.14);
+  --c-warn:          #f2a25e;
+  --c-warn-soft:     rgba(242, 162, 94, 0.12);
+  --shadow-card:     none;
+  --shadow-pop:      0 18px 50px -12px rgba(0, 0, 0, 0.6);
+  --shadow-header:   none;
+  --ring:            0 0 0 2px #15140f, 0 0 0 4px #d9471f;
+
+  background: var(--c-bg);
+  color: var(--c-text);
+  /* Raw next/font variables, not the @theme aliases: those resolve at :root,
+     where the font variables (set on the .pub wrapper) do not exist yet. */
+  font-family: var(--font-isans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+html:has(.pub), html:has(.pub) body { background: #15140f; }
+/* The public header is 64px; the terminal's larger offset does not apply. */
+html:has(.pub) { scroll-padding-top: 4.5rem; }
+/* Links inside legal prose must not rely on colour alone. */
+.pub .legal a { color: #eee9dd; text-decoration: underline; text-decoration-color: #d9471f; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+.pub ::selection { background: #d9471f; color: #eee9dd; }
+.pub summary { list-style: none; }
+/* Editorial = square corners; reused app components inside .pub follow suit. */
+.pub [class*="rounded"]:not(.rounded-full) { border-radius: 0; }
+.pub summary::-webkit-details-marker { display: none; }
+
+/* Display serif: tight, condensed; <em> inside turns italic. */
+.pub-display { font-family: var(--font-iserif), "Times New Roman", Georgia, serif; font-weight: 400; letter-spacing: -0.012em; }
+.pub-display em { font-style: italic; }
+
+/* The square-thumb range slider. --pct is set inline for the filled track. */
+.pub-range { -webkit-appearance: none; appearance: none; width: 100%; height: 20px; background: transparent; cursor: pointer; }
+.pub-range::-webkit-slider-runnable-track { height: 2px; background: linear-gradient(to right, #eee9dd var(--pct, 50%), #3a362d var(--pct, 50%)); }
+.pub-range::-moz-range-track { height: 2px; background: #3a362d; }
+.pub-range::-moz-range-progress { height: 2px; background: #eee9dd; }
+.pub-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -6px; background: #eee9dd; border: 0; border-radius: 0; }
+.pub-range::-moz-range-thumb { width: 14px; height: 14px; background: #eee9dd; border: 0; border-radius: 0; }
+.pub-range:focus-visible { box-shadow: none; outline: 2px solid #d9471f; outline-offset: 4px; }
+
+/* Arrow nudge on hover, for every "→" link and button. */
+.pub-arrow { display: inline-block; transition: transform 160ms ease; }
+a:hover > .pub-arrow, button:hover > .pub-arrow, a:hover .pub-arrow { transform: translateX(4px); }

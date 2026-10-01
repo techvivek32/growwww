@@ -53,5 +53,6 @@ export async function hasAllMedia(userId: string): Promise<{ selfie: boolean; id
 }
 
 export async function deleteConsentMedia(userId: string): Promise<void> {
-  try { await rm(path.join(DIR, userId), { recursive: true, force: true }); } catch { /* nothing */ }
+  // `force` already ignores a missing folder; any other failure must surface.
+  await rm(path.join(DIR, userId), { recursive: true, force: true });
 }

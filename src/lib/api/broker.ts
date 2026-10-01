@@ -123,18 +123,49 @@ export async function getHoldings(): Promise<Holding[]> {
  * anchor a membership's starting NAV and its high-water mark. Runs in the
  * caller's own credential context, so it is always their own account.
  */
-export async function getNav(): Promise<{ cash: number; holdings: number; nav: number } | null> {
-  return withUserCreds(async () => {
-    if (!groww.hasCredentials()) return null;
-    try {
-      const [margin, holdings] = await Promise.all([groww.getMargin(), groww.getHoldings()]);
-      if (!margin) return null;
-      const holdingsVal = holdings.reduce((s, h) => s + (h.ltp != null ? h.qty * h.ltp : 0), 0);
-      return { cash: margin.clearCash, holdings: +holdingsVal.toFixed(2), nav: +(margin.clearCash + holdingsVal).toFixed(2) };
-    } catch {
-      return null;
+export interface NavReading { cash: number; holdings: number; nav: number }
+
+export async function getNav(): Promise<NavReading | null> {
+  return withUserCreds(() => navImpl(false));
+}
+
+/** The current user's NAV for BILLING (enrol, settle, leave): null unless
+ *  every part of it was read in full. */
+export async function getNavStrict(): Promise<NavReading | null> {
+  return withUserCreds(() => navImpl(true));
+}
+
+/**
+ * The same NAV, read live for ONE named member with that member's own stored
+ * Groww creds — the owner's settlement path. A member with no stored creds
+ * resolves to "none", which reads nothing: it can NEVER fall through to the
+ * env house account.
+ */
+export async function getNavFor(userId: string): Promise<NavReading | null> {
+  if (!userId || userId === OWNER_ID) return null;
+  return runWithCreds((await getBroker(userId)) ?? "none", () => navImpl(true));
+}
+
+/**
+ * Runs inside whichever credential context the caller set up. `strict` (the
+ * billing path) refuses a partial reading — a failed holdings call or an
+ * unpriced holding — instead of quietly valuing it at zero.
+ */
+async function navImpl(strict: boolean): Promise<NavReading | null> {
+  if (!groww.hasCredentials()) return null;
+  try {
+    if (strict) {
+      const [cash, holdingsVal] = await Promise.all([groww.clearCashStrict(), groww.holdingsValueStrict()]);
+      if (cash === null || holdingsVal === null) return null;
+      return { cash, holdings: holdingsVal, nav: +(cash + holdingsVal).toFixed(2) };
     }
-  });
+    const [margin, holdings] = await Promise.all([groww.getMargin(), groww.getHoldings()]);
+    if (!margin) return null;
+    const holdingsVal = holdings.reduce((s, h) => s + (h.ltp != null ? h.qty * h.ltp : 0), 0);
+    return { cash: margin.clearCash, holdings: +holdingsVal.toFixed(2), nav: +(margin.clearCash + holdingsVal).toFixed(2) };
+  } catch {
+    return null;
+  }
 }
 
 export async function getPositions(): Promise<Position[]> {
@@ -240,6 +271,9 @@ export function canTrade(): boolean {
 
 export interface PlacedOrder {
   ok: boolean;
+  /** What actually happened: refused locally (never sent), sent and placed,
+   *  rejected by Groww/exchange, or unknown (the request did not complete). */
+  outcome: "refused" | "placed" | "rejected" | "unknown";
   orderId: string | null;
   /** Status read BACK from the broker, not the one the write echoed. */
   status: string | null;
@@ -265,10 +299,28 @@ async function placeOrderImpl(input: groww.PlaceOrderInput): Promise<PlacedOrder
   if (!canTrade()) {
     return {
       ok: false,
+      outcome: "refused",
       orderId: null,
       status: null,
       filled: null,
       message: "Order placement is disabled, or no broker is connected on this account.",
+      referenceId: null,
+    };
+  }
+
+  // Sign in first: a failure here happens BEFORE anything is sent, so the
+  // order definitely did not reach the exchange.
+  try {
+    await groww.getAccessToken();
+  } catch (err) {
+    console.error("[broker] sign-in before order failed:", err instanceof Error ? err.message : err);
+    return {
+      ok: false,
+      outcome: "refused",
+      orderId: null,
+      status: null,
+      filled: null,
+      message: "Couldn't sign in to Groww with your stored key, so nothing was sent. Re-connect Groww from Settings and try again.",
       referenceId: null,
     };
   }
@@ -280,6 +332,7 @@ async function placeOrderImpl(input: groww.PlaceOrderInput): Promise<PlacedOrder
     console.error("[broker] placeOrder failed:", err instanceof Error ? err.message : err);
     return {
       ok: false,
+      outcome: "unknown",
       orderId: null,
       status: null,
       filled: null,
@@ -290,12 +343,18 @@ async function placeOrderImpl(input: groww.PlaceOrderInput): Promise<PlacedOrder
   }
 
   if (!res.ok || !res.orderId) {
+    // A gateway error (HTTP 5xx) or an "ok" with no order id says nothing
+    // definite — the order may still have reached the exchange.
+    const unsure = (!res.ok && (res.httpStatus >= 500 || res.httpStatus === 0)) || (res.ok && !res.orderId);
     return {
       ok: false,
+      outcome: unsure ? "unknown" : "rejected",
       orderId: res.orderId,
       status: res.status,
       filled: null,
-      message: res.message ?? "Groww rejected the order.",
+      message: unsure
+        ? "Groww did not confirm this order. Check the order book in Groww before retrying — it may still have reached the exchange."
+        : res.message ?? "Groww rejected the order.",
       referenceId: res.referenceId,
     };
   }
@@ -303,10 +362,13 @@ async function placeOrderImpl(input: groww.PlaceOrderInput): Promise<PlacedOrder
   const segment = input.segment ?? "CASH";
   const readBack = await safe("order-status", () => groww.getOrderStatus(res.orderId as string, segment), null);
 
+  const status = readBack?.status ?? res.status;
   return {
     ok: true,
+    // Accepted by Groww but rejected at the exchange on read-back.
+    outcome: status && /REJECT/i.test(status) ? "rejected" : "placed",
     orderId: res.orderId,
-    status: readBack?.status ?? res.status,
+    status,
     filled: readBack?.filled ?? null,
     message: readBack?.remark ?? res.message,
     referenceId: res.referenceId,

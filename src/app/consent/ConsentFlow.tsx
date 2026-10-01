@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { acceptConsent, type ConsentState } from "./actions";
+import { LogoMark } from "@/components/public/Brand";
 import type { ContractLang, Lang } from "@/lib/consent";
 
 const READ_SECONDS = 120;
@@ -30,7 +31,7 @@ function SubmitBtn({ enabled, label, busyLabel }: { enabled: boolean; label: str
   const { pending } = useFormStatus();
   return (
     <button type="submit" disabled={!enabled || pending}
-      className="mt-4 inline-flex h-12 w-full items-center justify-center rounded-lg bg-brand text-[15px] font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+      className="mt-4 inline-flex h-12 w-full items-center justify-center bg-pub-cream text-[15px] font-semibold text-pub-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
       {pending ? busyLabel : label}
     </button>
   );
@@ -173,16 +174,16 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
   return (
     <div>
       {/* language switcher */}
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="text-[12px] font-semibold text-ink3">{t.language}:</span>
         {LANG_META.map((l) => (
           <button key={l.code} type="button" onClick={() => { setLang(l.code); setListened(false); if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel(); setSpeaking(false); }}
-            className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${lang === l.code ? "bg-brand text-white" : "border border-line text-ink2 hover:bg-surfaceh"}`}>
+            className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${lang === l.code ? "bg-pub-cream text-pub-ink" : "border border-line text-ink2 hover:bg-surfaceh"}`}>
             {l.label}
           </button>
         ))}
         <button type="button" onClick={speak}
-          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12.5px] font-semibold text-ink2 hover:bg-surfaceh">
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12.5px] font-semibold text-ink2 hover:bg-surfaceh sm:ml-auto sm:w-auto">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             {speaking ? <><rect x="6" y="5" width="4" height="14" /><rect x="14" y="5" width="4" height="14" /></> : <path d="M11 5 6 9H2v6h4l5 4V5ZM15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14" />}
           </svg>
@@ -191,14 +192,14 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
       </div>
 
       {/* whiteboard: the contract on a letterhead */}
-      <div ref={boxRef} onScroll={onScroll} className="h-[46vh] overflow-y-auto rounded-xl border border-line bg-surface" style={{ boxShadow: "var(--shadow-card)" }}>
+      <div ref={boxRef} onScroll={onScroll} tabIndex={0} role="region" aria-label="Agreement text" className="h-[46vh] overflow-y-auto rounded-xl border border-line bg-surface">
         {/* letterhead */}
         <div className="sticky top-0 z-10 flex items-center gap-3 border-b-2 border-brand/60 bg-surface px-5 py-4">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl" style={{ background: "linear-gradient(135deg, #00d09c 0%, #00a3ff 100%)" }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 16.5 9.5 11l3.5 3.5L20 7" /></svg>
+          <span className="grid h-11 w-11 shrink-0 place-items-center bg-pub-ink">
+            <LogoMark tone="art" size={26} />
           </span>
           <div className="min-w-0">
-            <p className="text-[15px] font-bold tracking-tight text-ink">{c.org.name}</p>
+            <p className="pub-display text-[20px] leading-tight text-ink">{c.org.name}</p>
             <p className="truncate text-[11px] text-ink3">{c.org.tagline}</p>
           </div>
           <span className="ml-auto shrink-0 text-right text-[10px] text-ink3">{c.org.meta}</span>
@@ -256,8 +257,8 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
           </div>
           <div className="mt-2 flex items-center gap-2">
             {!recording && !recUrl && (
-              <button type="button" onClick={startRec} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-down px-3.5 text-[12.5px] font-semibold text-white hover:opacity-90">
-                <span className="h-2.5 w-2.5 rounded-full bg-white" /> {t.startRec}
+              <button type="button" onClick={startRec} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-down px-3.5 text-[12.5px] font-semibold text-pub-ink hover:opacity-90">
+                <span className="h-2.5 w-2.5 rounded-full bg-pub-ink" /> {t.startRec}
               </button>
             )}
             {recording && (
@@ -291,7 +292,7 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
         <label className="mt-3 block">
           <span className="mb-1.5 block text-[12px] font-semibold text-ink2">{t.signature}</span>
           <input name="signature" value={name} onChange={(e) => setName(e.target.value)} placeholder={t.signaturePh} autoComplete="name"
-            className="h-11 w-full rounded-lg border border-line bg-surface px-3.5 text-[14px] text-ink outline-none focus:border-brand" />
+            className="h-11 w-full rounded-lg border border-pub-faint bg-surface px-3.5 text-[14px] text-ink outline-none focus:border-pub-cream" />
         </label>
 
         {!mediaReady && (readReady) && <p className="mt-2 text-[12px] text-ink3">{t.needMedia}</p>}

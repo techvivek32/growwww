@@ -57,7 +57,23 @@ async function read(): Promise<Store> {
   }
 }
 
-async function write(store: Store): Promise<void> {
+/** For erasure: a read that fails loudly (only a missing file is "empty"), so
+ *  a corrupt store can never be reported as successfully erased. */
+async function readStrict(): Promise<Store> {
+  let raw: string;
+  try {
+    raw = await readFile(FILE, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return { items: [] };
+    throw e;
+  }
+  const parsed = JSON.parse(raw) as Store;
+  if (!Array.isArray(parsed.items)) throw new Error("notifications: malformed store");
+  return parsed;
+}
+
+/** `scrubBackup`: on erasure, overwrite the .bak too, so deleted data does not linger in the backup. */
+async function write(store: Store, scrubBackup = false): Promise<void> {
   await mkdir(path.dirname(FILE), { recursive: true });
   try {
     await copyFile(FILE, `${FILE}.bak`);
@@ -67,6 +83,7 @@ async function write(store: Store): Promise<void> {
   const tmp = `${FILE}.tmp`;
   await writeFile(tmp, JSON.stringify(store, null, 2), "utf8");
   await rename(tmp, FILE);
+  if (scrubBackup) await copyFile(FILE, `${FILE}.bak`);
 }
 
 /** Emit a notification. Idempotent per (userId, key) so a retry or an engine
@@ -126,5 +143,15 @@ export async function markAllRead(userId: string): Promise<void> {
       }
     }
     if (changed) await write(store);
+  });
+}
+
+/** Erase every notification for one account — only on full account deletion. */
+export async function deleteNotifications(userId: string): Promise<void> {
+  return enqueue(async () => {
+    const store = await readStrict();
+    const before = store.items.length;
+    store.items = store.items.filter((n) => n.userId !== userId);
+    if (store.items.length !== before) await write(store, true);
   });
 }

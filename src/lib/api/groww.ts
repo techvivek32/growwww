@@ -197,6 +197,71 @@ export async function getAccessToken(): Promise<string> {
   return accessToken();
 }
 
+/* ------------------------------------------------------- connect probe */
+
+export type ProbeStage = "auth" | "account" | "rate" | "network" | "ops";
+export type ProbeResult =
+  | { ok: true; ucc: string | null }
+  /** `minted`: whether Groww issued a session before the failure. */
+  | { ok: false; stage: ProbeStage; status: number | null; minted: boolean };
+
+/** The static IP this server sends Groww traffic from, if configured. */
+export function registeredIp(): string | null {
+  return env("GROWW_REGISTERED_IP") ?? null;
+}
+
+/**
+ * Prove a pasted key + TOTP secret really work, and say WHICH step failed:
+ * mint a fresh token (never a cached one — a cached token for the same key
+ * would hide a wrong secret), then read the account's margin. Runs against
+ * whatever creds the caller put in context; logs status codes, never secrets.
+ */
+export async function probeConnection(): Promise<ProbeResult> {
+  const creds = resolveCreds();
+  if (!creds) return { ok: false, stage: "auth", status: null, minted: false };
+  const fp = keyFingerprint(creds.apiKey);
+
+  let token: string;
+  try {
+    token = await mint(creds.apiKey, creds.totpSecret, fp);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Both error shapes carry the HTTP status: "groww auth failed: 401 …"
+    // and "groww /v1/token/api/access: 401 non-JSON: …".
+    const m = /(?:auth failed:|access:) (\d{3})/.exec(msg);
+    const status = m ? Number(m[1]) : null;
+    console.warn(`[connect] token mint failed: ${status ?? msg.slice(0, 120)}`);
+    if (/EADDRNOTAVAIL/.test(msg)) return { ok: false, stage: "ops", status: null, minted: false };
+    if (status === 429) return { ok: false, stage: "rate", status, minted: false };
+    // 4xx, or a 200 that carried no token: Groww answered and said no.
+    if (status !== null && (status === 200 || (status >= 400 && status < 500))) {
+      return { ok: false, stage: "auth", status, minted: false };
+    }
+    return { ok: false, stage: "network", status, minted: false };
+  }
+
+  try {
+    const res = await request<{ status?: string }>("/v1/margins/detail/user", { token });
+    if (res.status !== 200 || res.body?.status !== "SUCCESS") {
+      console.warn(`[connect] account read failed: ${res.status}`);
+      const stage: ProbeStage = res.status === 429 ? "rate" : res.status >= 500 ? "network" : "account";
+      return { ok: false, stage, status: res.status, minted: true };
+    }
+  } catch (e) {
+    console.warn(`[connect] account read error: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`);
+    return { ok: false, stage: "network", status: null, minted: true };
+  }
+
+  let ucc: string | null = null;
+  try {
+    const p = await request<{ status?: string; payload?: { ucc?: string } }>("/v1/user/detail", { token });
+    if (p.status === 200 && p.body?.status === "SUCCESS") ucc = p.body.payload?.ucc ?? null;
+  } catch {
+    /* the client code is a nicety; the connection is already proven */
+  }
+  return { ok: true, ucc };
+}
+
 /** Envelope unwrap: Groww wraps everything in { status, payload }. */
 async function get<T>(path: string): Promise<T | null> {
   const token = await accessToken();
@@ -210,7 +275,7 @@ async function get<T>(path: string): Promise<T | null> {
 async function post<T>(
   path: string,
   json: unknown,
-): Promise<{ ok: boolean; payload: T | null; message: string | null }> {
+): Promise<{ ok: boolean; payload: T | null; message: string | null; httpStatus: number }> {
   const token = await accessToken();
   const res = await request<{
     status?: string;
@@ -223,6 +288,7 @@ async function post<T>(
     ok,
     payload: res.body?.payload ?? null,
     message: res.body?.error?.message ?? (ok ? null : `HTTP ${res.status}`),
+    httpStatus: res.status,
   };
 }
 
@@ -266,6 +332,12 @@ async function dayChangePct(symbol: string): Promise<number | null> {
 }
 
 /* ---------------------------------------------------------------- margins */
+
+/** Clear cash for BILLING: null unless Groww actually reported it. */
+export async function clearCashStrict(): Promise<number | null> {
+  const p = await get<{ clear_cash?: unknown }>("/v1/margins/detail/user");
+  return p && typeof p.clear_cash === "number" ? p.clear_cash : null;
+}
 
 export interface Margin {
   clearCash: number;
@@ -322,6 +394,29 @@ export async function getHoldings(): Promise<Holding[]> {
       dayPct: dayMoves[i],
     };
   });
+}
+
+/**
+ * Holdings value for BILLING: null unless the holdings read succeeded and
+ * every held symbol has a live price. A partial read must never become a
+ * low account value that a fee is then worked out on.
+ */
+export async function holdingsValueStrict(): Promise<number | null> {
+  const p = await get<{ holdings?: GrowwHolding[] }>("/v1/holdings/user");
+  if (!p) return null;
+  const held = (p.holdings ?? []).filter((h) => (h.quantity ?? 0) > 0);
+  // A held row with no symbol cannot be priced — so the total is unknown.
+  if (held.some((h) => !h.trading_symbol)) return null;
+  const keep = held;
+  if (keep.length === 0) return 0;
+  const ltp = await getLtp(keep.map((h) => h.trading_symbol as string));
+  let sum = 0;
+  for (const h of keep) {
+    const px = ltp[h.trading_symbol as string];
+    if (typeof px !== "number" || !(px > 0)) return null;
+    sum += (h.quantity ?? 0) * px;
+  }
+  return +sum.toFixed(2);
 }
 
 /* -------------------------------------------------------------- positions */
@@ -582,6 +677,8 @@ export interface PlaceOrderResult {
   message: string | null;
   /** The reference we sent, so the order can be found again if a reply is lost. */
   referenceId: string;
+  /** The HTTP status of Groww's reply — a 5xx means the outcome is unknown. */
+  httpStatus: number;
 }
 
 /**
@@ -625,6 +722,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     status: res.payload?.order_status ?? null,
     message: res.payload?.remark ?? res.message,
     referenceId: ref,
+    httpStatus: res.httpStatus,
   };
 }
 
@@ -708,6 +806,8 @@ export interface Tick {
   week52Low: number | null;
   upperCircuit: number | null;
   lowerCircuit: number | null;
+  /** When this price was last refreshed (ms) — set by getTicks. */
+  quotedAt?: number;
 }
 
 interface DepthLevel {
@@ -950,8 +1050,9 @@ export async function getTicks(symbols: string[]): Promise<Record<string, Tick>>
 
   const out: Record<string, Tick> = {};
   for (const sym of symbols) {
-    const base = quoteCache.get(sym)?.tick;
-    if (!base) continue;
+    const cached = quoteCache.get(sym);
+    const base = cached?.tick;
+    if (!cached || !base) continue;
     const last = live[sym] ?? base.last;
     const change = last - base.prevClose;
     out[sym] = {
@@ -959,6 +1060,9 @@ export async function getTicks(symbols: string[]): Promise<Record<string, Tick>>
       last: +last.toFixed(2),
       change: +change.toFixed(2),
       changePct: +((change / base.prevClose) * 100).toFixed(2),
+      // A fresh feed/REST price is "now"; a fallback to the cached quote is
+      // only as fresh as that quote.
+      quotedAt: live[sym] !== undefined ? now : cached.at,
     };
   }
   return out;

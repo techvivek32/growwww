@@ -4,6 +4,8 @@ import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
 import { hasConsented, CONTRACT } from "@/lib/consent";
 import { hasBroker } from "@/lib/users";
+import { logout } from "@/app/login/actions";
+import AuthShell from "@/components/public/AuthShell";
 import ConsentFlow from "./ConsentFlow";
 
 export const metadata: Metadata = { title: "User agreement · MNHA Financials" };
@@ -16,12 +18,21 @@ export default async function ConsentPage() {
   if (await hasConsented(uid)) redirect((await hasBroker(uid)) ? "/stocks/alerts" : "/connect-broker");
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col justify-center px-4 py-8 sm:px-5">
-      <h1 className="text-[22px] leading-tight font-bold tracking-tight text-ink sm:text-[24px]">
-        {CONTRACT.en.ui.before}
-      </h1>
-      <p className="mt-1.5 mb-4 text-[13px] leading-relaxed text-ink3">{CONTRACT.en.ui.subtitle}</p>
+    <AuthShell
+      step={2}
+      wide
+      headerRight={
+        <form action={logout}>
+          <button type="submit" className="text-[14px] font-medium text-pub-muted hover:text-pub-cream">
+            Sign out
+          </button>
+        </form>
+      }
+    >
+      <p className="font-plex text-[11px] tracking-[0.12em] text-pub-coral uppercase">Step 02 · Agreement</p>
+      <h1 className="pub-display mt-4 text-[clamp(2.4rem,4.5vw,3.4rem)] leading-[1.0] text-pub-cream">{CONTRACT.en.ui.before}</h1>
+      <p className="mt-3 mb-8 text-[15.5px] leading-relaxed text-pub-muted">{CONTRACT.en.ui.subtitle}</p>
       <ConsentFlow contract={CONTRACT} />
-    </div>
+    </AuthShell>
   );
 }

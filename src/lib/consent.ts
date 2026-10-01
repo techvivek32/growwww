@@ -191,12 +191,29 @@ async function read(): Promise<Store> {
     return Array.isArray(parsed.records) ? parsed : { records: [] };
   } catch { return { records: [] }; }
 }
-async function write(store: Store): Promise<void> {
+
+/** For erasure: a read that fails loudly (only a missing file is "empty"), so
+ *  a corrupt store can never be reported as successfully erased. */
+async function readStrict(): Promise<Store> {
+  let raw: string;
+  try {
+    raw = await readFile(FILE, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return { records: [] };
+    throw e;
+  }
+  const parsed = JSON.parse(raw) as Store;
+  if (!Array.isArray(parsed.records)) throw new Error("consents: malformed store");
+  return parsed;
+}
+/** `scrubBackup`: on erasure, overwrite the .bak too, so deleted data does not linger in the backup. */
+async function write(store: Store, scrubBackup = false): Promise<void> {
   await mkdir(path.dirname(FILE), { recursive: true });
   try { await copyFile(FILE, `${FILE}.bak`); } catch { /* first write */ }
   const tmp = `${FILE}.tmp`;
   await writeFile(tmp, JSON.stringify(store, null, 2), "utf8");
   await rename(tmp, FILE);
+  if (scrubBackup) await copyFile(FILE, `${FILE}.bak`);
 }
 
 export async function recordConsent(
@@ -229,9 +246,9 @@ export async function listConsents(): Promise<ConsentRecord[]> {
 }
 export async function deleteConsents(userId: string): Promise<void> {
   return enqueue(async () => {
-    const store = await read();
+    const store = await readStrict();
     const before = store.records.length;
     store.records = store.records.filter((r) => r.userId !== userId);
-    if (store.records.length !== before) await write(store);
+    if (store.records.length !== before) await write(store, true);
   });
 }

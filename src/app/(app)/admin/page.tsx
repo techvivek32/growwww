@@ -4,19 +4,32 @@ import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
 import { listUsers } from "@/lib/users";
 import { listKyc } from "@/lib/kyc";
-import { listConsents, AGREEMENT_VERSION } from "@/lib/consent";
-import { listMembers, accrual } from "@/lib/membership";
+import { listConsents, AGREEMENT_VERSION, type ConsentRecord } from "@/lib/consent";
+import { listMembers, listInvoices, accrual, type Membership, type InvoiceStatus } from "@/lib/membership";
+import { listOrders, orderStatsByUser, type LedgerStatus } from "@/lib/ledger";
+import { registeredIp } from "@/lib/api/groww";
 import { engineStatus } from "@/lib/signals/engine";
 import { PageHead, Card, CardHead, Pill } from "@/components/ui";
-import { adminDisconnectBroker, adminDeleteUser, adminKycDecision, adminScheduleKycCall } from "./actions";
+import { adminDisconnectBroker, adminDeleteUser, adminKycDecision, adminScheduleKycCall, adminMarkInvoice } from "./actions";
+import SettleForm from "./SettleForm";
 
 export const metadata: Metadata = { title: "Admin · MNHA Financials" };
 export const dynamic = "force-dynamic";
 
 const DAY = 24 * 3600 * 1000;
+const IST = "Asia/Kolkata";
 const withinDays = (ts: number, days: number) => Date.now() - ts < days * DAY;
-const fmtDate = (ms: number) =>
-  new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(ms));
+const DATE_TIME = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: IST });
+const DAY_MON = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", timeZone: IST });
+const DAY_MON_YR = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "2-digit", timeZone: IST });
+const LOG_TIME = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: IST });
+const IST_DAY_KEY = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: IST });
+const fmtDate = (ms: number) => DATE_TIME.format(new Date(ms));
+const fmtDay = (ms: number) => DAY_MON.format(new Date(ms));
+const fmtDayYr = (ms: number) => DAY_MON_YR.format(new Date(ms));
+const istDay = (ms: number) => IST_DAY_KEY.format(new Date(ms));
+const istToday = () => istDay(Date.now());
+const isPast = (ts: number) => Date.now() >= ts;
 function ago(ts: number | null): string {
   if (!ts) return "—";
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -25,6 +38,23 @@ function ago(ts: number | null): string {
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
 }
+/** "in 3d" / "in 5h" for a future timestamp. */
+function until(ts: number): string {
+  const s = Math.max(0, Math.floor((ts - Date.now()) / 1000));
+  if (s < 3600) return `in ${Math.max(1, Math.floor(s / 60))}m`;
+  if (s < 86400) return `in ${Math.floor(s / 3600)}h`;
+  return `in ${Math.floor(s / 86400)}d`;
+}
+const inr = (v: number) => `₹${Math.round(v).toLocaleString("en-IN")}`;
+/** Fee amounts keep paise — a ₹0.40 fee must not read as ₹0. */
+const inr2 = (v: number) => `₹${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const maskUcc = (ucc: string) => `••••${ucc.slice(-4)}`;
+const shortId = (id: string) => (id.length > 14 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
+const pctOf = (n: number, total: number) => (total > 0 ? Math.round((n / total) * 100) : null);
+
+const LOG_TONE: Record<LedgerStatus, "up" | "down" | "neutral"> = { placed: "up", rejected: "down", cancelled: "neutral", unknown: "neutral" };
+const INV_TONE: Record<InvoiceStatus, "warn" | "up" | "neutral"> = { due: "warn", paid: "up", waived: "neutral" };
+const KYC_TONE = { approved: "up", rejected: "down", submitted: "warn", none: "neutral" } as const;
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -36,18 +66,77 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
+function CardTitle({ title, sub }: { title: string; sub?: string }) {
+  return (
+    <div className="border-b border-line px-5 py-4">
+      <h2 className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2>
+      {sub && <p className="mt-0.5 text-[12px] text-ink3">{sub}</p>}
+    </div>
+  );
+}
+
 export default async function AdminPage() {
   // Owner only. A regular user who guesses the URL is sent back to the app.
   if ((await currentUserId()) !== OWNER_ID) redirect("/stocks/alerts");
 
-  const [users, kyc, consents, members] = await Promise.all([listUsers(), listKyc(), listConsents(), listMembers()]);
+  const [users, kyc, consents, members, invoices, orders, orderStats] = await Promise.all([
+    listUsers(),
+    listKyc(),
+    listConsents(),
+    listMembers(),
+    listInvoices(),
+    listOrders(undefined, Number.MAX_SAFE_INTEGER),
+    orderStatsByUser(),
+  ]);
   const engine = engineStatus();
   const connected = users.filter((u) => u.hasBroker).length;
   const last7 = users.filter((u) => withinDays(u.createdAt, 7)).length;
   const pendingKyc = kyc.filter((k) => k.status === "submitted").length;
   const activeMembers = members.filter((m) => m.status === "active");
   const emailFor = new Map(users.map((u) => [u.id, u.email]));
-  const inr = (v: number) => `₹${Math.round(v).toLocaleString("en-IN")}`;
+  const who = (userId: string) => emailFor.get(userId) ?? (userId === OWNER_ID ? "Owner (house account)" : userId);
+  const hasBrokerFor = new Map(users.map((u) => [u.id, u.hasBroker]));
+
+  /* ---------------------------------------------------------------- hisab */
+  // consents arrive newest first, so the first record seen per user is their latest.
+  const signedNow = new Map<string, ConsentRecord>();
+  const signedOld = new Map<string, ConsentRecord>();
+  for (const c of consents) {
+    const into = c.agreementVersion === AGREEMENT_VERSION ? signedNow : signedOld;
+    if (!into.has(c.userId)) into.set(c.userId, c);
+  }
+  const kycFor = new Map(kyc.map((k) => [k.userId, k]));
+  const memberFor = new Map<string, Membership>(members.map((m) => [m.userId, m]));
+  const billsFor = new Map<string, { due: number; paid: number }>();
+  for (const iv of invoices) {
+    const b = billsFor.get(iv.userId) ?? { due: 0, paid: 0 };
+    if (iv.status === "due") b.due += iv.feeDue;
+    if (iv.status === "paid") b.paid += iv.feeDue;
+    billsFor.set(iv.userId, b);
+  }
+
+  // A true funnel: each step counts only users who also passed every earlier
+  // step, so the numbers can never rise from one step to the next.
+  const serverIp = registeredIp();
+  const fSigned = users.filter((u) => signedNow.has(u.id) || signedOld.has(u.id));
+  const fConnected = fSigned.filter((u) => u.hasBroker);
+  const fOrdered = fConnected.filter((u) => (orderStats.get(u.id)?.placed ?? 0) > 0);
+  const fMembers = fOrdered.filter((u) => memberFor.get(u.id)?.status === "active");
+  const ipOk = fConnected.filter((u) => serverIp !== null && u.brokerStaticIp === serverIp).length;
+  const funnel = [
+    { label: "Signed up", n: users.length },
+    { label: "Agreement signed", n: fSigned.length, hint: `${users.filter((u) => signedNow.has(u.id)).length} on v${AGREEMENT_VERSION}` },
+    { label: "Groww connected", n: fConnected.length, hint: serverIp ? `${ipOk} confirmed IP ${serverIp}` : "server IP not set" },
+    { label: "Placed ≥1 order", n: fOrdered.length },
+    { label: "Active members", n: fMembers.length },
+  ];
+
+  const sumFee = (s?: InvoiceStatus) => invoices.filter((iv) => !s || iv.status === s).reduce((t, iv) => t + iv.feeDue, 0);
+  const countInv = (s: InvoiceStatus) => invoices.filter((iv) => iv.status === s).length;
+  const today = istToday();
+  const ordersToday = orders.filter((o) => istDay(o.at) === today);
+  const countStatus = (list: typeof orders, s: LedgerStatus) => list.filter((o) => o.status === s).length;
+  const orderLog = orders.slice(0, 100);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -66,67 +155,303 @@ export default async function AdminPage() {
         <Stat label="Signal engine" value={engine.running ? "Running" : "Idle"} sub={`scan ${ago(engine.lastScan)}`} />
       </div>
 
-      <Card className="mb-6">
-        <CardHead title="Signal engine" sub="Shared research runs on the house account" />
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 text-[13px]">
-          <div><p className="text-ink3">Status</p><p className="font-semibold text-ink">{engine.running ? "Running" : "Idle"}</p></div>
-          <div><p className="text-ink3">Scanning now</p><p className="font-semibold text-ink">{engine.scanning ? "Yes" : "No"}</p></div>
-          <div><p className="text-ink3">Last scan</p><p className="font-semibold text-ink">{ago(engine.lastScan)}</p></div>
-          <div><p className="text-ink3">Edge recomputed</p><p className="font-semibold text-ink">{ago(engine.lastBacktest)}</p></div>
+      {/* ============================================================ Hisab */}
+      <div className="mb-3">
+        <h2 className="text-[20px] leading-tight font-semibold tracking-[-0.02em] text-ink">Hisab</h2>
+        <p className="mt-1 text-[12.5px] text-ink3">
+          The platform&apos;s own books — onboarding, fees billed and orders sent through MNHA. Groww stays the source of
+          truth for fills and money; every number here is read from MNHA&apos;s stores, and a dash means not recorded.
+        </p>
+      </div>
+
+      {/* onboarding funnel */}
+      <Card className="mb-3">
+        <CardHead title="Onboarding funnel" sub="Each step as a share of all sign-ups" />
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-3 lg:grid-cols-6">
+          {funnel.map((f) => {
+            const p = pctOf(f.n, users.length);
+            return (
+              <div key={f.label} className="min-w-0">
+                <p className="text-[11.5px] text-ink3">{f.label}</p>
+                <p className="tnum mt-0.5 text-[20px] font-semibold text-ink">
+                  {f.n}
+                  <span className="ml-1.5 text-[12px] font-medium text-ink3">{p === null ? "—" : `${p}%`}</span>
+                </p>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface2" aria-hidden="true">
+                  <div className="h-full rounded-full bg-brand" style={{ width: `${p ?? 0}%` }} />
+                </div>
+                {f.hint && <p className="mt-1 truncate text-[10.5px] text-ink3">{f.hint}</p>}
+              </div>
+            );
+          })}
         </div>
       </Card>
 
-      <Card pad={false}>
-        <div className="border-b border-line px-5 py-4">
-          <h2 className="text-[15px] font-semibold tracking-tight text-ink">Users ({users.length})</h2>
-        </div>
+      {/* money + orders */}
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Fees billed" value={inr2(sumFee())} sub={`${invoices.length} settled period${invoices.length === 1 ? "" : "s"}`} />
+        <Stat label="Collected" value={inr2(sumFee("paid"))} sub={`${countInv("paid")} paid`} />
+        <Stat label="Outstanding" value={inr2(sumFee("due"))} sub={`${countInv("due")} due`} />
+        <Stat label="Waived" value={inr2(sumFee("waived"))} sub={`${countInv("waived")} waived / no fee`} />
+      </div>
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <Stat label="Orders placed today" value={String(countStatus(ordersToday, "placed"))} sub="IST calendar day" />
+        <Stat label="Rejected today" value={String(countStatus(ordersToday, "rejected"))} sub={`${countStatus(ordersToday, "cancelled")} cancellations today`} />
+        <Stat
+          label="Orders all-time"
+          value={String(orders.length)}
+          sub={`${countStatus(orders, "placed")} placed · ${countStatus(orders, "rejected")} rejected · ${countStatus(orders, "unknown")} unknown · ${countStatus(orders, "cancelled")} cancel sent`}
+        />
+      </div>
+
+      {/* accounts — one row per user; replaces the old users table, keeps its actions */}
+      <Card pad={false} className="mb-6">
+        <CardTitle
+          title={`Accounts (${users.length})`}
+          sub="One row per user. Orders count only what was sent through MNHA since the order ledger started; NAV is the last value seen in the member's own session."
+        />
         {users.length === 0 ? (
           <p className="px-5 py-10 text-center text-[13.5px] text-ink3">No registered users yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-left">
+            <table className="w-full min-w-[1120px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-line text-[12px] text-ink3">
-                  <th className="px-5 py-3 font-semibold">Email</th>
-                  <th className="px-5 py-3 font-semibold">Joined</th>
-                  <th className="px-5 py-3 font-semibold">Broker</th>
-                  <th className="px-5 py-3 text-right font-semibold">Actions</th>
+                  <th className="px-4 py-3 font-semibold">User</th>
+                  <th className="px-4 py-3 font-semibold">Joined</th>
+                  <th className="px-4 py-3 font-semibold">Agreement</th>
+                  <th className="px-4 py-3 font-semibold">KYC</th>
+                  <th className="px-4 py-3 font-semibold">Groww</th>
+                  <th className="px-4 py-3 font-semibold">Orders</th>
+                  <th className="px-4 py-3 font-semibold">Membership</th>
+                  <th className="px-4 py-3 text-right font-semibold">Bills</th>
+                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
-                  <tr key={u.id} className="border-b border-line/60">
-                    <td className="px-5 py-3.5">
-                      <p className="text-[13.5px] font-medium text-ink">{u.email}</p>
-                      <p className="tnum text-[11px] text-ink3">{u.id}</p>
-                    </td>
-                    <td className="tnum px-5 py-3.5 text-[12.5px] text-ink2">{fmtDate(u.createdAt)}</td>
-                    <td className="px-5 py-3.5">
-                      {u.hasBroker ? (
-                        <span className="inline-flex items-center gap-1.5 text-[12.5px] text-up">
-                          <span className="h-1.5 w-1.5 rounded-full bg-up" /> Connected
-                        </span>
-                      ) : (
-                        <span className="text-[12.5px] text-ink3">Not connected</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center justify-end gap-2">
-                        {u.hasBroker && (
-                          <form action={adminDisconnectBroker}>
+                {users.map((u) => {
+                  const now = signedNow.get(u.id);
+                  const old = signedOld.get(u.id);
+                  const k = kycFor.get(u.id);
+                  const st = orderStats.get(u.id);
+                  const m = memberFor.get(u.id);
+                  const a = m && m.status === "active" && m.lastNav != null ? accrual(m, m.lastNav) : null;
+                  const bills = billsFor.get(u.id);
+                  return (
+                    <tr key={u.id} className="border-b border-line/60 align-top">
+                      <td className="px-4 py-3">
+                        <p className="text-[13px] font-medium text-ink">{u.email}</p>
+                        <p className="tnum text-[11px] text-ink3">{u.id}</p>
+                      </td>
+                      <td className="tnum px-4 py-3 text-[12px] text-ink2">{fmtDayYr(u.createdAt)}</td>
+                      <td className="px-4 py-3 text-[12px]">
+                        {now ? (
+                          <span className="tnum text-up">✓ {fmtDayYr(now.consentedAt)}</span>
+                        ) : old ? (
+                          <span className="text-warn" title={`Signed v${old.agreementVersion}`}>Old version · {fmtDayYr(old.consentedAt)}</span>
+                        ) : (
+                          <span className="text-ink3">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-[12px]">
+                        {k ? <Pill tone={KYC_TONE[k.status]}>{k.status === "submitted" ? "in review" : k.status}</Pill> : <span className="text-ink3">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-[12px]">
+                        {u.hasBroker ? (
+                          <div className="space-y-0.5">
+                            <p className="inline-flex items-center gap-1.5 text-up">
+                              <span className="h-1.5 w-1.5 rounded-full bg-up" />
+                              <span className="tnum">{u.brokerConnectedAt ? fmtDayYr(u.brokerConnectedAt) : "Connected"}</span>
+                            </p>
+                            <p className="tnum text-ink2">UCC {u.brokerUcc ? maskUcc(u.brokerUcc) : "—"}</p>
+                            {u.brokerStaticIp && u.brokerStaticIp === serverIp ? (
+                              <p className="tnum text-ink2" title="Static IP the user confirmed registering on their Groww key">✓ IP {u.brokerStaticIp}</p>
+                            ) : u.brokerStaticIp ? (
+                              <p><span className="rounded-md bg-warnsoft px-1.5 py-0.5 text-[10.5px] font-semibold text-warn">confirmed {u.brokerStaticIp} — server now {serverIp ?? "—"}</span></p>
+                            ) : (
+                              <p><span className="rounded-md bg-warnsoft px-1.5 py-0.5 text-[10.5px] font-semibold text-warn">IP not confirmed</span></p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-ink3">Not connected</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-[12px]">
+                        {st ? (
+                          <div className="space-y-0.5">
+                            <p className="tnum">
+                              <span className="text-up">{st.placed}</span>
+                              <span className="text-ink3"> / </span>
+                              <span className="text-down">{st.rejected}</span>
+                              <span className="text-ink3"> / </span>
+                              <span className="text-ink2">{st.cancelled}</span>
+                              {st.unknown > 0 && (
+                                <>
+                                  <span className="text-ink3"> / </span>
+                                  <span className="text-warn">{st.unknown}?</span>
+                                </>
+                              )}
+                            </p>
+                            <p className="text-[11px] text-ink3">placed / rej / cxl{st.unknown > 0 ? " / unknown" : ""} · last {ago(st.lastAt)}</p>
+                          </div>
+                        ) : (
+                          <span className="text-ink3">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-[12px]">
+                        {m ? (
+                          <div className="space-y-0.5">
+                            <Pill tone={m.status === "active" ? "up" : "neutral"}>{m.status}</Pill>
+                            <p className="tnum text-ink2">HWM {inr(m.highWaterMark)}</p>
+                            <p className="tnum text-ink2">
+                              NAV {m.lastNav != null ? inr(m.lastNav) : "—"}
+                              {m.lastNavAt != null && <span className="text-ink3"> · as of {ago(m.lastNavAt)}</span>}
+                            </p>
+                            <p className="tnum text-ink2">Fee accrued {a ? inr2(a.feeEstimate) : "—"}</p>
+                          </div>
+                        ) : (
+                          <span className="text-ink3">—</span>
+                        )}
+                      </td>
+                      <td className="tnum px-4 py-3 text-right text-[12px]">
+                        {bills ? (
+                          <div className="space-y-0.5">
+                            <p className={bills.due > 0 ? "font-semibold text-warn" : "text-ink2"}>due {inr2(bills.due)}</p>
+                            <p className="text-ink2">paid {inr2(bills.paid)}</p>
+                          </div>
+                        ) : (
+                          <span className="text-ink3">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-2">
+                          {u.hasBroker && (
+                            <form action={adminDisconnectBroker}>
+                              <input type="hidden" name="userId" value={u.id} />
+                              <button className="rounded-md border border-line px-2.5 py-1.5 text-[12px] font-medium text-ink2 hover:bg-surfaceh hover:text-ink" title="Remove this user's stored broker credentials">
+                                Disconnect
+                              </button>
+                            </form>
+                          )}
+                          <form action={adminDeleteUser}>
                             <input type="hidden" name="userId" value={u.id} />
-                            <button className="rounded-md border border-line px-2.5 py-1.5 text-[12px] font-medium text-ink2 hover:bg-surfaceh hover:text-ink" title="Remove this user's stored broker credentials">
-                              Disconnect
+                            <button className="rounded-md border border-down/40 px-2.5 py-1.5 text-[12px] font-medium text-down hover:bg-downsoft" title="Permanently delete this user">
+                              Delete
                             </button>
                           </form>
-                        )}
-                        <form action={adminDeleteUser}>
-                          <input type="hidden" name="userId" value={u.id} />
-                          <button className="rounded-md border border-down/40 px-2.5 py-1.5 text-[12px] font-medium text-down hover:bg-downsoft" title="Permanently delete this user">
-                            Delete
-                          </button>
-                        </form>
-                      </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* fee ledger */}
+      <Card pad={false} className="mb-6">
+        <CardTitle
+          title={`Fee ledger (${invoices.length})`}
+          sub="Settled performance periods. Fee only on profit above the member's previous peak — nothing on a loss."
+        />
+        <div className="space-y-2 border-b border-line px-5 py-4 text-[12px] leading-relaxed text-ink2">
+          <p>
+            <strong className="text-ink">Settle now</strong> reads the member&apos;s account value live from Groww with their
+            own stored key (cash + holdings at LTP; open F&amp;O positions excluded). If that read fails, nothing is settled —
+            a typed or stale value is never used. The last-known NAV below is reference only. Fees are collected out of band
+            and are never auto-debited from anyone&apos;s account.
+          </p>
+          <p className="rounded-md bg-warnsoft px-3 py-2 text-warn">
+            Deposits/withdrawals during the period are not netted out — waive the invoice if the gain came from a deposit.
+          </p>
+        </div>
+
+        {activeMembers.length > 0 && (
+          <ul className="divide-y divide-line border-b border-line">
+            {activeMembers.map((m) => {
+              const ended = isPast(m.periodEndsAt);
+              const a = m.lastNav != null ? accrual(m, m.lastNav) : null;
+              return (
+                <li key={m.userId} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                  <div className="min-w-0 text-[12px]">
+                    <p className="text-[13px] font-medium text-ink">{who(m.userId)}</p>
+                    <p className="tnum text-ink3">
+                      {ended ? <span className="font-semibold text-warn">Period ended {ago(m.periodEndsAt)}</span> : <>Period ends {fmtDay(m.periodEndsAt)} ({until(m.periodEndsAt)})</>}
+                      {" · "}HWM {inr(m.highWaterMark)}
+                      {" · "}last-known NAV {m.lastNav != null ? inr(m.lastNav) : "—"}
+                      {m.lastNavAt != null && ` (as of ${ago(m.lastNavAt)})`}
+                      {a && ` · fee at that NAV ${inr2(a.feeEstimate)}`}
+                    </p>
+                  </div>
+                  {hasBrokerFor.get(m.userId) ? (
+                    <SettleForm key={m.userId} userId={m.userId} periodEndsAt={m.periodEndsAt} ended={ended} />
+                  ) : (
+                    <p className="text-[11.5px] text-ink3">Groww not connected — a live NAV read is impossible, so this period cannot be settled.</p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {invoices.length === 0 ? (
+          <p className="px-5 py-8 text-center text-[13.5px] text-ink3">No settled periods yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] border-collapse text-left">
+              <thead>
+                <tr className="border-b border-line text-[12px] text-ink3">
+                  <th className="px-4 py-3 font-semibold">Member</th>
+                  <th className="px-4 py-3 font-semibold">Period</th>
+                  <th className="px-4 py-3 text-right font-semibold">HWM before</th>
+                  <th className="px-4 py-3 text-right font-semibold">End NAV</th>
+                  <th className="px-4 py-3 text-right font-semibold">Profit above HWM</th>
+                  <th className="px-4 py-3 text-right font-semibold">Fee %</th>
+                  <th className="px-4 py-3 text-right font-semibold">Fee due</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.map((iv) => (
+                  <tr key={iv.id} className="border-b border-line/60">
+                    <td className="px-4 py-3">
+                      <p className="text-[12.5px] text-ink">{who(iv.userId)}</p>
+                      <p className="tnum text-[10.5px] text-ink3">{iv.id}</p>
+                    </td>
+                    <td className="tnum px-4 py-3 text-[12px] whitespace-nowrap text-ink2">{fmtDay(iv.periodStart)} → {fmtDay(iv.periodEnd)}</td>
+                    <td className="tnum px-4 py-3 text-right text-[12px] text-ink2">{inr(iv.hwmBefore)}</td>
+                    <td className="tnum px-4 py-3 text-right text-[12px] text-ink2">{inr(iv.endNav)}</td>
+                    <td className={`tnum px-4 py-3 text-right text-[12px] ${iv.profitAboveHwm > 0 ? "text-up" : "text-ink3"}`}>{inr(iv.profitAboveHwm)}</td>
+                    <td className="tnum px-4 py-3 text-right text-[12px] text-ink2">{iv.feePct}%</td>
+                    <td className="tnum px-4 py-3 text-right text-[12.5px] font-semibold text-ink">{inr2(iv.feeDue)}</td>
+                    <td className="px-4 py-3 text-[12px]">
+                      <Pill tone={INV_TONE[iv.status]}>{iv.status === "waived" && iv.feeDue === 0 ? "no fee" : iv.status}</Pill>
+                      {iv.settledAt != null && iv.status !== "due" && <p className="tnum mt-0.5 text-[10.5px] text-ink3">{fmtDay(iv.settledAt)}</p>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {iv.status === "due" ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <form action={adminMarkInvoice}>
+                            <input type="hidden" name="id" value={iv.id} />
+                            <input type="hidden" name="status" value="paid" />
+                            <button className="rounded-md border border-up/40 px-2.5 py-1.5 text-[12px] font-medium text-up hover:bg-upsoft" title="Record that this fee was received out of band">
+                              Mark paid
+                            </button>
+                          </form>
+                          <form action={adminMarkInvoice}>
+                            <input type="hidden" name="id" value={iv.id} />
+                            <input type="hidden" name="status" value="waived" />
+                            <button className="rounded-md border border-line px-2.5 py-1.5 text-[12px] font-medium text-ink2 hover:bg-surfaceh hover:text-ink" title="Waive this fee (e.g. the gain came from a deposit)">
+                              Waive
+                            </button>
+                          </form>
+                        </div>
+                      ) : (
+                        <p className="text-right text-[11.5px] text-ink3">—</p>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -134,6 +459,74 @@ export default async function AdminPage() {
             </table>
           </div>
         )}
+      </Card>
+
+      {/* order log */}
+      <Card pad={false} className="mb-6">
+        <CardTitle
+          title={`Order log (latest ${orderLog.length} of ${orders.length})`}
+          sub="Every order sent through MNHA, recorded server-side when the order action ran. Fills and money live at Groww."
+        />
+        {orderLog.length === 0 ? (
+          <p className="px-5 py-8 text-center text-[13.5px] text-ink3">No orders recorded yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1000px] border-collapse text-left">
+              <thead>
+                <tr className="border-b border-line text-[12px] text-ink3">
+                  <th className="px-4 py-3 font-semibold">Time (IST)</th>
+                  <th className="px-4 py-3 font-semibold">User</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Order</th>
+                  <th className="px-4 py-3 font-semibold">Type</th>
+                  <th className="px-4 py-3 text-right font-semibold">Price</th>
+                  <th className="px-4 py-3 font-semibold">Groww order id</th>
+                  <th className="px-4 py-3 font-semibold">Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderLog.map((o) => {
+                  const kind = [o.type, o.product, o.segment].filter(Boolean).join(" · ");
+                  const price = o.price != null
+                    ? `₹${o.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
+                    : o.type === "MARKET" || o.type === "SL_M" ? "MKT" : "—";
+                  return (
+                    <tr key={o.id} className="border-b border-line/60">
+                      <td className="tnum px-4 py-2.5 text-[12px] whitespace-nowrap text-ink2">{LOG_TIME.format(new Date(o.at))}</td>
+                      <td className="max-w-[180px] truncate px-4 py-2.5 text-[12px] text-ink" title={who(o.userId)}>{who(o.userId)}</td>
+                      <td className="px-4 py-2.5"><Pill tone={LOG_TONE[o.status]}>{o.status}</Pill></td>
+                      <td className="tnum px-4 py-2.5 text-[12.5px] whitespace-nowrap">
+                        {o.status === "cancelled" ? (
+                          <span className="text-ink2">Cancel</span>
+                        ) : (
+                          <>
+                            <span className={o.side === "BUY" ? "font-semibold text-up" : o.side === "SELL" ? "font-semibold text-down" : "text-ink2"}>{o.side || "—"}</span>{" "}
+                            <span className="text-ink">{o.qty} {o.symbol || "—"}</span>
+                            {o.exchange && <span className="ml-1 text-[10.5px] text-ink3">{o.exchange}</span>}
+                          </>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-[11.5px] whitespace-nowrap text-ink2">{kind || "—"}</td>
+                      <td className="tnum px-4 py-2.5 text-right text-[12px] text-ink2">{price}</td>
+                      <td className="px-4 py-2.5 font-mono text-[11px] text-ink2" title={o.orderId ?? undefined}>{o.orderId ? shortId(o.orderId) : "—"}</td>
+                      <td className="max-w-[240px] truncate px-4 py-2.5 text-[11.5px] text-ink3" title={o.message ?? undefined}>{o.message || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <CardHead title="Signal engine" sub="Shared research runs on the house account" />
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 text-[13px]">
+          <div><p className="text-ink3">Status</p><p className="font-semibold text-ink">{engine.running ? "Running" : "Idle"}</p></div>
+          <div><p className="text-ink3">Scanning now</p><p className="font-semibold text-ink">{engine.scanning ? "Yes" : "No"}</p></div>
+          <div><p className="text-ink3">Last scan</p><p className="font-semibold text-ink">{ago(engine.lastScan)}</p></div>
+          <div><p className="text-ink3">Edge recomputed</p><p className="font-semibold text-ink">{ago(engine.lastBacktest)}</p></div>
+        </div>
       </Card>
 
       {/* KYC review */}
@@ -277,9 +670,10 @@ export default async function AdminPage() {
       </Card>
 
       <p className="mt-4 text-[11.5px] leading-relaxed text-ink3">
-        Deleting a user removes their MNHA account, encrypted broker credentials, KYC record + files, and consent records.
-        Their money and positions stay with Groww and are unaffected. Broker keys are never decrypted or displayed
-        here; KYC files open only through an owner-gated route.
+        Deleting a user removes their MNHA account, encrypted broker credentials, KYC record + files, consent records,
+        their order log, notifications and membership record; membership invoices are kept as billing records. Their money and positions stay with Groww and
+        are unaffected. Broker keys are never decrypted or displayed here; KYC files open only through an owner-gated
+        route.
       </p>
     </div>
   );

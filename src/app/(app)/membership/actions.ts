@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
-import { getNav } from "@/lib/api/broker";
-import { enroll, leave } from "@/lib/membership";
+import { getNavStrict } from "@/lib/api/broker";
+import { getBroker } from "@/lib/users";
+import { enroll, leave, settlementNotice } from "@/lib/membership";
 import { notify } from "@/lib/notifications";
 
 export interface MemberState {
@@ -15,10 +17,11 @@ export async function enrollAction(_prev: MemberState, _form: FormData): Promise
   const uid = await currentUserId();
   if (!uid || uid === OWNER_ID) return { error: "Sign in as a user account first." };
 
-  const nav = await getNav();
-  if (!nav || nav.nav <= 0) return { error: "Could not read your account value. Connect your broker and try again." };
+  // The starting mark anchors every future fee, so it must be a complete reading.
+  const nav = await getNavStrict();
+  if (!nav || nav.nav <= 0) return { error: "Could not read your full account value from Groww just now. Try again in a moment." };
 
-  await enroll(uid, nav.nav);
+  if (!(await enroll(uid, nav.nav))) return { error: "You are already a member. Leave first to start again." };
   await notify(uid, {
     kind: "account",
     tone: "up",
@@ -30,9 +33,20 @@ export async function enrollAction(_prev: MemberState, _form: FormData): Promise
   return {};
 }
 
+/** Leaving closes the open period first, at a complete live reading — so a
+ *  fee already earned is billed, and nothing is billed on a loss. */
 export async function leaveAction(): Promise<void> {
   const uid = await currentUserId();
   if (!uid || uid === OWNER_ID) return;
-  await leave(uid);
+  // No usable Groww key → retrying can't help; say so and point at re-connect.
+  if (!(await getBroker(uid))) redirect("/membership?leave=reconnect");
+  const nav = await getNavStrict();
+  if (!nav) redirect("/membership?leave=retry");
+  // An emptied or debit account can always leave: nothing is above the peak.
+  const invoice = await leave(uid, Math.max(0, nav.nav));
+  if (invoice) {
+    await notify(uid, { kind: "account", tone: "neutral", ...settlementNotice(invoice, { ended: true }), key: `settle-${invoice.id}` });
+  }
   revalidatePath("/membership");
+  redirect("/membership");
 }

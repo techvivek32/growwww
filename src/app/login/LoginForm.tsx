@@ -2,58 +2,59 @@
 
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { FieldLabel, FormError, fieldCls, submitCls } from "@/components/public/AuthShell";
 import { login, type FormState } from "./actions";
 
 function Submit() {
   const { pending } = useFormStatus();
   return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="mt-6 flex h-12 w-full items-center justify-center rounded-lg bg-brand text-[15px] font-semibold text-white transition-colors hover:bg-brandh focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-60"
-    >
+    <button type="submit" disabled={pending} className={submitCls}>
       {pending ? "Signing in…" : "Sign in"}
+      {!pending && <span className="pub-arrow" aria-hidden="true">→</span>}
     </button>
   );
 }
-
-const field =
-  "h-12 w-full rounded-lg border border-line bg-surface px-3.5 text-[14px] text-ink outline-none transition-colors placeholder:text-ink3 focus:border-brand";
 
 export default function LoginForm() {
   const [state, action] = useActionState<FormState, FormData>(login, {});
   const [show, setShow] = useState(false);
 
   return (
-    <form action={action} className="mt-7">
+    <form action={action} className="mt-9">
       <label className="block">
-        <span className="mb-1.5 block text-[12px] font-semibold text-ink2">Email</span>
+        <FieldLabel>Email</FieldLabel>
         <input
           name="email"
           type="email"
           autoComplete="username"
           required
           placeholder="you@example.com"
-          className={field}
+          className={fieldCls}
         />
       </label>
 
-      <label className="mt-4 block">
-        <span className="mb-1.5 block text-[12px] font-semibold text-ink2">Password</span>
-        <span className="relative block">
+      {/* The toggle sits outside the <label>, or its text would join the field's accessible name. */}
+      <div className="mt-5">
+        <label htmlFor="password" className="block">
+          <FieldLabel>Password</FieldLabel>
+        </label>
+        <div className="relative">
           <input
+            id="password"
             name="password"
             type={show ? "text" : "password"}
             autoComplete="current-password"
             required
             placeholder="••••••••"
-            className={`${field} pr-11`}
+            className={`${fieldCls} pr-11`}
           />
           <button
             type="button"
             onClick={() => setShow((s) => !s)}
-            aria-label={show ? "Hide password" : "Show password"}
-            className="absolute top-1/2 right-1 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-md text-ink3 transition-colors hover:bg-surfaceh hover:text-ink"
+            aria-label="Show password"
+            aria-pressed={show}
+            aria-controls="password"
+            className="absolute top-1/2 right-1 grid h-9 w-9 -translate-y-1/2 place-items-center text-pub-muted transition-colors hover:text-pub-cream"
           >
             {show ? (
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -67,17 +68,10 @@ export default function LoginForm() {
               </svg>
             )}
           </button>
-        </span>
-      </label>
+        </div>
+      </div>
 
-      {state.error && (
-        <p
-          role="alert"
-          className="mt-4 rounded-lg border border-down/30 bg-downsoft px-3 py-2.5 text-[12.5px] leading-snug text-down"
-        >
-          {state.error}
-        </p>
-      )}
+      {state.error && <FormError>{state.error}</FormError>}
 
       <Submit />
     </form>
