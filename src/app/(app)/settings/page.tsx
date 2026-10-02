@@ -11,7 +11,8 @@ import { getConnectionStatus } from "@/lib/api/broker";
 import { logout } from "@/app/login/actions";
 import ThemeToggle from "@/components/ThemeToggle";
 import ChangePassword from "./ChangePassword";
-import { disconnectBrokerAction, deleteAccountAction } from "./actions";
+import { disconnectBrokerAction, deleteAccountAction, setOptionalConsentAction } from "./actions";
+import { currentConsent, CONTRACT, AGREEMENT_VERSION, OPTIONAL_CONSENTS } from "@/lib/consent";
 
 export const metadata: Metadata = { title: "Settings · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -58,6 +59,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     uid && !isOwner ? getKycView(uid) : { status: "none" as const },
     getConnectionStatus(),
   ]);
+  const consent = uid && !isOwner ? await currentConsent(uid) : null;
+  const consentDate = consent
+    ? new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }).format(consent.consentedAt)
+    : null;
   const serverIp = registeredIp();
   // Confirmed only if the user ticked it for THIS server address.
   const confirmedIp = user?.broker?.ipConfirmedAt ? (user.broker.staticIp ?? null) : null;
@@ -79,6 +84,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   // Section numbers: the owner has Linked accounts first; members have Identity and Delete.
   const o = isOwner ? 1 : 0;
+  // Owner: linked, account, broker, then appearance; members: account, broker, identity, privacy, then appearance.
+  const tail = isOwner ? 4 : 5;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -178,8 +185,48 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </Section>
         )}
 
+        {/* Privacy & consents — users only */}
+        {!isOwner && (
+          <Section n="04" title="Privacy & consents" sub={`Agreement version ${AGREEMENT_VERSION}`}>
+            {consent ? (
+              <>
+                <p className={`mb-4 ${body}`}>
+                  You signed on {consentDate} IST, in {consent.language === "hi" ? "हिन्दी" : consent.language === "gu" ? "ગુજરાતી" : "English"}.
+                  Optional consents can be switched off or on here at any time; that never affects the core service.
+                </p>
+                <ul className="border-t border-line">
+                  {OPTIONAL_CONSENTS.map((key) => {
+                    const on = Boolean((consent.current ?? consent.consents)?.[key]);
+                    const label = CONTRACT.en.consents.find((k) => k.key === key)?.label ?? key;
+                    return (
+                      <li key={key} className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-3">
+                        <span className="text-[14px] text-ink">
+                          {label} <span className="font-mono text-[10.5px] tracking-[0.06em] text-ink3 uppercase">· optional · {on ? "on" : "off"}</span>
+                        </span>
+                        <form action={setOptionalConsentAction}>
+                          <input type="hidden" name="key" value={key} />
+                          <input type="hidden" name="value" value={on ? "" : "on"} />
+                          <button type="submit" className={btnLine}>
+                            {on ? "Withdraw" : "Give consent"}
+                          </button>
+                        </form>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="mt-4 text-[13px] leading-relaxed text-ink3">
+                  Disconnecting Groww (above) withdraws the read-only Groww consent and is recorded here; deleting your
+                  account (below) withdraws all of them. Questions or data requests: support@visionmarket.in.
+                </p>
+              </>
+            ) : (
+              <p className={body}>No signed agreement on record for this version.</p>
+            )}
+          </Section>
+        )}
+
         {/* Appearance */}
-        <Section n="04" title="Appearance" sub="Remembered in this browser only">
+        <Section n={`0${tail}`} title="Appearance" sub="Remembered in this browser only">
           <div className="flex items-center gap-4">
             <span className="border border-line">
               <ThemeToggle />
@@ -189,7 +236,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </Section>
 
         {/* Session */}
-        <Section n="05" title="Session" sub="Sessions last eight hours">
+        <Section n={`0${tail + 1}`} title="Session" sub="Sessions last eight hours">
           <form action={logout}>
             <button type="submit" className={btnLine}>
               Sign out
@@ -199,7 +246,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
         {/* Danger zone — users only */}
         {!isOwner && (
-          <Section n="06" title="Delete account" sub="Permanent — removes your account and stored broker credentials">
+          <Section n="07" title="Delete account" sub="Permanent — removes your account and stored broker credentials">
             <p className={`mb-5 ${body}`}>
               This cannot be undone. Your positions and money are with Groww and are not affected — only your MNHA account
               and its stored data are removed. Membership invoices are kept as billing records.

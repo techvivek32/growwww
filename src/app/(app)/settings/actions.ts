@@ -7,6 +7,7 @@ import { isReservedId } from "@/lib/auth";
 import { changePassword, clearBroker } from "@/lib/users";
 import { getMembership, hasDueInvoice } from "@/lib/membership";
 import { eraseAccount } from "@/lib/erase";
+import { setOptionalConsent, recordConsentChange, OPTIONAL_CONSENTS, type ConsentKey } from "@/lib/consent";
 
 export interface PwState {
   error?: string;
@@ -31,6 +32,7 @@ export async function disconnectBrokerAction(): Promise<void> {
   const uid = await currentUserId();
   if (!uid || isReservedId(uid)) return;
   await clearBroker(uid);
+  await recordConsentChange(uid, "groww", false); // the withdrawal is part of the consent record
   revalidatePath("/settings");
   redirect("/connect-broker");
 }
@@ -50,4 +52,14 @@ export async function deleteAccountAction(): Promise<void> {
   }
   await clearSession();
   redirect("/");
+}
+
+/** Switch an optional consent (marketing / analytics) on or off — as easy as giving it. */
+export async function setOptionalConsentAction(formData: FormData): Promise<void> {
+  const uid = await currentUserId();
+  if (!uid || isReservedId(uid)) return;
+  const key = String(formData.get("key") ?? "") as ConsentKey;
+  if (!OPTIONAL_CONSENTS.includes(key)) return;
+  await setOptionalConsent(uid, key, formData.get("value") === "on");
+  revalidatePath("/settings");
 }

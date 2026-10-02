@@ -7,6 +7,7 @@ import { isReservedId } from "@/lib/auth";
 import { runWithCreds } from "@/lib/api/credctx";
 import { rateLimit } from "@/lib/ratelimit";
 import { notify } from "@/lib/notifications";
+import { recordConsentChange } from "@/lib/consent";
 import { probeConnection, registeredIp, type ProbeStage } from "@/lib/api/groww";
 import { classify } from "./parse";
 import { MEMBER_HOME } from "@/lib/routes";
@@ -91,6 +92,7 @@ export async function connectBroker(_prev: FormState, formData: FormData): Promi
     ucc: probe.ucc,
   });
   if (!saved) return { error: "Could not save the connection. Try again." };
+  await recordConsentChange(userId, "groww", true); // a reconnect restores the Groww consent
 
   await notify(userId, {
     kind: "broker",

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { getAccount } from "@/lib/api/broker";
 import { currentUserId } from "@/lib/session";
 import { hasBroker } from "@/lib/users";
@@ -30,7 +31,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // The admin login has no terminal — only its console (the proxy sends it there too).
   if (uid === ADMIN_ID) redirect(ADMIN_HOME);
   // Gate order: accept the agreement, then connect a broker, then the terminal.
-  if (uid !== OWNER_ID) {
+  // Settings is exempt, so a member can always withdraw a consent, disconnect
+  // or delete the account — even before signing a new version or connecting.
+  const settingsPage = (await headers()).get("x-mnha-path") === "/settings";
+  if (uid !== OWNER_ID && !settingsPage) {
     if (!(await hasConsented(uid))) redirect("/consent");
     if (!(await hasBroker(uid))) redirect("/connect-broker");
   }

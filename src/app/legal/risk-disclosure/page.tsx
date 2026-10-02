@@ -13,7 +13,7 @@ function H({ children }: { children: React.ReactNode }) {
 export default function RiskPage() {
   return (
     <PublicShell>
-      <LegalArticle title="Risk Disclosure" updated="September 2026">
+      <LegalArticle title="Risk Disclosure" updated="October 2026">
         <div className="rounded-xl border border-warn/40 bg-warnsoft/50 p-5 text-[14px] leading-relaxed text-ink2">
           <p className="font-semibold text-ink">Trading can lose you money — potentially all of it, and in derivatives more than you put in.</p>
           <p className="mt-2">
@@ -41,20 +41,20 @@ export default function RiskPage() {
         </div>
 
         <div className="space-y-2">
-          <H>Signals are not advice or predictions</H>
+          <H>Nothing shown is advice or a prediction</H>
           <p>
-            The setups shown are mechanical rules read off historical and live data. They are not forecasts, not
-            personalised advice, and not a recommendation. A setup with a positive historical edge can still lose, and
-            edges decay as markets change. Nothing here guarantees a future outcome.
+            MNHA AI&apos;s strategies are mechanical rules read off historical and live data, and anything the Service
+            shows — a status, an analysis, a figure — is not a forecast, not personalised advice, and not a
+            recommendation to buy, sell or hold. A strategy with a positive historical edge can still lose, and edges
+            decay as markets change. Nothing here guarantees a future outcome.
           </p>
         </div>
 
         <div className="space-y-2">
           <H>Technology can fail</H>
           <p>
-            Data can be delayed, wrong or missing; the Service can be down; an order may not reach the exchange, or may
-            reach it after you think it failed. Always verify positions and orders with your broker. Do not rely on the
-            Service as your only source of truth.
+            Data can be delayed, wrong or missing, and the Service can be down. Always verify balances, positions and
+            orders with your broker. Do not rely on the Service as your only source of truth.
           </p>
         </div>
 

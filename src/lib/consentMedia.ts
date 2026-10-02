@@ -1,5 +1,5 @@
 import "server-only";
-import { mkdir, writeFile, readdir, rm } from "node:fs/promises";
+import { mkdir, writeFile, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -55,4 +55,14 @@ export async function hasAllMedia(userId: string): Promise<{ selfie: boolean; id
 export async function deleteConsentMedia(userId: string): Promise<void> {
   // `force` already ignores a missing folder; any other failure must surface.
   await rm(path.join(DIR, userId), { recursive: true, force: true });
+}
+
+/** True when all three pieces were uploaded within `maxAgeMs` — media for a new
+ *  signing must be recorded for that signing, not left over from an old one. */
+export async function mediaFresh(userId: string, maxAgeMs: number): Promise<boolean> {
+  const paths = await Promise.all([mediaPath(userId, "selfie"), mediaPath(userId, "id"), mediaPath(userId, "video")]);
+  if (paths.some((p) => !p)) return false;
+  const cutoff = Date.now() - maxAgeMs;
+  const times = await Promise.all(paths.map((p) => stat(p as string).then((x) => x.mtimeMs).catch(() => 0)));
+  return times.every((t) => t >= cutoff);
 }

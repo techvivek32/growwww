@@ -13,7 +13,7 @@ function H({ children }: { children: React.ReactNode }) {
 export default function TermsPage() {
   return (
     <PublicShell>
-      <LegalArticle title="Terms of Service" updated="September 2026">
+      <LegalArticle title="Terms of Service" updated="October 2026">
         <p>
           These terms govern your use of MNHA Financials (&ldquo;the Service&rdquo;), a decision-support trading
           terminal that connects to your own brokerage account. By creating an account or using the Service, you
@@ -41,19 +41,19 @@ export default function TermsPage() {
         </div>
 
         <div className="space-y-2">
-          <H>3. Orders are yours</H>
+          <H>3. Trading decisions are yours</H>
           <p>
-            Every order is placed on your own brokerage account and requires your explicit, two-step confirmation. You
-            decide what to trade, in what size, and when. You are solely responsible for your orders and their
-            outcomes. The Service may fail, be delayed, or display stale data; you must verify anything material with
-            your broker before acting on it.
+            MNHA connects to your brokerage account read-only and places no orders on it. Any trading you do happens
+            in your broker&apos;s own app, as your own decision — what to trade, in what size, and when — and you are
+            solely responsible for it and its outcomes. The Service may fail, be delayed, or display stale data; you
+            must verify anything material with your broker before acting on it.
           </p>
         </div>
 
         <div className="space-y-2">
           <H>4. No guarantee of results</H>
           <p>
-            Signals, backtests and statistics are generated mechanically from historical and live market data. Past
+            Any strategy status, analysis or statistics are generated mechanically from historical and live market data. Past
             performance does not predict future results. The Service makes no promise of profit and no promise against
             loss. Trading in equities and derivatives carries substantial risk, including the loss of your entire
             capital. See our <a href="/legal/risk-disclosure" className="text-brandtext hover:opacity-75">Risk Disclosure</a>.
@@ -81,8 +81,9 @@ export default function TermsPage() {
         <div className="space-y-2">
           <H>7. Changes and termination</H>
           <p>
-            We may update these terms or the Service, and may discontinue features. Continued use after a change means
-            you accept it. You may stop using the Service at any time.
+            We may update these terms or the Service, and may discontinue features. A material change to the user
+            agreement asks you to accept it again before you continue; other changes apply from the date shown. You
+            may stop using the Service, and delete your account from Settings, at any time.
           </p>
         </div>
 

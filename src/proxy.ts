@@ -13,6 +13,13 @@ export async function proxy(req: NextRequest) {
   const uid = await sessionUserId(req.cookies.get(SESSION_COOKIE)?.value);
   if (uid) {
     const path = req.nextUrl.pathname;
+    // Hand the path to server layouts (they cannot read it otherwise); always
+    // overwritten here, so a client cannot supply its own.
+    const pass = () => {
+      const h = new Headers(req.headers);
+      h.set("x-mnha-path", path);
+      return NextResponse.next({ request: { headers: h } });
+    };
     const sendTo = (pathname: string) => {
       const home = req.nextUrl.clone();
       home.pathname = pathname;
@@ -21,12 +28,12 @@ export async function proxy(req: NextRequest) {
     };
     // The admin login is a console, not a trading account: it opens the admin
     // pages and nothing else.
-    if (uid === ADMIN_ID) return adminMayOpen(path) ? NextResponse.next() : sendTo(ADMIN_HOME);
+    if (uid === ADMIN_ID) return adminMayOpen(path) ? pass() : sendTo(ADMIN_HOME);
     // Nobody else opens the console — the owner's trading account included.
     if (isAdminOnly(path)) return sendTo(uid === OWNER_ID ? OWNER_HOME : MEMBER_HOME);
     // Member accounts are view-only: owner-only sections send them home.
     if (uid !== OWNER_ID && isOwnerOnly(path)) return sendTo(MEMBER_HOME);
-    return NextResponse.next();
+    return pass();
   }
 
   const url = req.nextUrl.clone();

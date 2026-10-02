@@ -655,13 +655,14 @@ export default async function AdminPage() {
           <p className="px-5 py-8 text-center text-[13.5px] text-ink3">No consent records yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-left">
+            <table className="w-full min-w-[840px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-line font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">
                   <th className="px-5 py-3 font-medium">Signature</th>
                   <th className="px-5 py-3 font-medium">User</th>
                   <th className="px-5 py-3 font-medium">Lang / Version</th>
                   <th className="px-5 py-3 font-medium">When</th>
+                  <th className="px-5 py-3 font-medium">Consents</th>
                   <th className="px-5 py-3 font-medium">Media</th>
                   <th className="px-5 py-3 font-medium">IP</th>
                 </tr>
@@ -673,6 +674,20 @@ export default async function AdminPage() {
                     <td className="px-5 py-3 text-[11.5px] text-ink3">{emailFor.get(c.userId) ?? c.userId}</td>
                     <td className="px-5 py-3 text-[12px] text-ink2">{c.language?.toUpperCase() ?? "—"} · {c.agreementVersion}</td>
                     <td className="tnum px-5 py-3 text-[12px] text-ink2">{fmtDate(c.consentedAt)}</td>
+                    <td className="px-5 py-3 text-[11.5px] whitespace-nowrap text-ink2">
+                      {c.consents ? (
+                        <>
+                          {(["account", "identity", "groww", "risk"] as const).every((k) => c.consents?.[k]) ? "4/4 required" : "required missing"}
+                          <span className="text-ink3">
+                            {" · "}mkt {(c.current ?? c.consents).marketing ? "on" : "off"} · analytics {(c.current ?? c.consents).analytics ? "on" : "off"}
+                            {(c.current ?? c.consents).groww ? "" : " · Groww withdrawn"}
+                            {c.changes?.length ? ` · ${c.changes.length} change${c.changes.length > 1 ? "s" : ""}` : ""}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-ink3">— (pre-v3)</span>
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-[11.5px]">
                       <span className="flex gap-2">
                         {c.media?.selfie && <a href={`/api/consent/media?user=${c.userId}&kind=selfie`} target="_blank" rel="noopener noreferrer" className="text-brandtext hover:opacity-75">Selfie</a>}
