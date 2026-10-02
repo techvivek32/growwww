@@ -28,6 +28,8 @@ export interface User {
   /** `scrypt$<saltHex>$<hashHex>` */
   passwordHash: string;
   createdAt: number;
+  /** When the email address was proven with a one-time code (signups from v3.1 on). */
+  emailVerifiedAt?: number;
   /** Present once the user has connected their own Groww API. Encrypted. */
   broker?: {
     apiKeyEnc: string;
@@ -135,6 +137,42 @@ export async function createUser(email: string, password: string): Promise<Creat
       email: e,
       passwordHash: hashPassword(password),
       createdAt: Date.now(),
+    };
+    store.users.push(user);
+    await write(store);
+    return { ok: true, user };
+  });
+}
+
+/** Signup checks, shared with the emailed-code flow. */
+export function validateSignup(email: string, password: string): string | null {
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normEmail(email))) return "Enter a valid email address.";
+  if (password.length < 8) return "Password must be at least 8 characters.";
+  return null;
+}
+
+/** Hash a password for a pending signup, so plain text is never stored even briefly. */
+export function hashForSignup(password: string): string {
+  return hashPassword(password);
+}
+
+export function normalizeEmail(email: string): string {
+  return normEmail(email);
+}
+
+/** Create the account once its email has been proven with a one-time code. */
+export async function createVerifiedUser(email: string, passwordHash: string): Promise<CreateResult> {
+  const e = normEmail(email);
+  return enqueue(async () => {
+    const store = await read();
+    if (store.users.some((u) => u.email === e)) return { ok: false, error: "An account with this email already exists." };
+    const now = Date.now();
+    const user: User = {
+      id: `u-${now.toString(36)}-${randomBytes(4).toString("hex")}`,
+      email: e,
+      passwordHash,
+      createdAt: now,
+      emailVerifiedAt: now,
     };
     store.users.push(user);
     await write(store);
