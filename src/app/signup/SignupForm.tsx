@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { FieldLabel, FormError, fieldCls, submitCls } from "@/components/public/AuthShell";
+import PasswordField from "@/components/public/PasswordField";
 import { signup, type FormState } from "./actions";
 
 const RESEND_SECONDS = 60;
@@ -25,15 +26,8 @@ function Details({ error }: { error?: string }) {
         <input name="email" type="email" autoComplete="username" required placeholder="you@example.com" className={fieldCls} />
       </label>
 
-      <label className="mt-5 block">
-        <FieldLabel>Password</FieldLabel>
-        <input name="password" type="password" autoComplete="new-password" required minLength={8} placeholder="At least 8 characters" className={fieldCls} />
-      </label>
-
-      <label className="mt-5 block">
-        <FieldLabel>Confirm password</FieldLabel>
-        <input name="confirm" type="password" autoComplete="new-password" required minLength={8} placeholder="Re-enter your password" className={fieldCls} />
-      </label>
+      <PasswordField className="mt-5" label="Password" name="password" autoComplete="new-password" minLength={8} placeholder="At least 8 characters" />
+      <PasswordField className="mt-5" label="Confirm password" name="confirm" autoComplete="new-password" minLength={8} placeholder="Re-enter your password" />
 
       {error && <FormError>{error}</FormError>}
 
