@@ -49,9 +49,10 @@ export async function proxy(req: NextRequest) {
 export const config = {
   matcher: [
     // Public, ungated routes: the marketing landing ("$" = the root path),
+    // the phone identity step under /m/ (authorised by its own one-time token),
     // sign-in and sign-up, robots, and static assets. Everything else needs a
     // valid session. Redirecting a crawler to a sign-in page teaches it
     // nothing and reads worse than an honest Disallow.
-    "/((?!login|signup|legal|robots.txt|sitemap.xml|_next/static|_next/image|favicon.ico|$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!login|signup|legal|m/|robots.txt|sitemap.xml|_next/static|_next/image|favicon.ico|$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

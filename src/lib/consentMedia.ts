@@ -57,12 +57,15 @@ export async function deleteConsentMedia(userId: string): Promise<void> {
   await rm(path.join(DIR, userId), { recursive: true, force: true });
 }
 
-/** True when all three pieces were uploaded within `maxAgeMs` — media for a new
- *  signing must be recorded for that signing, not left over from an old one. */
-export async function mediaFresh(userId: string, maxAgeMs: number): Promise<boolean> {
-  const paths = await Promise.all([mediaPath(userId, "selfie"), mediaPath(userId, "id"), mediaPath(userId, "video")]);
-  if (paths.some((p) => !p)) return false;
+/** Which identity photos exist AND were uploaded within `maxAgeMs` — media for
+ *  a signing must be taken for that signing, not left over from an old one. */
+export async function mediaStatus(userId: string, maxAgeMs: number): Promise<{ selfie: boolean; id: boolean }> {
   const cutoff = Date.now() - maxAgeMs;
-  const times = await Promise.all(paths.map((p) => stat(p as string).then((x) => x.mtimeMs).catch(() => 0)));
-  return times.every((t) => t >= cutoff);
+  const fresh = async (kind: MediaKind) => {
+    const p = await mediaPath(userId, kind);
+    if (!p) return false;
+    return (await stat(p).then((x) => x.mtimeMs).catch(() => 0)) >= cutoff;
+  };
+  const [selfie, id] = await Promise.all([fresh("selfie"), fresh("id")]);
+  return { selfie, id };
 }

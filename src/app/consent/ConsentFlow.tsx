@@ -1,13 +1,22 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import QRCode from "qrcode";
 import { useFormStatus } from "react-dom";
 import { acceptConsent, type ConsentState } from "./actions";
 import { LogoMark } from "@/components/public/Brand";
 import type { ConsentKey, ContractLang, Lang } from "@/lib/consent";
 
 const READ_SECONDS = 120;
-const MAX_VIDEO_SECONDS = 35;
+
+/** A phone-sized touch screen: take the photos right here instead of via a QR code. */
+const PHONE_QUERY = "(pointer: coarse) and (max-width: 820px)";
+function subscribePhone(cb: () => void) {
+  const mq = window.matchMedia(PHONE_QUERY);
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+}
+const isPhoneNow = () => window.matchMedia(PHONE_QUERY).matches;
 
 /** Which consents must be ticked (mirrors CONSENT_KEYS on the server). */
 const REQUIRED: ConsentKey[] = ["account", "identity", "groww", "risk"];
@@ -114,19 +123,15 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
 
   const [selfieUp, setSelfieUp] = useState(false);
   const [idUp, setIdUp] = useState(false);
-  const [videoUp, setVideoUp] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [mediaErr, setMediaErr] = useState<string | null>(null);
 
-  // video recording
-  const [recording, setRecording] = useState(false);
-  const [recUrl, setRecUrl] = useState<string | null>(null);
-  const [recLeft, setRecLeft] = useState(MAX_VIDEO_SECONDS);
-  const liveRef = useRef<HTMLVideoElement>(null);
-  const recRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const autoStopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // phone hand-off (QR code)
+  const isPhone = useSyncExternalStore(subscribePhone, isPhoneNow, () => false);
+  const [manual, setManual] = useState(false);
+  const [qr, setQr] = useState<{ img: string; expiresAt: number } | null>(null);
+  const [qrErr, setQrErr] = useState(false);
+  const qrAsked = useRef(false);
 
   const boxRef = useRef<HTMLDivElement>(null);
   // read-aloud: a token cancels a running chain; the recorded file, if any
@@ -273,57 +278,50 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
     else setMediaErr(t.uploadFailed);
   };
 
-  const startRec = async () => {
-    setMediaErr(null);
+  const timerDone = left <= 0;
+  const readReady = scrolled && (timerDone || listened);
+  // The identity step opens once the reading time is up (or the audio is done).
+  const timeReady = timerDone || listened;
+  const mediaReady = selfieUp && idUp;
+  const viaQr = timeReady && !isPhone && !manual && !mediaReady;
+
+  const makeQr = async () => {
+    setQrErr(false);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
-      streamRef.current = stream;
-      if (liveRef.current) { liveRef.current.srcObject = stream; liveRef.current.muted = true; await liveRef.current.play().catch(() => {}); }
-      chunksRef.current = [];
-      let mr: MediaRecorder;
-      try {
-        // ~1 Mbps keeps a full-length clip well under the upload limit.
-        mr = new MediaRecorder(stream, { videoBitsPerSecond: 1_000_000, audioBitsPerSecond: 64_000 });
-      } catch {
-        mr = new MediaRecorder(stream);
-      }
-      recRef.current = mr;
-      mr.ondataavailable = (ev) => { if (ev.data.size) chunksRef.current.push(ev.data); };
-      mr.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: "video/webm" });
-        streamRef.current?.getTracks().forEach((tr) => tr.stop());
-        if (liveRef.current) liveRef.current.srcObject = null;
-        setRecUrl(URL.createObjectURL(blob));
-        setBusy("video");
-        const ok = await upload("video", blob, "acknowledgement.webm");
-        setBusy(null);
-        if (ok) setVideoUp(true); else setMediaErr(t.videoUploadFailed);
-      };
-      mr.start();
-      setRecording(true);
-      setRecLeft(MAX_VIDEO_SECONDS);
-      autoStopRef.current = setTimeout(() => stopRec(), MAX_VIDEO_SECONDS * 1000);
+      const r = await fetch(`/api/consent/handoff?l=${lang}`, { method: "POST" });
+      if (!r.ok) throw new Error(String(r.status));
+      const { url, expiresAt } = (await r.json()) as { url: string; expiresAt: number };
+      const img = await QRCode.toDataURL(url, { margin: 1, width: 240, color: { dark: "#15140f", light: "#fbf9f4" } });
+      setQr({ img, expiresAt });
     } catch {
-      setMediaErr(t.camBlocked);
+      setQrErr(true);
     }
   };
 
-  const stopRec = () => {
-    if (autoStopRef.current) { clearTimeout(autoStopRef.current); autoStopRef.current = null; }
-    if (recRef.current && recRef.current.state !== "inactive") recRef.current.stop();
-    setRecording(false);
-  };
-
-  // countdown display while recording (auto-stop is handled by the timeout above)
+  // Show the QR code automatically the moment the identity step opens.
   useEffect(() => {
-    if (!recording) return;
-    const id = setInterval(() => setRecLeft((n) => (n <= 1 ? 0 : n - 1)), 1000);
-    return () => clearInterval(id);
-  }, [recording]);
+    if (!viaQr || qrAsked.current) return;
+    qrAsked.current = true;
+    void makeQr();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the step opens
+  }, [viaQr]);
 
-  const timerDone = left <= 0;
-  const readReady = scrolled && (timerDone || listened);
-  const mediaReady = selfieUp && idUp && videoUp;
+  // While the phone is doing its part, watch for the photos to arrive.
+  useEffect(() => {
+    if (!timeReady || mediaReady || isPhone) return;
+    const id = setInterval(async () => {
+      try {
+        const r = await fetch("/api/consent/handoff", { cache: "no-store" });
+        if (!r.ok) return;
+        const st = (await r.json()) as { selfie: boolean; id: boolean };
+        if (st.selfie) setSelfieUp(true);
+        if (st.id) setIdUp(true);
+      } catch {
+        /* keep waiting */
+      }
+    }, 3000);
+    return () => clearInterval(id);
+  }, [timeReady, mediaReady, isPhone]);
   const requiredOk = REQUIRED.every((k) => consents[k]);
   const ready = readReady && mediaReady && requiredOk && name.trim().length >= 3;
 
@@ -405,57 +403,65 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
         {tile(listened || timerDone, listened ? t.listenDone : timerDone ? t.timeDone : `${t.timeLeft} — ${left}s`)}
       </div>
 
-      {/* identity capture */}
-      <div className="mt-5 rounded-xl border border-line bg-surface p-4" style={{ boxShadow: "var(--shadow-card)" }}>
-        <p className="text-[13.5px] font-semibold text-ink">{t.identity}</p>
+      {/* identity: a QR code to the phone, or direct capture on a phone */}
+      {!timeReady ? (
+        <div className="mt-5 border border-dashed border-line px-4 py-5 text-[13px] leading-relaxed text-ink3">{t.identityWait}</div>
+      ) : (
+        <div className="mt-5 border border-line bg-surface p-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-[13.5px] font-semibold text-ink">{viaQr ? t.scanTitle : t.identity}</p>
+            <p className="flex gap-4 text-[12.5px]">
+              {tile(selfieUp, t.selfie)}
+              {tile(idUp, t.idphoto)}
+            </p>
+          </div>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="block">
-            <span className="mb-1 block text-[12px] font-medium text-ink2">{t.selfie} {selfieUp && <span className="text-up">✓</span>}</span>
-            <input type="file" accept="image/*" capture="user" onChange={onFile("selfie")} className="block w-full text-[12px] text-ink2 file:mr-2 file:rounded-md file:border-0 file:bg-surface2 file:px-2.5 file:py-1.5 file:text-[12px] file:font-semibold file:text-ink2" />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[12px] font-medium text-ink2">{t.idphoto} {idUp && <span className="text-up">✓</span>}</span>
-            <input type="file" accept="image/*" onChange={onFile("id")} className="block w-full text-[12px] text-ink2 file:mr-2 file:rounded-md file:border-0 file:bg-surface2 file:px-2.5 file:py-1.5 file:text-[12px] file:font-semibold file:text-ink2" />
-          </label>
+          {viaQr ? (
+            <div className="mt-3 grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
+              <div className="grid h-[240px] w-[240px] place-items-center bg-pub-paper">
+                {qr ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- a generated data-URL QR code
+                  <img src={qr.img} alt={t.scanTitle} width={240} height={240} />
+                ) : (
+                  <span className="text-[12px] text-[#6d685d]">{qrErr ? "—" : "…"}</span>
+                )}
+              </div>
+              <div className="space-y-3 text-[13px] leading-relaxed text-ink2">
+                <p>{t.scanHint}</p>
+                <p className="text-ink3">{t.scanExpires}</p>
+                {qrErr && <p className="text-down">{t.scanFailed}</p>}
+                <p className="flex items-center gap-2 text-ink3">
+                  <span className="live-dot h-1.5 w-1.5 rounded-full bg-up" /> {t.waitingPhone}
+                </p>
+                <div className="flex flex-wrap gap-x-5 gap-y-2 pt-1">
+                  <button type="button" onClick={() => void makeQr()} className="font-medium text-ink underline decoration-mark decoration-2 underline-offset-4">
+                    {t.scanRefresh}
+                  </button>
+                  <button type="button" onClick={() => setManual(true)} className="text-ink3 hover:text-ink">
+                    {t.useComputer}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            !mediaReady || manual || isPhone ? (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-[12px] font-medium text-ink2">{t.selfie} {selfieUp && <span className="text-up">✓</span>}</span>
+                  <input type="file" accept="image/*" capture="user" onChange={onFile("selfie")} className="block w-full text-[12px] text-ink2 file:mr-2 file:border-0 file:bg-surface2 file:px-2.5 file:py-1.5 file:text-[12px] file:font-semibold file:text-ink2" />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[12px] font-medium text-ink2">{t.idphoto} {idUp && <span className="text-up">✓</span>}</span>
+                  <input type="file" accept="image/*" capture="environment" onChange={onFile("id")} className="block w-full text-[12px] text-ink2 file:mr-2 file:border-0 file:bg-surface2 file:px-2.5 file:py-1.5 file:text-[12px] file:font-semibold file:text-ink2" />
+                </label>
+                {busy && <p className="text-[12px] text-ink3 sm:col-span-2">{t.uploading}</p>}
+              </div>
+            ) : null
+          )}
+
+          {mediaErr && <p className="mt-2 text-[12px] text-down">{mediaErr}</p>}
         </div>
-
-        {/* spoken video */}
-        <div className="mt-4">
-          <p className="text-[12px] font-medium text-ink2">{t.video} {videoUp && <span className="text-up">✓</span>}</p>
-          <p className="mt-0.5 text-[11.5px] text-ink3">{t.videoHint}</p>
-          <div className="mt-2 rounded-lg border border-line bg-surface2 px-3 py-2.5 text-[12.5px] leading-relaxed text-ink">
-            “{c.spokenAck}”
-          </div>
-          <div className="mt-2 overflow-hidden rounded-lg bg-black/90" style={{ aspectRatio: "16/10" }}>
-            {recUrl ? (
-              <video src={recUrl} controls playsInline className="h-full w-full object-contain" />
-            ) : (
-              <video ref={liveRef} playsInline muted className="h-full w-full object-cover" />
-            )}
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            {!recording && !recUrl && (
-              <button type="button" onClick={startRec} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-down px-3.5 text-[12.5px] font-semibold text-pub-ink hover:opacity-90">
-                <span className="h-2.5 w-2.5 rounded-full bg-pub-ink" /> {t.startRec}
-              </button>
-            )}
-            {recording && (
-              <button type="button" onClick={stopRec} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3.5 text-[12.5px] font-semibold text-ink hover:bg-surfaceh">
-                <span className="h-2.5 w-2.5 rounded-sm bg-down" /> {t.stopRec} · {recLeft}s
-              </button>
-            )}
-            {recUrl && !recording && (
-              <button type="button" onClick={() => { setRecUrl(null); setVideoUp(false); startRec(); }} className="inline-flex h-9 items-center rounded-lg border border-line px-3.5 text-[12.5px] font-semibold text-ink2 hover:bg-surfaceh">
-                {t.reRec}
-              </button>
-            )}
-            {busy === "video" && <span className="text-[12px] text-ink3">{t.uploading}</span>}
-          </div>
-        </div>
-
-        {mediaErr && <p className="mt-2 text-[12px] text-down">{mediaErr}</p>}
-      </div>
+      )}
 
       {/* sign */}
       <form action={action} className="mt-4">
@@ -491,6 +497,11 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
             })}
           </div>
         </fieldset>
+
+        <div className="mt-3 border-l-2 border-mark bg-surface2 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink2">
+          <p className="font-semibold text-ink">{t.declaration}</p>
+          <p className="mt-1">“{c.spokenAck}”</p>
+        </div>
 
         <label className="mt-3 block">
           <span className="mb-1.5 block text-[12px] font-semibold text-ink2">{t.signature}</span>
