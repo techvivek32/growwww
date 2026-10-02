@@ -2,11 +2,11 @@
 
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { SESSION_COOKIE, SESSION_MAX_AGE, OWNER_ID, issueToken, isOwnerLogin } from "@/lib/auth";
+import { SESSION_COOKIE, SESSION_MAX_AGE, ADMIN_ID, OWNER_ID, issueToken, isAdminLogin, isOwnerLogin } from "@/lib/auth";
 import { verifyLogin, hasBroker } from "@/lib/users";
 import { hasConsented } from "@/lib/consent";
 import { rateLimit, rateReset } from "@/lib/ratelimit";
-import { MEMBER_HOME } from "@/lib/routes";
+import { ADMIN_HOME, MEMBER_HOME, OWNER_HOME } from "@/lib/routes";
 
 export interface FormState {
   error?: string;
@@ -40,11 +40,17 @@ export async function login(_prev: FormState, formData: FormData): Promise<FormS
     return { error: `Too many attempts. Try again in about ${Math.ceil(limit.retryAfterSec / 60)} minutes.` };
   }
 
-  // The env "house" owner first, then registered users.
+  // The env logins first — the admin console, then the "house" owner — then
+  // registered users.
+  if (isAdminLogin(email, password)) {
+    rateReset(key);
+    await setSession(ADMIN_ID);
+    redirect(ADMIN_HOME);
+  }
   if (isOwnerLogin(email, password)) {
     rateReset(key);
     await setSession(OWNER_ID);
-    redirect("/stocks/alerts");
+    redirect(OWNER_HOME);
   }
 
   const user = await verifyLogin(email, password);

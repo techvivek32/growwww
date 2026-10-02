@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { currentUserId } from "@/lib/session";
-import { OWNER_ID } from "@/lib/auth";
+import { ADMIN_ID, isReservedId } from "@/lib/auth";
 import { clearBroker, findById } from "@/lib/users";
 import { setKycDecision, scheduleKycCall } from "@/lib/kyc";
 import { getMembership, settlePeriod, settlementNotice, listInvoices, markInvoice } from "@/lib/membership";
@@ -10,22 +10,22 @@ import { notify } from "@/lib/notifications";
 import { eraseAccount } from "@/lib/erase";
 import { getNavFor } from "@/lib/api/broker";
 
-/** Every admin action re-checks the caller is the owner — never trust the UI. */
-async function requireOwner(): Promise<boolean> {
-  return (await currentUserId()) === OWNER_ID;
+/** Every admin action re-checks the caller is the admin login — never trust the UI. */
+async function requireAdmin(): Promise<boolean> {
+  return (await currentUserId()) === ADMIN_ID;
 }
 
 export async function adminDisconnectBroker(formData: FormData): Promise<void> {
-  if (!(await requireOwner())) return;
+  if (!(await requireAdmin())) return;
   const userId = String(formData.get("userId") ?? "");
-  if (userId && userId !== OWNER_ID) await clearBroker(userId);
+  if (userId && !isReservedId(userId)) await clearBroker(userId);
   revalidatePath("/admin");
 }
 
 export async function adminDeleteUser(formData: FormData): Promise<void> {
-  if (!(await requireOwner())) return;
+  if (!(await requireAdmin())) return;
   const userId = String(formData.get("userId") ?? "");
-  if (userId && userId !== OWNER_ID) {
+  if (userId && !isReservedId(userId)) {
     const failed = await eraseAccount(userId);
     if (failed.length) console.error(`[erase] admin delete of ${userId} partly failed: ${failed.join(", ")}`);
   }
@@ -33,7 +33,7 @@ export async function adminDeleteUser(formData: FormData): Promise<void> {
 }
 
 export async function adminKycDecision(formData: FormData): Promise<void> {
-  if (!(await requireOwner())) return;
+  if (!(await requireAdmin())) return;
   const userId = String(formData.get("userId") ?? "");
   const decision = String(formData.get("decision") ?? "") === "approved" ? "approved" : "rejected";
   const notes = String(formData.get("notes") ?? "");
@@ -49,7 +49,7 @@ export async function adminKycDecision(formData: FormData): Promise<void> {
 }
 
 export async function adminScheduleKycCall(formData: FormData): Promise<void> {
-  if (!(await requireOwner())) return;
+  if (!(await requireAdmin())) return;
   const userId = String(formData.get("userId") ?? "");
   const at = String(formData.get("callAt") ?? "").trim();
   const link = String(formData.get("callLink") ?? "").trim();
@@ -81,10 +81,10 @@ const rupees = (v: number) => `₹${Math.round(v).toLocaleString("en-IN")}`;
  * Before the period's end it refuses unless `force` was ticked.
  */
 export async function adminSettleMember(_prev: SettleState, formData: FormData): Promise<SettleState> {
-  if (!(await requireOwner())) return { error: "Owner only." };
+  if (!(await requireAdmin())) return { error: "Admin only." };
   const userId = String(formData.get("userId") ?? "");
   const seenEnd = Number(formData.get("periodEndsAt"));
-  if (!userId || userId === OWNER_ID || !Number.isFinite(seenEnd)) return { error: "Invalid request." };
+  if (!userId || isReservedId(userId) || !Number.isFinite(seenEnd)) return { error: "Invalid request." };
 
   const m = await getMembership(userId);
   if (!m || m.status !== "active") return { error: "Not an active member — nothing to settle." };
@@ -119,7 +119,7 @@ export async function adminSettleMember(_prev: SettleState, formData: FormData):
 
 /** Record that a due invoice was paid (out of band) or waived. Only from "due". */
 export async function adminMarkInvoice(formData: FormData): Promise<void> {
-  if (!(await requireOwner())) return;
+  if (!(await requireAdmin())) return;
   const id = String(formData.get("id") ?? "");
   const raw = String(formData.get("status") ?? "");
   if (!/^inv-[a-z0-9-]{1,40}$/.test(id) || (raw !== "paid" && raw !== "waived")) return;

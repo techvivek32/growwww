@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
-import { OWNER_ID } from "@/lib/auth";
+import { isReservedId } from "@/lib/auth";
+import { homeFor } from "@/lib/access";
 import { getNav, getNavStrict } from "@/lib/api/broker";
 import {
   getMembership, updateNav, accrual, settlePeriod, settlementNotice, listInvoices,
@@ -41,7 +42,8 @@ const BILL: Record<InvoiceStatus, { label: string; tone: "warn" | "up" | "neutra
 export default async function MembershipPage({ searchParams }: { searchParams: Promise<{ leave?: string }> }) {
   const uid = await currentUserId();
   if (!uid) redirect("/login");
-  if (uid === OWNER_ID) redirect("/admin");
+  // The env logins have no agreement, KYC or membership — send them home.
+  if (isReservedId(uid)) redirect(homeFor(uid));
   const { leave: leaveFlag } = await searchParams;
 
   const [initial, navInfo] = await Promise.all([getMembership(uid), getNav()]);

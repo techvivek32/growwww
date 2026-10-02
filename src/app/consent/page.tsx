@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
-import { OWNER_ID } from "@/lib/auth";
+import { isReservedId } from "@/lib/auth";
+import { homeFor } from "@/lib/access";
 import { hasConsented, CONTRACT } from "@/lib/consent";
 import { hasBroker } from "@/lib/users";
 import { logout } from "@/app/login/actions";
@@ -15,7 +16,8 @@ export const dynamic = "force-dynamic";
 export default async function ConsentPage() {
   const uid = await currentUserId();
   if (!uid) redirect("/login");
-  if (uid === OWNER_ID) redirect("/admin");
+  // The env logins have no agreement, KYC or membership — send them home.
+  if (isReservedId(uid)) redirect(homeFor(uid));
   if (await hasConsented(uid)) redirect((await hasBroker(uid)) ? MEMBER_HOME : "/connect-broker");
 
   return (

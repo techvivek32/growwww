@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
-import { OWNER_ID } from "@/lib/auth";
+import { isReservedId } from "@/lib/auth";
+import { homeFor } from "@/lib/access";
 import { hasConsented } from "@/lib/consent";
 import { hasBroker } from "@/lib/users";
 import { registeredIp } from "@/lib/api/groww";
@@ -17,7 +18,7 @@ export default async function ConnectBrokerPage({ searchParams }: { searchParams
   const uid = await currentUserId();
   if (!uid) redirect("/login");
   // The owner uses the env house account and never connects here.
-  if (uid === OWNER_ID) redirect("/stocks/alerts");
+  if (isReservedId(uid)) redirect(homeFor(uid));
   // Must accept the agreement before connecting a broker.
   if (!(await hasConsented(uid))) redirect("/consent");
   // Already connected: straight to the desk, unless re-connecting on purpose.

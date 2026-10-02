@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { setBroker } from "@/lib/users";
 import { currentUserId } from "@/lib/session";
-import { OWNER_ID } from "@/lib/auth";
+import { isReservedId } from "@/lib/auth";
 import { runWithCreds } from "@/lib/api/credctx";
 import { rateLimit } from "@/lib/ratelimit";
 import { notify } from "@/lib/notifications";
@@ -38,7 +38,7 @@ const HINT: Record<ProbeStage, (status: number | null) => string> = {
  */
 export async function connectBroker(_prev: FormState, formData: FormData): Promise<FormState> {
   const userId = await currentUserId();
-  if (!userId || userId === OWNER_ID) return { error: "You are not signed in as a user account." };
+  if (!userId || isReservedId(userId)) return { error: "You are not signed in as a user account." };
 
   // Each attempt mints a Groww token, and Groww caps those per key per day.
   if (!rateLimit(`connect:${userId}`, 10, 15 * 60_000).ok) {

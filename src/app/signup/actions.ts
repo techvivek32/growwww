@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createUser } from "@/lib/users";
+import { isReservedEmail } from "@/lib/auth";
 import { setSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import { notify } from "@/lib/notifications";
@@ -24,6 +25,8 @@ export async function signup(_prev: FormState, formData: FormData): Promise<Form
   }
 
   if (password !== confirm) return { error: "The two passwords do not match." };
+  // The env logins' emails are taken, the same as a registered one.
+  if (isReservedEmail(email)) return { error: "An account with this email already exists." };
 
   const res = await createUser(email, password);
   if (!res.ok || !res.user) return { error: res.error ?? "Could not create the account." };

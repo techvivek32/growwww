@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { OWNER_ID, SESSION_COOKIE, sessionUserId } from "@/lib/auth";
-import { MEMBER_HOME, isOwnerOnly } from "@/lib/routes";
+import { ADMIN_ID, OWNER_ID, SESSION_COOKIE, sessionUserId } from "@/lib/auth";
+import { ADMIN_HOME, MEMBER_HOME, OWNER_HOME, adminMayOpen, isAdminOnly, isOwnerOnly } from "@/lib/routes";
 
 /**
  * Gate the whole terminal behind a valid session. The matcher below excludes
@@ -12,13 +12,20 @@ import { MEMBER_HOME, isOwnerOnly } from "@/lib/routes";
 export async function proxy(req: NextRequest) {
   const uid = await sessionUserId(req.cookies.get(SESSION_COOKIE)?.value);
   if (uid) {
-    // Member accounts are view-only: owner-only sections send them home.
-    if (uid !== OWNER_ID && isOwnerOnly(req.nextUrl.pathname)) {
+    const path = req.nextUrl.pathname;
+    const sendTo = (pathname: string) => {
       const home = req.nextUrl.clone();
-      home.pathname = MEMBER_HOME;
+      home.pathname = pathname;
       home.search = "";
       return NextResponse.redirect(home);
-    }
+    };
+    // The admin login is a console, not a trading account: it opens the admin
+    // pages and nothing else.
+    if (uid === ADMIN_ID) return adminMayOpen(path) ? NextResponse.next() : sendTo(ADMIN_HOME);
+    // Nobody else opens the console — the owner's trading account included.
+    if (isAdminOnly(path)) return sendTo(uid === OWNER_ID ? OWNER_HOME : MEMBER_HOME);
+    // Member accounts are view-only: owner-only sections send them home.
+    if (uid !== OWNER_ID && isOwnerOnly(path)) return sendTo(MEMBER_HOME);
     return NextResponse.next();
   }
 

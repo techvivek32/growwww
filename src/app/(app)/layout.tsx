@@ -4,7 +4,8 @@ import { currentUserId } from "@/lib/session";
 import { hasBroker } from "@/lib/users";
 import { hasConsented } from "@/lib/consent";
 import { unreadCount } from "@/lib/notifications";
-import { OWNER_ID } from "@/lib/auth";
+import { ADMIN_ID, OWNER_ID } from "@/lib/auth";
+import { ADMIN_HOME } from "@/lib/routes";
 import TopNav from "@/components/TopNav";
 import IndexStrip from "@/components/IndexStrip";
 import { AutoTradeProvider } from "@/components/AutoTrade";
@@ -26,6 +27,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // them to connect one first. (The owner uses the env house account.)
   const uid = await currentUserId();
   if (!uid) redirect("/login");
+  // The admin login has no terminal — only its console (the proxy sends it there too).
+  if (uid === ADMIN_ID) redirect(ADMIN_HOME);
   // Gate order: accept the agreement, then connect a broker, then the terminal.
   if (uid !== OWNER_ID) {
     if (!(await hasConsented(uid))) redirect("/consent");

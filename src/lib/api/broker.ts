@@ -5,7 +5,7 @@ import type { Account, Holding, Order, OptionChain, Position, Trade } from "../t
 import { runWithCreds, type CredState } from "./credctx";
 import { currentUserId } from "../session";
 import { getBroker, findById } from "../users";
-import { OWNER_ID } from "../auth";
+import { OWNER_ID, isReservedId } from "../auth";
 
 /**
  * Resolve WHOSE broker this request talks to. The owner (env session) uses the
@@ -87,7 +87,7 @@ export async function getAccount(): Promise<Account> {
   // Identity comes from the signed-in user (or the env owner); the balance and
   // the rest come live from whichever Groww account this request resolves to.
   const uid = await currentUserId();
-  const user = uid && uid !== OWNER_ID ? await findById(uid) : null;
+  const user = uid && !isReservedId(uid) ? await findById(uid) : null;
 
   const base: Account = {
     name: user ? user.email.split("@")[0] : process.env.ACCOUNT_NAME ?? "Groww account",
@@ -142,7 +142,7 @@ export async function getNavStrict(): Promise<NavReading | null> {
  * env house account.
  */
 export async function getNavFor(userId: string): Promise<NavReading | null> {
-  if (!userId || userId === OWNER_ID) return null;
+  if (!userId || isReservedId(userId)) return null;
   return runWithCreds((await getBroker(userId)) ?? "none", () => navImpl(true));
 }
 

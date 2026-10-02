@@ -109,7 +109,6 @@ export default function TopNav({
             {trading.map((i) => tab(i))}
             <span className="mx-2 h-4 w-px shrink-0 bg-line" aria-hidden="true" />
             {system.map((i) => tab(i, true))}
-            {isOwner && tab({ href: "/admin", label: "Admin", short: "Admin", group: "system" }, true)}
           </nav>
 
           <div className="hidden shrink-0 items-center 2xl:flex">

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { OWNER_ID } from "@/lib/auth";
-import { requireOwnerPage } from "@/lib/access";
+import { requireAdminPage } from "@/lib/access";
 import { listUsers } from "@/lib/users";
 import { listKyc } from "@/lib/kyc";
 import { listConsents, AGREEMENT_VERSION, type ConsentRecord } from "@/lib/consent";
@@ -90,8 +90,8 @@ function CardTitle({ title, count, sub }: { title: string; count?: string; sub?:
 }
 
 export default async function AdminPage() {
-  // Owner only. A member who guesses the URL is sent to their own home.
-  await requireOwnerPage();
+  // Admin login only. Anyone else who guesses the URL is sent to their own home.
+  await requireAdminPage();
 
   const [users, kyc, consents, members, invoices, orders, orderStats] = await Promise.all([
     listUsers(),
@@ -157,7 +157,7 @@ export default async function AdminPage() {
       <PageHead
         title="Admin"
         sub="Platform overview and user management. Broker keys are encrypted and never shown here."
-        right={<Pill tone="violet">Owner</Pill>}
+        right={<Pill tone="violet">Admin</Pill>}
       />
 
       <Figs cols="mb-10 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
@@ -692,7 +692,7 @@ export default async function AdminPage() {
       <p className="mt-4 text-[11.5px] leading-relaxed text-ink3">
         Deleting a user removes their MNHA account, encrypted broker credentials, KYC record + files, consent records,
         their order log, notifications and membership record; membership invoices are kept as billing records. Their money and positions stay with Groww and
-        are unaffected. Broker keys are never decrypted or displayed here; KYC files open only through an owner-gated
+        are unaffected. Broker keys are never decrypted or displayed here; KYC files open only through an admin-gated
         route.
       </p>
     </div>

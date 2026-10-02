@@ -1,20 +1,32 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
-import { OWNER_ID } from "@/lib/auth";
-import { MEMBER_HOME, OWNER_HOME } from "@/lib/routes";
+import { ADMIN_ID, OWNER_ID } from "@/lib/auth";
+import { ADMIN_HOME, MEMBER_HOME, OWNER_HOME } from "@/lib/routes";
 
 /** True only for the owner's (house) account — the one with the full desk. */
 export async function isOwnerSession(): Promise<boolean> {
   return (await currentUserId()) === OWNER_ID;
 }
 
+/** True only for the admin console login. */
+export async function isAdminSession(): Promise<boolean> {
+  return (await currentUserId()) === ADMIN_ID;
+}
+
 /** Where a signed-in account lands. */
 export function homeFor(userId: string): string {
+  if (userId === ADMIN_ID) return ADMIN_HOME;
   return userId === OWNER_ID ? OWNER_HOME : MEMBER_HOME;
 }
 
 /** Page guard for owner-only sections (the proxy checks too — defence in depth). */
 export async function requireOwnerPage(): Promise<void> {
   if (!(await isOwnerSession())) redirect(MEMBER_HOME);
+}
+
+/** Page guard for the admin console (the proxy checks too — defence in depth). */
+export async function requireAdminPage(): Promise<void> {
+  const uid = await currentUserId();
+  if (uid !== ADMIN_ID) redirect(uid ? homeFor(uid) : "/login");
 }

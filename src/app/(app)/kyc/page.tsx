@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
-import { OWNER_ID } from "@/lib/auth";
+import { isReservedId } from "@/lib/auth";
+import { homeFor } from "@/lib/access";
 import { getKycView } from "@/lib/kyc";
 import { PageHead, Card, CardHead, Pill } from "@/components/ui";
 import KycForm from "./KycForm";
@@ -14,7 +15,8 @@ const fmt = (ms: number) => new Intl.DateTimeFormat("en-IN", { dateStyle: "mediu
 export default async function KycPage() {
   const uid = await currentUserId();
   if (!uid) redirect("/login");
-  if (uid === OWNER_ID) redirect("/admin");
+  // The env logins have no agreement, KYC or membership — send them home.
+  if (isReservedId(uid)) redirect(homeFor(uid));
 
   const kyc = await getKycView(uid);
 

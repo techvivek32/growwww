@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
-import { OWNER_ID } from "@/lib/auth";
+import { isReservedId } from "@/lib/auth";
 import { getNavStrict } from "@/lib/api/broker";
 import { getBroker } from "@/lib/users";
 import { enroll, leave, settlementNotice } from "@/lib/membership";
@@ -15,7 +15,7 @@ export interface MemberState {
 
 export async function enrollAction(_prev: MemberState, _form: FormData): Promise<MemberState> {
   const uid = await currentUserId();
-  if (!uid || uid === OWNER_ID) return { error: "Sign in as a user account first." };
+  if (!uid || isReservedId(uid)) return { error: "Sign in as a user account first." };
   // Not offered while member accounts are read-only (MNHA trades nothing for them).
   if (uid) return { error: "Membership is not offered while your account is read-only." };
 
@@ -39,7 +39,7 @@ export async function enrollAction(_prev: MemberState, _form: FormData): Promise
  *  fee already earned is billed, and nothing is billed on a loss. */
 export async function leaveAction(): Promise<void> {
   const uid = await currentUserId();
-  if (!uid || uid === OWNER_ID) return;
+  if (!uid || isReservedId(uid)) return;
   // No usable Groww key → retrying can't help; say so and point at re-connect.
   if (!(await getBroker(uid))) redirect("/membership?leave=reconnect");
   const nav = await getNavStrict();

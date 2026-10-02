@@ -1,5 +1,5 @@
 import { currentUserId } from "@/lib/session";
-import { OWNER_ID } from "@/lib/auth";
+import { ADMIN_ID, isReservedId } from "@/lib/auth";
 import { saveMedia, mediaPath, type MediaKind } from "@/lib/consentMedia";
 import { readFile } from "node:fs/promises";
 
@@ -12,7 +12,7 @@ const TYPES: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", p
 /** Upload one piece of consent media for the signed-in user (self only). */
 export async function POST(req: Request) {
   const uid = await currentUserId();
-  if (!uid || uid === OWNER_ID) return new Response("Unauthorized", { status: 401 });
+  if (!uid || isReservedId(uid)) return new Response("Unauthorized", { status: 401 });
 
   const form = await req.formData();
   const kind = String(form.get("kind") ?? "") as MediaKind;
@@ -36,7 +36,7 @@ export async function GET(req: Request) {
   const user = url.searchParams.get("user") ?? "";
   const kind = String(url.searchParams.get("kind") ?? "") as MediaKind;
   if (!KINDS.has(kind)) return new Response("Bad kind", { status: 400 });
-  if (viewer !== OWNER_ID && viewer !== user) return new Response("Forbidden", { status: 403 });
+  if (viewer !== ADMIN_ID && viewer !== user) return new Response("Forbidden", { status: 403 });
 
   const p = await mediaPath(user, kind);
   if (!p) return new Response("Not found", { status: 404 });

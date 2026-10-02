@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { currentUserId } from "@/lib/session";
-import { OWNER_ID } from "@/lib/auth";
+import { ADMIN_ID } from "@/lib/auth";
 import { kycFilePath } from "@/lib/kyc";
 
 export const dynamic = "force-dynamic";
@@ -22,8 +22,8 @@ export async function GET(req: Request) {
   const user = url.searchParams.get("user") ?? "";
   const kind = url.searchParams.get("kind") === "doc" ? "doc" : "selfie";
 
-  // Only the owner (admin review) or the user themselves may view.
-  if (viewer !== OWNER_ID && viewer !== user) return new Response("Forbidden", { status: 403 });
+  // Only the admin login (review) or the user themselves may view.
+  if (viewer !== ADMIN_ID && viewer !== user) return new Response("Forbidden", { status: 403 });
 
   const p = await kycFilePath(user, kind);
   if (!p) return new Response("Not found", { status: 404 });

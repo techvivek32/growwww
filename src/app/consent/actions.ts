@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { currentUserId } from "@/lib/session";
-import { OWNER_ID } from "@/lib/auth";
+import { isReservedId } from "@/lib/auth";
 import { recordConsent, type Lang } from "@/lib/consent";
 import { hasAllMedia } from "@/lib/consentMedia";
 import { hasBroker } from "@/lib/users";
@@ -18,7 +18,7 @@ const LANGS = new Set(["en", "hi", "gu"]);
 
 export async function acceptConsent(_prev: ConsentState, form: FormData): Promise<ConsentState> {
   const uid = await currentUserId();
-  if (!uid || uid === OWNER_ID) return { error: "You are not signed in as a user account." };
+  if (!uid || isReservedId(uid)) return { error: "You are not signed in as a user account." };
 
   const signatureName = String(form.get("signature") ?? "").trim();
   const language = (String(form.get("language") ?? "en")) as Lang;

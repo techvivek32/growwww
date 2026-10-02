@@ -19,6 +19,15 @@ export const SESSION_COOKIE = "mnha_session";
 /** The reserved user id for the env "house" account (the owner). */
 export const OWNER_ID = "owner";
 
+/** The reserved user id for the admin console. A separate login from the
+ *  owner's: it opens the admin pages and nothing else — no broker, no desk. */
+export const ADMIN_ID = "admin";
+
+/** Ids that belong to the env logins, never to a registered user. */
+export function isReservedId(userId: string | null | undefined): boolean {
+  return userId === OWNER_ID || userId === ADMIN_ID;
+}
+
 /** Eight hours — a trading day plus the pre-open, and no longer. */
 const TTL_MS = 8 * 60 * 60 * 1000;
 
@@ -45,6 +54,20 @@ export function ownerEmail(): string | null {
 }
 function ownerPassword(): string | null {
   return process.env.AUTH_PASSWORD?.trim() || null;
+}
+
+/** The admin console logs in with these env credentials. Unset = no admin. */
+export function adminEmail(): string | null {
+  return process.env.ADMIN_EMAIL?.trim().toLowerCase() || null;
+}
+function adminPassword(): string | null {
+  return process.env.ADMIN_PASSWORD?.trim() || null;
+}
+
+/** An env login's email, which a registered user may not take. */
+export function isReservedEmail(email: string): boolean {
+  const e = email.trim().toLowerCase();
+  return e !== "" && (e === ownerEmail() || e === adminEmail());
 }
 
 /* ------------------------------------------------------------------ crypto */
@@ -118,16 +141,24 @@ export async function verifyToken(token: string | undefined): Promise<boolean> {
 
 /* --------------------------------------------------------------- owner login */
 
-/** True when the credentials match the env "house" owner (if configured). */
-export function isOwnerLogin(email: string, password: string): boolean {
-  const oe = ownerEmail();
-  const op = ownerPassword();
+/** True when the credentials match an env login pair (if configured). */
+function matchesEnvLogin(email: string, password: string, oe: string | null, op: string | null): boolean {
   if (!oe || !op) return false;
   const e = email.trim().toLowerCase();
   // Compare against padded copies so length never leaks which field was wrong.
   return timingSafeEqual(e.padEnd(64, "\0").slice(0, 64), oe.padEnd(64, "\0").slice(0, 64)) &&
     timingSafeEqual(password.padEnd(64, "\0").slice(0, 64), op.padEnd(64, "\0").slice(0, 64)) &&
     e === oe && password === op;
+}
+
+/** True when the credentials match the env "house" owner (if configured). */
+export function isOwnerLogin(email: string, password: string): boolean {
+  return matchesEnvLogin(email, password, ownerEmail(), ownerPassword());
+}
+
+/** True when the credentials match the env admin (if configured). */
+export function isAdminLogin(email: string, password: string): boolean {
+  return matchesEnvLogin(email, password, adminEmail(), adminPassword());
 }
 
 export const SESSION_MAX_AGE = TTL_MS / 1000;
