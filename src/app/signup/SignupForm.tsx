@@ -42,6 +42,8 @@ function Details({ error }: { error?: string }) {
 
 function Code({ email, error, info }: { email?: string; error?: string; info?: string }) {
   const [left, setLeft] = useState(RESEND_SECONDS);
+  // Keep digits only, so a pasted "188 512" or "188-512" becomes "188512".
+  const [code, setCode] = useState("");
   useEffect(() => {
     const id = setInterval(() => setLeft((n) => (n <= 1 ? 0 : n - 1)), 1000);
     return () => clearInterval(id);
@@ -59,10 +61,11 @@ function Code({ email, error, info }: { email?: string; error?: string; info?: s
         <FieldLabel>Verification code</FieldLabel>
         <input
           name="code"
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
           inputMode="numeric"
           autoComplete="one-time-code"
           pattern="\d{6}"
-          maxLength={6}
           required
           autoFocus
           placeholder="••••••"

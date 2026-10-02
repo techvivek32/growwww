@@ -22,7 +22,6 @@ We will never ask for your Groww password, PIN or OTP.
 }
 
 export function sendSignupCode(to: string, code: string): Promise<boolean> {
-  const spaced = `${code.slice(0, 3)} ${code.slice(3)}`;
   return sendMail({
     to,
     subject: `${code} is your MNHA Financials code`,
@@ -34,7 +33,7 @@ export function sendSignupCode(to: string, code: string): Promise<boolean> {
     html: frame(
       "Your verification code",
       `<p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#4a463d">Enter this code on the sign-up page to create your account. It expires in 10 minutes.</p>
-<p style="margin:0 0 18px;font-family:'Courier New',monospace;font-size:34px;letter-spacing:6px;color:#15140f;background:#eee9dd;padding:14px 18px;display:inline-block">${spaced}</p>
+<p style="margin:0 0 18px;font-family:'Courier New',monospace;font-size:34px;letter-spacing:8px;color:#15140f;background:#eee9dd;padding:14px 18px;display:inline-block;user-select:all;-webkit-user-select:all">${code}</p>
 <p style="margin:0;font-size:13px;line-height:1.6;color:#6e695e">Didn't try to sign up? Ignore this email — no account is created without the code.</p>`,
     ),
   });
