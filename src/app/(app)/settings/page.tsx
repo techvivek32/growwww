@@ -216,7 +216,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 </ul>
                 <p className="mt-4 text-[13px] leading-relaxed text-ink3">
                   Disconnecting Groww (above) withdraws the read-only Groww consent and is recorded here; deleting your
-                  account (below) withdraws all of them. Questions or data requests: support@visionmarket.in.
+                  account (below) withdraws all of them. Questions or data requests: support@mnhafinancials.com.
                 </p>
               </>
             ) : (

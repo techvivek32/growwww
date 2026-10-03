@@ -3,7 +3,7 @@ import { pubFonts } from "@/components/public/fonts";
 import "./globals.css";
 
 /** Canonical origin. Override per environment; falls back to the live domain. */
-export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://visionmarket.in";
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://mnhafinancials.com";
 
 const DESCRIPTION =
   "An NSE terminal on your own Groww account — live balance, holdings, positions and order book, with rule-based momentum and volume setups.";

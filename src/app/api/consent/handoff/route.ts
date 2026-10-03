@@ -13,7 +13,7 @@ const FRESH_MS = 24 * 3600 * 1000;
 
 function origin(req: Request): string {
   // Behind the reverse proxy the request URL is the local port; the phone needs the public site.
-  if (process.env.NODE_ENV === "production") return process.env.NEXT_PUBLIC_SITE_URL ?? "https://visionmarket.in";
+  if (process.env.NODE_ENV === "production") return process.env.NEXT_PUBLIC_SITE_URL ?? "https://mnhafinancials.com";
   return new URL(req.url).origin;
 }
 

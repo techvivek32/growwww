@@ -3,7 +3,7 @@ import { sendMail } from "@/lib/mailer";
 
 /** The two emails the sign-up flow sends. Plain, branded, no tracking. */
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://visionmarket.in";
+const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://mnhafinancials.com";
 
 function frame(title: string, bodyHtml: string): string {
   return `<!doctype html><html><body style="margin:0;background:#f3efe6;padding:32px 12px;font-family:Arial,Helvetica,sans-serif;color:#15140f">
@@ -15,7 +15,7 @@ function frame(title: string, bodyHtml: string): string {
 ${bodyHtml}
 </td></tr>
 <tr><td style="padding:16px 28px;border-top:1px solid #e0d9ca;font-size:11px;color:#6e695e;line-height:1.5">
-MNHA Financials · <a href="${SITE}" style="color:#b23a1c">visionmarket.in</a><br>
+MNHA Financials · <a href="${SITE}" style="color:#b23a1c">${new URL(SITE).host}</a><br>
 We will never ask for your Groww password, PIN or OTP.
 </td></tr>
 </table></td></tr></table></body></html>`;

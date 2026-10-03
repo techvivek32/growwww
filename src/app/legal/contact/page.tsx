@@ -16,8 +16,8 @@ export default function ContactPage() {
         </p>
         <div className="rounded-xl border border-line bg-surface p-5" style={{ boxShadow: "var(--shadow-card)" }}>
           <p className="text-[13px] font-semibold text-ink3 uppercase tracking-wide">Email</p>
-          <a href="mailto:support@visionmarket.in" className="mt-1 block text-[16px] font-semibold text-brandtext hover:opacity-75">
-            support@visionmarket.in
+          <a href="mailto:support@mnhafinancials.com" className="mt-1 block text-[16px] font-semibold text-brandtext hover:opacity-75">
+            support@mnhafinancials.com
           </a>
         </div>
         <p className="text-[12.5px] text-ink3">
