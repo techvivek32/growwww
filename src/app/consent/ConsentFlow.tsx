@@ -11,6 +11,8 @@ const READ_SECONDS = 120;
 
 /** A phone-sized touch screen: take the photos right here instead of via a QR code. */
 const PHONE_QUERY = "(pointer: coarse) and (max-width: 820px)";
+/** Same limit as /api/consent/media — checked here so a big photo gets a clear message. */
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 function subscribePhone(cb: () => void) {
   const mq = window.matchMedia(PHONE_QUERY);
   mq.addEventListener("change", cb);
@@ -270,6 +272,10 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
   const onFile = (kind: "selfie" | "id") => async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
+    if (f.size > MAX_PHOTO_BYTES) {
+      setMediaErr(t.fileTooBig);
+      return;
+    }
     setBusy(kind);
     setMediaErr(null);
     const ok = await upload(kind, f, f.name);

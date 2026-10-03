@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { clientIp } from "@/lib/clientIp";
 import { currentUserId } from "@/lib/session";
 import { isReservedId } from "@/lib/auth";
 import { recordConsent, CONSENT_KEYS, CONTRACT, type ConsentKey, type Lang } from "@/lib/consent";
@@ -44,7 +45,7 @@ export async function acceptConsent(_prev: ConsentState, form: FormData): Promis
   const languagesViewed = Array.from(new Set<Lang>([...viewed, language]));
 
   const h = await headers();
-  const ip = (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "unknown").trim();
+  const ip = clientIp(h, "unknown");
   const userAgent = h.get("user-agent") ?? "unknown";
 
   await recordConsent(uid, {

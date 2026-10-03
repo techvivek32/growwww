@@ -76,6 +76,7 @@ interface FeedState {
   ticks: Map<string, { ltp: number; at: number }>;
   lastTickAt: number;
   backoffMs: number;
+  failures: number; // consecutive failed connects
 }
 
 const g = globalThis as { __mnhaFeed?: FeedState };
@@ -87,6 +88,7 @@ g.__mnhaFeed ??= {
   ticks: new Map(),
   lastTickAt: 0,
   backoffMs: 2_000,
+  failures: 0,
 };
 const state = g.__mnhaFeed;
 
@@ -137,6 +139,7 @@ async function establish(): Promise<void> {
 
   state.nc = nc;
   state.backoffMs = 2_000;
+  state.failures = 0;
 
   // Resubscribe whatever was live before a full re-establish.
   const subjects = [...state.bySubject.keys()];
@@ -156,10 +159,14 @@ function ensureConnection(): void {
   if (!enabled() || state.nc || state.connecting) return;
   state.connecting = establish()
     .catch((err) => {
-      console.error("[feed] connect failed:", err instanceof Error ? err.message : err);
-      // Exponential backoff, capped — a dead feed must not hammer the mint.
+      state.failures = (state.failures ?? 0) + 1;
+      // Log the first few; after that it is the same failure (market closed, holiday) every time.
+      if (state.failures <= 3) console.error("[feed] connect failed:", err instanceof Error ? err.message : err);
+      else if (state.failures === 4) console.error("[feed] still failing — retrying quietly every 15 min");
+      // Exponential backoff, capped — a dead feed must not hammer the mint. After five
+      // failures in a row the feed is plainly down, so the cap rises from 1 to 15 minutes.
       const wait = state.backoffMs;
-      state.backoffMs = Math.min(60_000, state.backoffMs * 2);
+      state.backoffMs = Math.min(state.failures >= 5 ? 900_000 : 60_000, state.backoffMs * 2);
       setTimeout(() => {
         state.connecting = null;
         ensureConnection();

@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies, headers } from "next/headers";
+import { clientIp } from "@/lib/clientIp";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE, SESSION_MAX_AGE, ADMIN_ID, OWNER_ID, issueToken, isAdminLogin, isOwnerLogin } from "@/lib/auth";
 import { verifyLogin, hasBroker } from "@/lib/users";
@@ -15,7 +16,7 @@ export interface FormState {
 /** A best-effort client key from the proxy headers, for rate limiting. */
 async function clientKey(): Promise<string> {
   const h = await headers();
-  return (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "local").trim();
+  return clientIp(h);
 }
 
 async function setSession(userId: string) {

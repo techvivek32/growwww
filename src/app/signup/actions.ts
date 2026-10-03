@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
+import { clientIp } from "@/lib/clientIp";
 import { createVerifiedUser, findByEmail, hashForSignup, normalizeEmail, validateSignup } from "@/lib/users";
 import { isReservedEmail } from "@/lib/auth";
 import { setSession } from "@/lib/session";
@@ -28,9 +29,9 @@ export interface FormState {
 
 const COOKIE = "mnha_signup";
 
-async function clientIp(): Promise<string> {
+async function requestIp(): Promise<string> {
   const h = await headers();
-  return (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "local").trim();
+  return clientIp(h);
 }
 
 function mask(email: string): string {
@@ -57,7 +58,7 @@ async function start(form: FormData): Promise<FormState> {
   const confirm = String(form.get("confirm") ?? "");
 
   // Cap sign-up attempts per client and per address, so this cannot be used to flood inboxes.
-  if (!rateLimit(`signup:${await clientIp()}`, 8, 60 * 60_000).ok) {
+  if (!rateLimit(`signup:${await requestIp()}`, 8, 60 * 60_000).ok) {
     return { step: "details", error: "Too many sign-ups from here. Please try again later." };
   }
   const invalid = validateSignup(email, password);

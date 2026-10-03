@@ -7,7 +7,7 @@ import { hasConsented } from "@/lib/consent";
 export const dynamic = "force-dynamic";
 
 const KINDS = new Set<MediaKind>(["selfie", "id", "video"]);
-const MAX = 25 * 1024 * 1024; // 25 MB (a short video)
+const MAX = 10 * 1024 * 1024; // 10 MB — under nginx's 11 MB body cap, so the user gets our message, not a bare 413
 const TYPES: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", webm: "video/webm", mp4: "video/mp4", ogg: "video/ogg" };
 
 /** Upload one piece of consent media for the signed-in user (self only). */

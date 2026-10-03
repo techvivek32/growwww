@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, type ChangeEvent } from "react";
 import { useFormStatus } from "react-dom";
 import { submitKycAction, type KycState } from "./actions";
 
@@ -15,6 +15,14 @@ function Submit() {
 
 const field = "h-11 w-full border border-line2 bg-surface px-3.5 text-[14px] text-ink outline-none placeholder:text-ink3 focus:border-ink";
 const label = "mb-1.5 block font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase";
+/** Same 5 MB limit as the server — refused before a long upload, with the browser's own message. */
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+function checkSize(e: ChangeEvent<HTMLInputElement>) {
+  const f = e.target.files?.[0];
+  e.target.setCustomValidity(f && f.size > MAX_FILE_BYTES ? "This file is larger than 5 MB." : "");
+  e.target.reportValidity();
+}
+
 const fileField = "block w-full text-[12.5px] text-ink2 file:mr-3 file:h-9 file:border file:border-solid file:border-line2 file:bg-transparent file:px-3 file:text-[12.5px] file:font-semibold file:text-ink hover:file:bg-surfaceh";
 
 export default function KycForm() {
@@ -41,12 +49,12 @@ export default function KycForm() {
       </label>
       <label className="block">
         <span className={label}>Selfie (live photo)</span>
-        <input name="selfie" type="file" accept="image/jpeg,image/png,image/webp" capture="user" required className={fileField} />
+        <input name="selfie" type="file" accept="image/jpeg,image/png,image/webp" capture="user" required onChange={checkSize} className={fileField} />
         <span className="mt-1 block text-[11px] text-ink3">A clear photo of your face. JPG/PNG/WebP, up to 5 MB.</span>
       </label>
       <label className="block">
         <span className={label}>ID document (optional now)</span>
-        <input name="doc" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className={fileField} />
+        <input name="doc" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={checkSize} className={fileField} />
         <span className="mt-1 block text-[11px] text-ink3">PAN card / Aadhaar / passport. JPG/PNG/PDF, up to 5 MB.</span>
       </label>
 
