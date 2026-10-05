@@ -1,4 +1,4 @@
-import { currentUserId } from "@/lib/session";
+import { currentUserId, inAdminView } from "@/lib/session";
 import { ADMIN_ID, isReservedId } from "@/lib/auth";
 import { saveMedia, mediaPath, type MediaKind } from "@/lib/consentMedia";
 import { readFile } from "node:fs/promises";
@@ -14,6 +14,7 @@ const TYPES: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", p
 export async function POST(req: Request) {
   const uid = await currentUserId();
   if (!uid || isReservedId(uid)) return new Response("Unauthorized", { status: 401 });
+  if (await inAdminView()) return new Response("Admin view: the client uploads their own photos", { status: 403 });
   // Once this version is signed, its evidence is fixed — no replacing it.
   if (await hasConsented(uid)) return new Response("Already signed", { status: 409 });
 

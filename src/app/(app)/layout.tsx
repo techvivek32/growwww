@@ -12,6 +12,7 @@ import IndexStrip from "@/components/IndexStrip";
 import { AutoTradeProvider } from "@/components/AutoTrade";
 import { LiveTicksProvider } from "@/components/LiveTicks";
 import { ViewerProvider } from "@/components/Viewer";
+import AdminViewBanner from "@/components/AdminViewBanner";
 
 // The nav shows live account state.
 export const dynamic = "force-dynamic";
@@ -44,6 +45,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <ViewerProvider isOwner={isOwner}>
+    <AdminViewBanner />
     <AutoTradeProvider>
       <LiveTicksProvider>
       <TopNav account={account} connected={account.balance !== null} isOwner={isOwner} unread={unread} />

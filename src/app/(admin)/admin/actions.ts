@@ -1,7 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { currentUserId } from "@/lib/session";
+import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { currentUserId, startAdminView } from "@/lib/session";
+import { clientIp } from "@/lib/clientIp";
+import { logAdminAccess } from "@/lib/adminAccess";
+import { MEMBER_HOME } from "@/lib/routes";
 import { ADMIN_ID, isReservedId } from "@/lib/auth";
 import { clearBroker, findById } from "@/lib/users";
 import { setKycDecision, scheduleKycCall } from "@/lib/kyc";
@@ -13,6 +18,22 @@ import { getNavFor } from "@/lib/api/broker";
 /** Every admin action re-checks the caller is the admin login — never trust the UI. */
 async function requireAdmin(): Promise<boolean> {
   return (await currentUserId()) === ADMIN_ID;
+}
+
+/**
+ * Open a client's account exactly as they see it. The admin's own session is
+ * kept aside for "Back to admin"; the view lasts an hour, every open and close
+ * is logged, and steps that are the client's own act stay refused (see
+ * ADMIN_VIEW_REFUSAL). The client's password is never needed or shown — it is
+ * stored only as a one-way hash.
+ */
+export async function adminOpenAccount(formData: FormData): Promise<void> {
+  if (!(await requireAdmin())) return;
+  const userId = String(formData.get("userId") ?? "");
+  if (!userId || isReservedId(userId) || !(await findById(userId))) return;
+  if (!(await startAdminView(userId))) return;
+  await logAdminAccess({ kind: "open", userId, ip: clientIp(await headers()) });
+  redirect(MEMBER_HOME); // the usual gates then send it where the client would land
 }
 
 export async function adminDisconnectBroker(formData: FormData): Promise<void> {

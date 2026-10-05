@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { currentUserId, clearSession } from "@/lib/session";
+import { currentUserId, clearSession, ADMIN_VIEW_REFUSAL, inAdminView } from "@/lib/session";
 import { isReservedId } from "@/lib/auth";
 import { changePassword, clearBroker } from "@/lib/users";
 import { getMembership, hasDueInvoice } from "@/lib/membership";
@@ -17,6 +17,7 @@ export interface PwState {
 export async function changePasswordAction(_prev: PwState, formData: FormData): Promise<PwState> {
   const uid = await currentUserId();
   if (!uid || isReservedId(uid)) return { error: "This account's password is managed in the server environment." };
+  if (await inAdminView()) return { error: ADMIN_VIEW_REFUSAL };
 
   const current = String(formData.get("current") ?? "");
   const next = String(formData.get("next") ?? "");
@@ -30,7 +31,7 @@ export async function changePasswordAction(_prev: PwState, formData: FormData): 
 
 export async function disconnectBrokerAction(): Promise<void> {
   const uid = await currentUserId();
-  if (!uid || isReservedId(uid)) return;
+  if (!uid || isReservedId(uid) || (await inAdminView())) return; // admin: use Disconnect in the console
   await clearBroker(uid);
   await recordConsentChange(uid, "groww", false); // the withdrawal is part of the consent record
   revalidatePath("/settings");
@@ -39,7 +40,7 @@ export async function disconnectBrokerAction(): Promise<void> {
 
 export async function deleteAccountAction(): Promise<void> {
   const uid = await currentUserId();
-  if (!uid || isReservedId(uid)) return;
+  if (!uid || isReservedId(uid) || (await inAdminView())) return; // admin: use Delete in the console
   // A running membership period must be closed first (Leave does that at a
   // live reading), and an unpaid invoice settled — deletion skips neither.
   if ((await getMembership(uid))?.status === "active") redirect("/settings?delete=active");
@@ -57,7 +58,7 @@ export async function deleteAccountAction(): Promise<void> {
 /** Switch an optional consent (marketing / analytics) on or off — as easy as giving it. */
 export async function setOptionalConsentAction(formData: FormData): Promise<void> {
   const uid = await currentUserId();
-  if (!uid || isReservedId(uid)) return;
+  if (!uid || isReservedId(uid) || (await inAdminView())) return; // a consent is only ever the client's own
   const key = String(formData.get("key") ?? "") as ConsentKey;
   if (!OPTIONAL_CONSENTS.includes(key)) return;
   await setOptionalConsent(uid, key, formData.get("value") === "on");

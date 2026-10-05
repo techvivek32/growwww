@@ -1,4 +1,4 @@
-import { currentUserId } from "@/lib/session";
+import { currentUserId, inAdminView } from "@/lib/session";
 import { isReservedId } from "@/lib/auth";
 import { hasConsented } from "@/lib/consent";
 import { createHandoff } from "@/lib/kycHandoff";
@@ -21,6 +21,7 @@ function origin(req: Request): string {
 export async function POST(req: Request) {
   const uid = await currentUserId();
   if (!uid || isReservedId(uid)) return new Response("Unauthorized", { status: 401 });
+  if (await inAdminView()) return new Response("Admin view: the client takes their own photos", { status: 403 });
   if (await hasConsented(uid)) return new Response("Already signed", { status: 409 });
   if (!rateLimit(`handoff:${uid}`, 20, 60 * 60_000).ok) return new Response("Too many", { status: 429 });
 

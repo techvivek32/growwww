@@ -8,6 +8,7 @@ import { hasBroker } from "@/lib/users";
 import { registeredIp } from "@/lib/api/groww";
 import { logout } from "@/app/login/actions";
 import AuthShell from "@/components/public/AuthShell";
+import AdminViewBanner from "@/components/AdminViewBanner";
 import ConnectWizard from "./ConnectWizard";
 import { MEMBER_HOME } from "@/lib/routes";
 
@@ -26,6 +27,8 @@ export default async function ConnectBrokerPage({ searchParams }: { searchParams
   if (!reconnect && (await hasBroker(uid))) redirect(MEMBER_HOME);
 
   return (
+    <>
+    <AdminViewBanner />
     <AuthShell
       step={3}
       wide
@@ -39,5 +42,6 @@ export default async function ConnectBrokerPage({ searchParams }: { searchParams
     >
       <ConnectWizard ip={registeredIp()} />
     </AuthShell>
+    </>
   );
 }

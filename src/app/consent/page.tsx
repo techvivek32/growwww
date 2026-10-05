@@ -7,6 +7,7 @@ import { hasConsented, CONTRACT } from "@/lib/consent";
 import { hasBroker } from "@/lib/users";
 import { logout } from "@/app/login/actions";
 import AuthShell from "@/components/public/AuthShell";
+import AdminViewBanner from "@/components/AdminViewBanner";
 import ConsentFlow from "./ConsentFlow";
 import { MEMBER_HOME } from "@/lib/routes";
 
@@ -21,6 +22,8 @@ export default async function ConsentPage() {
   if (await hasConsented(uid)) redirect((await hasBroker(uid)) ? MEMBER_HOME : "/connect-broker");
 
   return (
+    <>
+    <AdminViewBanner />
     <AuthShell
       step={2}
       wide
@@ -34,5 +37,6 @@ export default async function ConsentPage() {
     >
       <ConsentFlow contract={CONTRACT} />
     </AuthShell>
+    </>
   );
 }

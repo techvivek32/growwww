@@ -16,6 +16,10 @@
 
 export const SESSION_COOKIE = "mnha_session";
 
+/** While the admin is inside a client's account, the admin's own session waits
+ *  here, so "Back to admin" returns to it without signing in again. */
+export const ADMIN_BACK_COOKIE = "mnha_admin_back";
+
 /** The reserved user id for the env "house" account (the owner). */
 export const OWNER_ID = "owner";
 
@@ -30,6 +34,9 @@ export function isReservedId(userId: string | null | undefined): boolean {
 
 /** Eight hours — a trading day plus the pre-open, and no longer. */
 const TTL_MS = 8 * 60 * 60 * 1000;
+
+/** An admin's look inside a client's account lasts one hour at most. */
+export const ADMIN_VIEW_TTL_MS = 60 * 60 * 1000;
 
 const enc = new TextEncoder();
 
@@ -99,17 +106,33 @@ function timingSafeEqual(a: string, b: string): boolean {
 
 /* ------------------------------------------------------------------ tokens */
 
-/** `<base64url(payload)>.<base64url(hmac)>` where payload is `userId|expiry`. */
-export async function issueToken(userId: string): Promise<string> {
-  const payload = `${userId}|${Date.now() + TTL_MS}`;
+/**
+ * `<base64url(payload)>.<base64url(hmac)>` where payload is `userId|expiry`,
+ * or `userId|expiry|admin` for an admin viewing a client's account. The marker
+ * is inside the signed payload, so only the server can mint it.
+ */
+export async function issueToken(userId: string, opts: { ttlMs?: number; adminView?: boolean } = {}): Promise<string> {
+  if (opts.adminView && isReservedId(userId)) throw new Error("admin view is only for client accounts");
+  const payload = `${userId}|${Date.now() + (opts.ttlMs ?? TTL_MS)}${opts.adminView ? "|admin" : ""}`;
   const body = b64url(enc.encode(payload));
   const sig = await crypto.subtle.sign("HMAC", await hmacKey(), enc.encode(body));
   return `${body}.${b64url(sig)}`;
 }
 
+export interface SessionInfo {
+  userId: string;
+  /** True when the admin opened this client's account from the console. */
+  adminView: boolean;
+}
+
 /** The signed, unexpired user id in a token, or null. The heart of every
  *  per-user data boundary, so it verifies the HMAC before trusting a byte. */
 export async function sessionUserId(token: string | undefined): Promise<string | null> {
+  return (await sessionInfo(token))?.userId ?? null;
+}
+
+/** Like sessionUserId, plus whether this is the admin inside a client's account. */
+export async function sessionInfo(token: string | undefined): Promise<SessionInfo | null> {
   if (!token) return null;
 
   const dot = token.lastIndexOf(".");
@@ -128,10 +151,13 @@ export async function sessionUserId(token: string | undefined): Promise<string |
     return null;
   }
 
-  const [userId, expiry] = payload.split("|");
+  const [userId, expiry, mark] = payload.split("|");
   const at = Number(expiry);
   if (!userId || !Number.isFinite(at) || Date.now() >= at) return null;
-  return userId;
+  const adminView = mark === "admin";
+  // An admin view of a reserved account is never valid, even if signed.
+  if (adminView && isReservedId(userId)) return null;
+  return { userId, adminView };
 }
 
 /** Boolean gate for the Edge proxy — a valid, unexpired signature. */

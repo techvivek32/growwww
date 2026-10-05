@@ -3,7 +3,9 @@
 import { cookies, headers } from "next/headers";
 import { clientIp } from "@/lib/clientIp";
 import { redirect } from "next/navigation";
-import { SESSION_COOKIE, SESSION_MAX_AGE, ADMIN_ID, OWNER_ID, issueToken, isAdminLogin, isOwnerLogin } from "@/lib/auth";
+import { SESSION_COOKIE, SESSION_MAX_AGE, ADMIN_BACK_COOKIE, ADMIN_ID, OWNER_ID, issueToken, isAdminLogin, isOwnerLogin } from "@/lib/auth";
+import { adminViewUserId, endAdminView } from "@/lib/session";
+import { logAdminAccess } from "@/lib/adminAccess";
 import { verifyLogin, hasBroker } from "@/lib/users";
 import { hasConsented } from "@/lib/consent";
 import { rateLimit, rateReset } from "@/lib/ratelimit";
@@ -28,6 +30,7 @@ async function setSession(userId: string) {
     path: "/",
     maxAge: SESSION_MAX_AGE,
   });
+  jar.delete(ADMIN_BACK_COOKIE); // a fresh sign-in ends any earlier admin view
 }
 
 export async function login(_prev: FormState, formData: FormData): Promise<FormState> {
@@ -65,7 +68,17 @@ export async function login(_prev: FormState, formData: FormData): Promise<FormS
 }
 
 export async function logout() {
+  // Inside a client's account, "Sign out" leaves the account and returns to the console.
+  if (await adminViewUserId()) return exitAdminView();
   const jar = await cookies();
   jar.delete(SESSION_COOKIE);
+  jar.delete(ADMIN_BACK_COOKIE);
   redirect("/login");
+}
+
+/** Leave the client's account the admin opened, back to the admin console. */
+export async function exitAdminView() {
+  const viewed = await adminViewUserId();
+  if (viewed) await logAdminAccess({ kind: "close", userId: viewed, ip: clientIp(await headers()) });
+  redirect((await endAdminView()) ? ADMIN_HOME : "/login");
 }

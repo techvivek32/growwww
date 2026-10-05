@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { setBroker } from "@/lib/users";
-import { currentUserId } from "@/lib/session";
+import { currentUserId, ADMIN_VIEW_REFUSAL, inAdminView } from "@/lib/session";
 import { isReservedId } from "@/lib/auth";
 import { runWithCreds } from "@/lib/api/credctx";
 import { rateLimit } from "@/lib/ratelimit";
@@ -40,6 +40,8 @@ const HINT: Record<ProbeStage, (status: number | null) => string> = {
 export async function connectBroker(_prev: FormState, formData: FormData): Promise<FormState> {
   const userId = await currentUserId();
   if (!userId || isReservedId(userId)) return { error: "You are not signed in as a user account." };
+  // Connecting records the client's Groww consent, so it is the client's own step.
+  if (await inAdminView()) return { error: ADMIN_VIEW_REFUSAL };
 
   // Each attempt mints a Groww token, and Groww caps those per key per day.
   if (!rateLimit(`connect:${userId}`, 10, 15 * 60_000).ok) {

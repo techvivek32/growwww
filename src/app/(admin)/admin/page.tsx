@@ -10,7 +10,8 @@ import { listOrders, orderStatsByUser, type LedgerStatus } from "@/lib/ledger";
 import { registeredIp } from "@/lib/api/groww";
 import { engineStatus } from "@/lib/signals/engine";
 import { PageHead, Card, CardHead, Pill } from "@/components/ui";
-import { adminDisconnectBroker, adminDeleteUser, adminKycDecision, adminScheduleKycCall, adminMarkInvoice } from "./actions";
+import { adminOpenAccount, adminDisconnectBroker, adminDeleteUser, adminKycDecision, adminScheduleKycCall, adminMarkInvoice } from "./actions";
+import { recentAdminAccess } from "@/lib/adminAccess";
 import SettleForm from "./SettleForm";
 
 export const metadata: Metadata = { title: "Admin · MNHA Financials" };
@@ -93,7 +94,7 @@ export default async function AdminPage() {
   // Admin login only. Anyone else who guesses the URL is sent to their own home.
   await requireAdminPage();
 
-  const [users, kyc, consents, members, invoices, orders, orderStats] = await Promise.all([
+  const [users, kyc, consents, members, invoices, orders, orderStats, access] = await Promise.all([
     listUsers(),
     listKyc(),
     listConsents(),
@@ -101,6 +102,7 @@ export default async function AdminPage() {
     listInvoices(),
     listOrders(undefined, Number.MAX_SAFE_INTEGER),
     orderStatsByUser(),
+    recentAdminAccess(20),
   ]);
   const engine = engineStatus();
   const connected = users.filter((u) => u.hasBroker).length;
@@ -342,6 +344,12 @@ export default async function AdminPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
+                          <form action={adminOpenAccount}>
+                            <input type="hidden" name="userId" value={u.id} />
+                            <button className="h-8 whitespace-nowrap bg-brand px-2.5 text-[12px] font-semibold text-onbrand transition-colors hover:bg-brandh" title="Open this client's MNHA account exactly as they see it (1 hour, logged)">
+                              Open account
+                            </button>
+                          </form>
                           {u.hasBroker && (
                             <form action={adminDisconnectBroker}>
                               <input type="hidden" name="userId" value={u.id} />
@@ -361,6 +369,41 @@ export default async function AdminPage() {
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* admin access log */}
+      <Card pad={false} className="mb-6">
+        <CardTitle
+          title="Admin access to client accounts"
+          count={String(access.length)}
+          sub="Every time the admin opens or leaves a client's account through “Open account”. A view lasts one hour at most. Client passwords are stored only as a one-way hash, so they are never shown — and never needed to open an account."
+        />
+        {access.length === 0 ? (
+          <p className="px-5 py-6 text-center text-[13px] text-ink3">No client account has been opened from the console yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[620px] border-collapse text-left">
+              <thead>
+                <tr className="border-b border-line font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">
+                  <th className="px-5 py-3 font-medium">Time (IST)</th>
+                  <th className="px-5 py-3 font-medium">Client</th>
+                  <th className="px-5 py-3 font-medium">Event</th>
+                  <th className="px-5 py-3 font-medium">Admin IP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {access.map((e, i) => (
+                  <tr key={`${e.at}-${i}`} className="border-b border-line last:border-0">
+                    <td className="tnum px-5 py-2.5 text-[12px] text-ink2">{LOG_TIME.format(new Date(e.at))}</td>
+                    <td className="px-5 py-2.5 text-[12.5px] text-ink">{emailFor.get(e.userId) ?? <span className="text-ink3">deleted account</span>}</td>
+                    <td className="px-5 py-2.5 text-[12px]">{e.kind === "open" ? <span className="text-ink">Opened</span> : <span className="text-ink2">Back to admin</span>}</td>
+                    <td className="tnum px-5 py-2.5 text-[12px] text-ink3">{e.ip}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -689,10 +732,10 @@ export default async function AdminPage() {
                       )}
                     </td>
                     <td className="px-5 py-3 text-[11.5px]">
-                      <span className="flex gap-2">
-                        {c.media?.selfie && <a href={`/api/consent/media?user=${c.userId}&kind=selfie`} target="_blank" rel="noopener noreferrer" className="text-brandtext hover:opacity-75">Selfie</a>}
-                        {c.media?.idPhoto && <a href={`/api/consent/media?user=${c.userId}&kind=id`} target="_blank" rel="noopener noreferrer" className="text-brandtext hover:opacity-75">ID</a>}
-                        {c.media?.video && <a href={`/api/consent/media?user=${c.userId}&kind=video`} target="_blank" rel="noopener noreferrer" className="text-brandtext hover:opacity-75">Video</a>}
+                      <span className="flex flex-wrap gap-1.5">
+                        {c.media?.selfie && <a href={`/api/consent/media?user=${c.userId}&kind=selfie`} target="_blank" rel="noopener noreferrer" className="inline-flex h-7 items-center whitespace-nowrap border border-line2 px-2 font-medium text-brandtext hover:bg-surfaceh">Selfie</a>}
+                        {c.media?.idPhoto && <a href={`/api/consent/media?user=${c.userId}&kind=id`} target="_blank" rel="noopener noreferrer" className="inline-flex h-7 items-center whitespace-nowrap border border-line2 px-2 font-medium text-brandtext hover:bg-surfaceh">PAN / Aadhaar</a>}
+                        {c.media?.video && <a href={`/api/consent/media?user=${c.userId}&kind=video`} target="_blank" rel="noopener noreferrer" className="inline-flex h-7 items-center whitespace-nowrap border border-line2 px-2 font-medium text-brandtext hover:bg-surfaceh">Video</a>}
                       </span>
                     </td>
                     <td className="tnum px-5 py-3 text-[11.5px] text-ink3">{c.ip}</td>

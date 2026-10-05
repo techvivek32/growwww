@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { currentUserId } from "@/lib/session";
+import { currentUserId, ADMIN_VIEW_REFUSAL, inAdminView } from "@/lib/session";
 import { isReservedId } from "@/lib/auth";
 import { submitKyc } from "@/lib/kyc";
 import { notify } from "@/lib/notifications";
@@ -35,6 +35,7 @@ export async function submitKycAction(_prev: KycState, form: FormData): Promise<
   const uid = await currentUserId();
   if (!uid) return { error: "Your session expired. Sign in again." };
   if (isReservedId(uid)) return { error: "This account does not need identity verification." };
+  if (await inAdminView()) return { error: ADMIN_VIEW_REFUSAL };
   if (!rateLimit(`kyc:${uid}`, 5, 60 * 60_000).ok) return { error: "Too many attempts. Try again later." };
 
   if (form.get("consent") !== "on") {

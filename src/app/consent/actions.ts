@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { clientIp } from "@/lib/clientIp";
-import { currentUserId } from "@/lib/session";
+import { currentUserId, ADMIN_VIEW_REFUSAL, inAdminView } from "@/lib/session";
 import { isReservedId } from "@/lib/auth";
 import { recordConsent, CONSENT_KEYS, CONTRACT, type ConsentKey, type Lang } from "@/lib/consent";
 import { mediaStatus } from "@/lib/consentMedia";
@@ -27,6 +27,8 @@ export async function acceptConsent(_prev: ConsentState, form: FormData): Promis
 
   const uid = await currentUserId();
   if (!uid || isReservedId(uid)) return { error: "You are not signed in as a user account." };
+  // The agreement is signed by the client in person — never by the admin on their behalf.
+  if (await inAdminView()) return { error: ADMIN_VIEW_REFUSAL };
 
   const signatureName = String(form.get("signature") ?? "").trim();
   if (signatureName.length < 3) return { error: ui.signName };
