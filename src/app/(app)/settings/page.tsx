@@ -6,7 +6,6 @@ import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
 import { findById, hasBroker } from "@/lib/users";
 import { getKycView } from "@/lib/kyc";
-import { registeredIp } from "@/lib/api/groww";
 import { getConnectionStatus } from "@/lib/api/broker";
 import { logout } from "@/app/login/actions";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -63,10 +62,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const consentDate = consent
     ? new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }).format(consent.consentedAt)
     : null;
-  const serverIp = registeredIp();
-  // Confirmed only if the user ticked it for THIS server address.
-  const confirmedIp = user?.broker?.ipConfirmedAt ? (user.broker.staticIp ?? null) : null;
-  const ipConfirmed = confirmedIp !== null && confirmedIp === serverIp;
   const { delete: deleteFlag, failed: failedParts } = await searchParams;
 
   // "Live" only when a call to Groww actually answered just now — a stored key alone is not a live link.
@@ -142,19 +137,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
               <dl className="mt-5 border-y border-line">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3">
-                  <dt className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">Static IP (optional)</dt>
-                  <dd className="tnum font-mono text-[14px] text-ink">{serverIp ?? "—"}</dd>
+                  <dt className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">Static IP</dt>
+                  <dd className="text-[14px] text-ink">Not needed</dd>
                 </div>
               </dl>
-              {keyOnFile && serverIp && (
-                <p className={`mt-2 text-[12.5px] leading-relaxed ${ipConfirmed ? "text-up" : "text-ink3"}`}>
-                  {ipConfirmed
-                    ? "You confirmed adding it on Groww."
-                    : confirmedIp
-                      ? `You confirmed ${confirmedIp}; the server now uses the address above — update it on Groww.`
-                      : "Not needed for a read-only account — a static IP is required only for orders sent through the API."}
-                </p>
-              )}
+              <p className="mt-2 text-[12.5px] leading-relaxed text-ink3">A static IP is needed only for placing orders through the API. Your account is view-only, so leave the IP on your Groww key empty — Groww allows one IP on one account only.</p>
 
               <div className="mt-5 flex flex-wrap gap-2">
                 {keyOnFile && (

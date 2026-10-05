@@ -8,6 +8,7 @@ import Link from "next/link";
 import { LivePrice } from "@/components/Live";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 import AccountEmpty from "../AccountEmpty";
+import PriceGapNote from "../PriceGapNote";
 
 export const metadata: Metadata = { title: "Holdings · MNHA Financials" };
 
@@ -34,16 +35,18 @@ export default async function HoldingsPage() {
     );
   }
 
-  // Rows without a live price are excluded from every total — valuing a
-  // holding at its own cost would print a fake ₹0 P&L.
+  // Invested (qty × average cost) comes straight from Groww, so it is always
+  // known. Current value and P&L need a live price for EVERY row — a partial
+  // total, or a holding valued at its own cost, would print a fake figure.
   const priced = holdings.filter(
     (h): h is (typeof holdings)[number] & { ltp: number } => h.ltp !== null,
   );
-  const invested = priced.reduce((s, h) => s + h.avg * h.qty, 0);
+  const invested = holdings.reduce((s, h) => s + h.avg * h.qty, 0);
+  const unpriced = holdings.length - priced.length;
+  const allPriced = unpriced === 0;
   const current = priced.reduce((s, h) => s + h.ltp * h.qty, 0);
   const pnl = current - invested;
-  const unpriced = holdings.length - priced.length;
-  const hasPnl = priced.length > 0 && invested > 0;
+  const hasPnl = allPriced && invested > 0;
 
   return (
     <>
@@ -55,10 +58,14 @@ export default async function HoldingsPage() {
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatTile
           label="Invested"
-          value={priced.length ? fmtMoney(invested, 0) : "—"}
-          sub={`${holdings.length} stocks${unpriced ? ` · ${unpriced} awaiting a price` : ""}`}
+          value={fmtMoney(invested, 0)}
+          sub={`${holdings.length} stocks`}
         />
-        <StatTile label="Current value" value={priced.length ? fmtMoney(current, 0) : "—"} />
+        <StatTile
+          label="Current value"
+          value={allPriced ? fmtMoney(current, 0) : "—"}
+          sub={allPriced ? undefined : `${unpriced} of ${holdings.length} awaiting a price`}
+        />
         <StatTile
           label="Total P&L"
           value={hasPnl ? fmtMoneySigned(pnl, 0) : "—"}
@@ -66,6 +73,8 @@ export default async function HoldingsPage() {
           tone={hasPnl ? (pnl >= 0 ? "up" : "down") : undefined}
         />
       </div>
+
+      <PriceGapNote unpriced={unpriced} total={holdings.length} />
 
       <TableWrap>
         <thead>

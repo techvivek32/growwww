@@ -5,7 +5,6 @@ import { isReservedId } from "@/lib/auth";
 import { homeFor } from "@/lib/access";
 import { hasConsented } from "@/lib/consent";
 import { hasBroker } from "@/lib/users";
-import { registeredIp } from "@/lib/api/groww";
 import { logout } from "@/app/login/actions";
 import AuthShell from "@/components/public/AuthShell";
 import AdminViewBanner from "@/components/AdminViewBanner";
@@ -40,7 +39,7 @@ export default async function ConnectBrokerPage({ searchParams }: { searchParams
         </form>
       }
     >
-      <ConnectWizard ip={registeredIp()} />
+      <ConnectWizard />
     </AuthShell>
     </>
   );

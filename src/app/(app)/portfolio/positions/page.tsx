@@ -8,6 +8,7 @@ import Link from "next/link";
 import { LivePrice } from "@/components/Live";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
 import AccountEmpty from "../AccountEmpty";
+import PriceGapNote from "../PriceGapNote";
 
 export const metadata: Metadata = { title: "Positions · MNHA Financials" };
 
@@ -70,6 +71,8 @@ export default async function PositionsPage() {
         />
         <StatTile label="Instruments" value={String(positions.length)} />
       </div>
+
+      <PriceGapNote unpriced={unpriced} total={positions.length} />
 
       <TableWrap>
         <thead>

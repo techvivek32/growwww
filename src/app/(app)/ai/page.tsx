@@ -3,9 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
-import { findById } from "@/lib/users";
 import { getAccount, getNav } from "@/lib/api/broker";
-import { registeredIp } from "@/lib/api/groww";
 import { engineStatus } from "@/lib/signals/engine";
 import { STRATEGIES } from "@/lib/signals/strategies";
 import { marketState } from "@/lib/market";
@@ -52,12 +50,10 @@ export default async function AiPage() {
   if (!uid) redirect("/login");
   const isOwner = uid === OWNER_ID;
 
-  const [account, nav, user] = await Promise.all([getAccount(), getNav(), isOwner ? null : findById(uid)]);
+  const [account, nav] = await Promise.all([getAccount(), getNav()]);
   const engine = engineStatus();
   const ms = marketState();
   const now = nowMs();
-  const serverIp = registeredIp();
-  const confirmedIp = user?.broker?.ipConfirmedAt ? (user.broker.staticIp ?? null) : null;
   const running = engine.running;
   // "Live" only while the market is open — the engine scans in session.
   const working = running && ms.isLive;
@@ -125,13 +121,9 @@ export default async function AiPage() {
             <Row
               n="04"
               label="Static IP"
-              value={serverIp !== null && confirmedIp === serverIp ? `${serverIp} added` : "Not needed"}
-              note={
-                serverIp !== null && confirmedIp === serverIp
-                  ? "You added our server address on your Groww key."
-                  : "A static IP is needed only for orders sent through the API. Your account is read-only."
-              }
-              tone={serverIp !== null && confirmedIp === serverIp ? "up" : "muted"}
+              value="Not needed"
+              note="A static IP is needed only for placing orders through the API. Your account is view-only, so leave the IP on your Groww key empty — Groww allows one IP on one account only."
+              tone="muted"
             />
           )}
           <Row

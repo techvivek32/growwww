@@ -90,8 +90,7 @@ const PATH: { n: string; title: string; body: string; rows: [string, string, str
     rows: [
       ["2.1", "Open Groww → Trading APIs", "1 min"],
       ["2.2", "Generate a TOTP key", "1 min"],
-      ["2.3", "Optional: our server's static IP", "1 min"],
-      ["2.4", "Paste once — we recognise and verify it", "1 min"],
+      ["2.3", "Paste once — we recognise and verify it", "1 min"],
     ],
   },
   {
@@ -117,7 +116,7 @@ const FAQ: [string, string][] = [
   ],
   [
     "Do I need to add an IP address on my Groww key?",
-    "Not for a read-only account. Exchange rules require a registered static IP only for orders sent through the API, and MNHA places no orders on your account. The wizard shows our server's address as an optional step.",
+    "No — leave it empty. Exchange rules require a registered static IP only for orders sent through the API, and MNHA places no orders on your account. A static IP can also sit on one Groww account only, so ours is never shared with you.",
   ],
   [
     "What do I need before I start?",

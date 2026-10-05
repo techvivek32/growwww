@@ -40,6 +40,11 @@ export function isConnected(): boolean {
   return groww.hasCredentials();
 }
 
+/** Groww's own reason for refusing live prices to this user's key just now, if any. */
+export async function priceRefusal(): Promise<groww.GrowwRefusal | null> {
+  return withUserCreds(async () => (groww.hasCredentials() ? groww.liveDataRefusal() : null));
+}
+
 async function safe<T>(what: string, run: () => Promise<T>, fallback: T): Promise<T> {
   return withUserCreds(async () => {
     if (!groww.hasCredentials()) return fallback;

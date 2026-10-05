@@ -262,11 +262,56 @@ export async function probeConnection(): Promise<ProbeResult> {
   return { ok: true, ucc };
 }
 
+/* ------------------------------------------------------------- refusals */
+
+/**
+ * The last time Groww refused a call, per API key and kind of call — so a
+ * dash on screen can say WHY ("Groww refused live prices: …") instead of
+ * leaving the user to guess. Keyed by the key's fingerprint, never the key.
+ */
+export interface GrowwRefusal {
+  at: number;
+  status: number;
+  code: string | null;
+  message: string | null;
+}
+const refusals = new Map<string, GrowwRefusal>();
+const lastLogged = new Map<string, number>();
+const callKind = (path: string) => (path.startsWith("/v1/live-data") ? "live-data" : path.split("?")[0]);
+
+function noteRefusal(path: string, status: number, body: { error?: { code?: string; message?: string } } | undefined): void {
+  const creds = resolveCreds();
+  if (!creds) return;
+  const fp = keyFingerprint(creds.apiKey);
+  const kind = callKind(path);
+  const r: GrowwRefusal = { at: Date.now(), status, code: body?.error?.code ?? null, message: body?.error?.message ?? null };
+  refusals.set(`${fp}:${kind}`, r);
+  // One log line per key, kind and reason every ten minutes — enough to see it, not a flood.
+  const logKey = `${fp}:${kind}:${status}:${r.code}`;
+  if (Date.now() - (lastLogged.get(logKey) ?? 0) > 10 * 60_000) {
+    lastLogged.set(logKey, Date.now());
+    console.warn(`[groww] ${kind} refused for key ${fp.slice(0, 8)}: HTTP ${status} ${r.code ?? ""} ${(r.message ?? "").slice(0, 160)}`.trim());
+  }
+}
+
+/** Why live prices are missing for the current credentials, if Groww said so in the last ten minutes. */
+export function liveDataRefusal(): GrowwRefusal | null {
+  const creds = resolveCreds();
+  if (!creds) return null;
+  const r = refusals.get(`${keyFingerprint(creds.apiKey)}:live-data`);
+  return r && Date.now() - r.at < 10 * 60_000 ? r : null;
+}
+
 /** Envelope unwrap: Groww wraps everything in { status, payload }. */
 async function get<T>(path: string): Promise<T | null> {
   const token = await accessToken();
-  const res = await request<{ status?: string; payload?: T }>(path, { token });
-  if (res.status !== 200 || res.body?.status !== "SUCCESS") return null;
+  const res = await request<{ status?: string; payload?: T; error?: { code?: string; message?: string } }>(path, { token });
+  if (res.status !== 200 || res.body?.status !== "SUCCESS") {
+    noteRefusal(path, res.status, res.body);
+    return null;
+  }
+  const creds = resolveCreds();
+  if (creds) refusals.delete(`${keyFingerprint(creds.apiKey)}:${callKind(path)}`);
   return res.body.payload ?? null;
 }
 

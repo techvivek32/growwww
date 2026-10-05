@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getAccount, getConnectionStatus } from "@/lib/api/broker";
-import { registeredIp } from "@/lib/api/groww";
 import { isOwnerSession } from "@/lib/access";
-import { currentUserId } from "@/lib/session";
-import { findById } from "@/lib/users";
 import { fmtMoney } from "@/lib/format";
 import { PageHead, Card, CardHead, Pill } from "@/components/ui";
 
@@ -59,8 +56,7 @@ function ownerSteps(status: { credentials: boolean; live: boolean; ipPinned: boo
 }
 
 /** The same three facts, about the member's own key. */
-function memberSteps(status: { credentials: boolean; live: boolean }, serverIp: string | null, confirmedIp: string | null): Step[] {
-  const ipOk = serverIp !== null && confirmedIp === serverIp;
+function memberSteps(status: { credentials: boolean; live: boolean }): Step[] {
   return [
     {
       on: status.credentials,
@@ -75,16 +71,9 @@ function memberSteps(status: { credentials: boolean; live: boolean }, serverIp: 
         : "Groww did not answer a read of your account just now. If this persists, re-connect from Settings.",
     },
     {
-      on: ipOk,
-      label: "Our server IP is on your key",
-      detail:
-        serverIp === null
-          ? "Our server address is not configured yet."
-          : ipOk
-            ? `You confirmed adding ${serverIp} to your Groww key.`
-            : confirmedIp
-              ? `You confirmed ${confirmedIp}, but the server now uses ${serverIp} — update it on Groww.`
-              : `Not confirmed. Add ${serverIp} on your Groww key — reading works without it, but Groww refuses orders from a key that lacks it.`,
+      on: true,
+      label: "No static IP needed",
+      detail: "A static IP is needed only for placing orders through the API. Your account is view-only, so leave the IP on your Groww key empty — Groww allows one IP on one account only.",
     },
   ];
 }
@@ -99,11 +88,8 @@ const LIMITS = [
 ];
 
 export default async function BrokerPage() {
-  const [account, status, isOwner, uid] = await Promise.all([getAccount(), getConnectionStatus(), isOwnerSession(), currentUserId()]);
-  const user = !isOwner && uid ? await findById(uid) : null;
-  const serverIp = registeredIp();
-  const confirmedIp = user?.broker?.ipConfirmedAt ? (user.broker.staticIp ?? null) : null;
-  const steps = isOwner ? ownerSteps(status) : memberSteps(status, serverIp, confirmedIp);
+  const [account, status, isOwner] = await Promise.all([getAccount(), getConnectionStatus(), isOwnerSession()]);
+  const steps = isOwner ? ownerSteps(status) : memberSteps(status);
 
   // "Connected" means a live call succeeded — not that a key exists.
   const pill = status.live

@@ -8,10 +8,13 @@ import { classify, extractAll, type Classified } from "./parse";
 
 /**
  * The guided Groww connection. Everything that CAN be automated is: deep
- * links, the server IP pre-filled with one-click copy, paste recognition, and
- * a live verification with Groww before anything is saved. What cannot be —
- * signing in to Groww, creating the key, saving the IP on it — happens on
- * Groww's own site, by the user. We never ask for the Groww password.
+ * links, paste recognition, and a live verification with Groww before
+ * anything is saved. What cannot be — signing in to Groww, creating the key —
+ * happens on Groww's own site, by the user. We never ask for the Groww password.
+ *
+ * No static IP: member accounts are read-only, and exchange rules tie one
+ * static IP to one client (or one family) — Groww refuses our server's IP on
+ * a second account. A static IP matters only for placing orders.
  */
 
 const GROWW_TRADE_API = "https://groww.in/trade-api";
@@ -66,39 +69,6 @@ function Tick({ label, checked, onChange }: { label: ReactNode; checked: boolean
       />
       <span>{label}</span>
     </label>
-  );
-}
-
-function CopyIp({ ip }: { ip: string }) {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(ip);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard blocked: select the text so a manual copy is one keystroke.
-      const el = document.getElementById("mnha-ip");
-      if (el) window.getSelection()?.selectAllChildren(el);
-    }
-  }
-  return (
-    <div className="grid grid-cols-1 border border-pub-cream sm:grid-cols-[minmax(0,1fr)_auto]">
-      <span
-        id="mnha-ip"
-        className="tnum min-w-0 px-4 py-3 font-plex text-[18px] tracking-wide break-all text-pub-cream select-all sm:text-[26px]"
-      >
-        {ip}
-      </span>
-      <button
-        type="button"
-        onClick={copy}
-        className="h-11 w-full border-t border-pub-cream bg-pub-cream px-5 text-[14.5px] font-medium text-pub-ink transition-colors hover:bg-white sm:h-auto sm:w-auto sm:border-t-0"
-        aria-live="polite"
-      >
-        {copied ? "Copied ✓" : "Copy IP"}
-      </button>
-    </div>
   );
 }
 
@@ -195,11 +165,10 @@ function Submit({ ready }: { ready: boolean }) {
   );
 }
 
-export default function ConnectWizard({ ip }: { ip: string | null }) {
+export default function ConnectWizard() {
   const [state, action] = useActionState<FormState, FormData>(connectBroker, {});
   const [subscribed, setSubscribed] = useState(false);
   const [opened, setOpened] = useState(false);
-  const [ipAdded, setIpAdded] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [secret, setSecret] = useState("");
   const [smart, setSmart] = useState("");
@@ -247,7 +216,7 @@ export default function ConnectWizard({ ip }: { ip: string | null }) {
         Connect your <em>Groww.</em>
       </h1>
       <p className="mt-4 max-w-[38rem] text-[16px] leading-relaxed text-pub-muted">
-        Three short steps on Groww&apos;s site, then one paste here — about five minutes. You sign in on Groww itself;
+        Two short steps on Groww&apos;s site, then one paste here — about five minutes. You sign in on Groww itself;
         we never ask for your Groww password, PIN or OTP, and a key cannot withdraw money.
       </p>
 
@@ -275,41 +244,14 @@ export default function ConnectWizard({ ip }: { ip: string | null }) {
             Choose <strong className="text-pub-cream">TOTP</strong>. An access token expires every morning, and a key + secret
             pair needs your approval every day — the desk would stop working each morning.
           </p>
+          <p className="border-l-2 border-pub-accent pl-3.5 text-[14px]">
+            <strong className="text-pub-cream">Leave the static IP empty.</strong> Your MNHA account is view-only, and a static IP
+            is needed only for placing orders through the API. Don&apos;t add MNHA&apos;s server address — Groww allows one IP on
+            one account only, so it will be refused.
+          </p>
         </Step>
 
-        <Step n="3" title="Optional: add our static IP" done={ipAdded}>
-          {ip ? (
-            <>
-              <p>
-                Not needed for a read-only account. Exchange rules require a registered static IP only for orders sent
-                through the API — MNHA places none on your account. If you add it anyway, our server&apos;s address is:
-              </p>
-              <CopyIp ip={ip} />
-              <p>
-                On the same API keys page: <strong className="text-pub-cream">Add static IP</strong> → paste it as the{" "}
-                <strong className="text-pub-cream">Primary</strong> IP → <strong className="text-pub-cream">Update</strong>. Groww
-                lets you change this only about once a week, so paste it rather than typing.
-              </p>
-              <Tick
-                label={
-                  <>
-                    I&apos;ve added <span className="font-plex">{ip}</span> on my Groww key
-                  </>
-                }
-                checked={ipAdded}
-                onChange={setIpAdded}
-              />
-
-            </>
-          ) : (
-            <p>
-              Our server&apos;s IP is not configured yet, so there is nothing to add for now. You can still connect; the
-              address will appear in Settings once it is set.
-            </p>
-          )}
-        </Step>
-
-        <Step n="4" title="Paste, and we verify it live" done={false}>
+        <Step n="3" title="Paste, and we verify it live" done={false}>
           <p>Paste what Groww showed you — the key, the secret, or the whole lot at once. We sort it into the right place.</p>
 
           <div>
@@ -338,8 +280,6 @@ export default function ConnectWizard({ ip }: { ip: string | null }) {
           </div>
 
           <form id="connect-form" action={action} className="space-y-5 pt-2">
-            {/* Carries the IP tick: state survives React's post-action form reset, a checkbox would not. */}
-            <input type="hidden" name="ipConfirmed" value={ipAdded ? "on" : ""} />
             <div>
               <label htmlFor="cb-apiKey" className="mb-2 block text-[11px] font-semibold tracking-[0.12em] text-pub-cream uppercase">
                 API key (TOTP token)
