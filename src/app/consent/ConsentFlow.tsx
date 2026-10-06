@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import QRCode from "qrcode";
+import KycCapture, { type KycUpload } from "@/components/kyc/KycCapture";
 import { useFormStatus } from "react-dom";
 import { acceptConsent, type ConsentState } from "./actions";
 import { LogoMark } from "@/components/public/Brand";
@@ -97,6 +98,20 @@ async function upload(kind: "selfie" | "id" | "video", file: Blob, name: string)
     return false;
   }
 }
+
+/** The live camera capture (phone) uploads through the same signed-in route, with its blink-check result. */
+const sessionUpload: KycUpload = async (kind, photo, liveness) => {
+  const fd = new FormData();
+  fd.append("kind", kind);
+  fd.append("file", photo, `${kind}.jpg`);
+  if (liveness) fd.append("liveness", JSON.stringify(liveness));
+  try {
+    const r = await fetch("/api/consent/media", { method: "POST", body: fd });
+    return r.ok ? "ok" : "failed";
+  } catch {
+    return "failed";
+  }
+};
 
 function SubmitBtn({ enabled, label, busyLabel }: { enabled: boolean; label: string; busyLabel: string }) {
   const { pending } = useFormStatus();
@@ -449,8 +464,17 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
                 </div>
               </div>
             </div>
+          ) : isPhone ? (
+            <div className="mt-3">
+              <KycCapture
+                ui={t}
+                upload={sessionUpload}
+                initial={{ selfie: selfieUp, id: idUp }}
+                onUploaded={(k) => (k === "selfie" ? setSelfieUp(true) : setIdUp(true))}
+              />
+            </div>
           ) : (
-            !mediaReady || manual || isPhone ? (
+            !mediaReady || manual ? (
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label className="block">
                   <span className="mb-1 block text-[12px] font-medium text-ink2">{t.selfie} {selfieUp && <span className="text-up">✓</span>}</span>

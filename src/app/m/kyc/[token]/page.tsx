@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { handoffUser } from "@/lib/kycHandoff";
 import { findById } from "@/lib/users";
 import { hasConsented, CONTRACT, type Lang } from "@/lib/consent";
+import { mediaStatus } from "@/lib/consentMedia";
 import { pubFonts } from "@/components/public/fonts";
 import { Wordmark } from "@/components/public/Brand";
 import PhoneCapture from "./PhoneCapture";
@@ -37,6 +38,8 @@ export default async function PhoneKycPage({
   const uid = handoffUser(token);
   const user = uid ? await findById(uid) : null;
   const usable = Boolean(uid && user && !(await hasConsented(uid)));
+  // A reload after the selfie went up continues at the ID photo.
+  const initial = usable && uid ? await mediaStatus(uid, 24 * 3600 * 1000) : { selfie: false, id: false };
 
   return (
     <div className={`pub ${pubFonts} min-h-dvh`}>
@@ -50,21 +53,7 @@ export default async function PhoneKycPage({
             <p className="mt-2 font-plex text-[11.5px] tracking-[0.06em] text-pub-dim">
               {t.phoneFor} · {mask(user.email)}
             </p>
-            <PhoneCapture
-              token={token}
-              ui={{
-                selfie: t.phoneSelfie,
-                selfieHint: t.phoneSelfieHint,
-                id: t.phoneId,
-                idHint: t.phoneIdHint,
-                take: t.phoneTake,
-                retake: t.phoneRetake,
-                done: t.phoneDone,
-                expired: t.phoneExpired,
-                failed: t.phoneFailed,
-                uploading: t.uploading,
-              }}
-            />
+            <PhoneCapture token={token} ui={t} initial={initial} />
           </>
         ) : (
           <p role="alert" className="mt-6 border-l-2 border-pub-accent pl-3.5 text-[15px] leading-relaxed text-pub-muted">

@@ -728,6 +728,11 @@ export default async function AdminPage() {
                     <td className="px-5 py-3 text-[11.5px]">
                       <span className="flex flex-wrap gap-1.5">
                         {c.media?.selfie && <a href={`/api/consent/media?user=${c.userId}&kind=selfie`} target="_blank" rel="noopener noreferrer" className="inline-flex h-7 items-center whitespace-nowrap border border-line2 px-2 font-medium text-brandtext hover:bg-surfaceh">Selfie</a>}
+                        {c.media?.selfie && (
+                          <span className={`inline-flex h-7 items-center whitespace-nowrap px-1.5 text-[11px] ${c.media.liveness ? "text-up" : "text-ink3"}`} title={c.media.liveness ? "Taken through the on-phone blink check" : "Taken without the blink check (older version, no camera, or skipped)"}>
+                            {c.media.liveness ? "✓ blink" : "no blink check"}
+                          </span>
+                        )}
                         {c.media?.idPhoto && <a href={`/api/consent/media?user=${c.userId}&kind=id`} target="_blank" rel="noopener noreferrer" className="inline-flex h-7 items-center whitespace-nowrap border border-line2 px-2 font-medium text-brandtext hover:bg-surfaceh">PAN / Aadhaar</a>}
                         {c.media?.video && <a href={`/api/consent/media?user=${c.userId}&kind=video`} target="_blank" rel="noopener noreferrer" className="inline-flex h-7 items-center whitespace-nowrap border border-line2 px-2 font-medium text-brandtext hover:bg-surfaceh">Video</a>}
                       </span>

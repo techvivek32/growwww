@@ -41,3 +41,6 @@ yarn-error.log*
 
 # runtime state (watchlists) — lives on the server, not in git
 /data/
+
+# MediaPipe runtime, copied from node_modules at build time (scripts/copy-mediapipe.mjs)
+/public/mediapipe/wasm/

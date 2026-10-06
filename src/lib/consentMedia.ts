@@ -1,5 +1,5 @@
 import "server-only";
-import { mkdir, writeFile, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, writeFile, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -27,7 +27,36 @@ function extFor(kind: MediaKind, fileName: string, mime: string): string {
   return "jpg";
 }
 
-export async function saveMedia(userId: string, kind: MediaKind, buffer: Buffer, fileName: string, mime: string): Promise<void> {
+/** How the selfie was taken: the on-phone blink check, if it ran. */
+export interface LivenessMeta {
+  method: "blink";
+  blinks: number;
+  passed: boolean;
+  ms: number;
+}
+export interface MediaMeta {
+  liveness: LivenessMeta | null;
+  at: number;
+}
+
+/** The phone reports its blink check; accept only a well-formed, bounded report. */
+export function parseLiveness(raw: FormDataEntryValue | null): LivenessMeta | null {
+  if (typeof raw !== "string" || raw.length > 300) return null;
+  try {
+    const j = JSON.parse(raw) as Partial<LivenessMeta>;
+    if (j.method !== "blink" || !Number.isInteger(j.blinks) || typeof j.passed !== "boolean" || typeof j.ms !== "number") return null;
+    const blinks = Math.max(0, Math.min(10, j.blinks as number));
+    return { method: "blink", blinks, passed: j.passed && blinks >= 2, ms: Math.round(Math.max(0, Math.min(j.ms, 600_000))) };
+  } catch {
+    return null;
+  }
+}
+
+// Meta files are named meta-<kind>.json so they never match the `${kind}.` media prefix.
+const metaFile = (userId: string, kind: MediaKind) => path.join(DIR, userId, `meta-${kind}.json`);
+
+/** Store one piece of media (replacing any earlier one) and, for a selfie, how it was taken. */
+export async function saveMedia(userId: string, kind: MediaKind, buffer: Buffer, fileName: string, mime: string, meta?: MediaMeta | null): Promise<void> {
   const dir = path.join(DIR, userId);
   await mkdir(dir, { recursive: true });
   // Remove any prior file of this kind (different extension) so there's one.
@@ -35,6 +64,17 @@ export async function saveMedia(userId: string, kind: MediaKind, buffer: Buffer,
     for (const f of await readdir(dir)) if (f.startsWith(`${kind}.`)) await rm(path.join(dir, f), { force: true });
   } catch { /* dir just created */ }
   await writeFile(path.join(dir, `${kind}.${extFor(kind, fileName, mime)}`), buffer);
+  // A new photo never inherits the old photo's check result.
+  if (meta) await writeFile(metaFile(userId, kind), JSON.stringify(meta));
+  else await rm(metaFile(userId, kind), { force: true });
+}
+
+export async function readMediaMeta(userId: string, kind: MediaKind): Promise<MediaMeta | null> {
+  try {
+    return JSON.parse(await readFile(metaFile(userId, kind), "utf8")) as MediaMeta;
+  } catch {
+    return null;
+  }
 }
 
 export async function mediaPath(userId: string, kind: MediaKind): Promise<string | null> {

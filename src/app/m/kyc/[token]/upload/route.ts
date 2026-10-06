@@ -1,6 +1,6 @@
 import { spendHandoff } from "@/lib/kycHandoff";
 import { hasConsented } from "@/lib/consent";
-import { saveMedia, type MediaKind } from "@/lib/consentMedia";
+import { parseLiveness, saveMedia, type MediaKind } from "@/lib/consentMedia";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +26,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   if (file.size > MAX) return new Response("Too large", { status: 413 });
   if (!file.type.startsWith("image/")) return new Response("Images only", { status: 415 });
 
-  await saveMedia(uid, kind, Buffer.from(await file.arrayBuffer()), file.name || `${kind}.jpg`, file.type);
+  const meta = kind === "selfie" ? { liveness: parseLiveness(form.get("liveness")), at: Date.now() } : null;
+  await saveMedia(uid, kind, Buffer.from(await file.arrayBuffer()), file.name || `${kind}.jpg`, file.type, meta);
   return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }

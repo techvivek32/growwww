@@ -1,6 +1,6 @@
 import { currentUserId, inAdminView } from "@/lib/session";
 import { ADMIN_ID, isReservedId } from "@/lib/auth";
-import { saveMedia, mediaPath, type MediaKind } from "@/lib/consentMedia";
+import { parseLiveness, saveMedia, mediaPath, type MediaKind } from "@/lib/consentMedia";
 import { readFile } from "node:fs/promises";
 import { hasConsented } from "@/lib/consent";
 
@@ -28,7 +28,8 @@ export async function POST(req: Request) {
   const okType = kind === "video" ? file.type.startsWith("video/") : file.type.startsWith("image/");
   if (!okType) return new Response("Bad type", { status: 415 });
 
-  await saveMedia(uid, kind, Buffer.from(await file.arrayBuffer()), file.name, file.type);
+  const meta = kind === "selfie" ? { liveness: parseLiveness(form.get("liveness")), at: Date.now() } : null;
+  await saveMedia(uid, kind, Buffer.from(await file.arrayBuffer()), file.name, file.type, meta);
   return Response.json({ ok: true });
 }
 

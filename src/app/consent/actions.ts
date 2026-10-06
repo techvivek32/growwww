@@ -6,7 +6,7 @@ import { clientIp } from "@/lib/clientIp";
 import { currentUserId, ADMIN_VIEW_REFUSAL, inAdminView } from "@/lib/session";
 import { isReservedId } from "@/lib/auth";
 import { recordConsent, CONSENT_KEYS, CONTRACT, type ConsentKey, type Lang } from "@/lib/consent";
-import { mediaStatus } from "@/lib/consentMedia";
+import { mediaStatus, readMediaMeta } from "@/lib/consentMedia";
 import { revokeHandoffs } from "@/lib/kycHandoff";
 import { hasBroker } from "@/lib/users";
 import { notify } from "@/lib/notifications";
@@ -55,7 +55,7 @@ export async function acceptConsent(_prev: ConsentState, form: FormData): Promis
     language,
     ip,
     userAgent,
-    media: { selfie: media.selfie, idPhoto: media.id, video: false },
+    media: { selfie: media.selfie, idPhoto: media.id, video: false, liveness: (await readMediaMeta(uid, "selfie"))?.liveness?.passed === true },
     consents,
     languagesViewed,
   });
