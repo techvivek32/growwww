@@ -54,8 +54,8 @@ export async function tradePermission(userId: string | null): Promise<TradePermi
   if (!meta.staticIp) return { allowed: false, reason: "no-ip", serverIp, userIp: null };
   // Tradeable from any address this server can actually send from: its own, or
   // one lent by a host it can tunnel through.
-  if (!egressFor(meta.staticIp)) {
-    return sendableIps().length === 0
+  if (!(await egressFor(meta.staticIp))) {
+    return (await sendableIps()).length === 0
       ? { allowed: false, reason: "no-server-ip", serverIp, userIp: meta.staticIp }
       : { allowed: false, reason: "ip-mismatch", serverIp, userIp: meta.staticIp };
   }
@@ -77,15 +77,15 @@ export async function mayTrade(userId: string | null): Promise<boolean> {
  */
 export async function assignableIp(userId: string): Promise<string | null> {
   const mine = (await getUserBrokerMeta(userId))?.staticIp ?? null;
-  if (mine && egressFor(mine)) return mine;
+  if (mine && (await egressFor(mine))) return mine;
   const taken = new Set(await ipsInUse(userId));
-  return sendableIps().find((ip) => !taken.has(ip)) ?? null;
+  return (await sendableIps()).find((ip) => !taken.has(ip)) ?? null;
 }
 
 /** True when this user may register that address: we can send from it, and
  *  nobody else has claimed it. */
 export async function mayClaimIp(userId: string, ip: string): Promise<boolean> {
-  if (!egressFor(ip)) return false;
+  if (!(await egressFor(ip))) return false;
   const taken = new Set(await ipsInUse(userId));
   return !taken.has(ip);
 }

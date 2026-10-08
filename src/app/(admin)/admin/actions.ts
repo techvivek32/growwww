@@ -14,6 +14,7 @@ import { getMembership, settlePeriod, settlementNotice, listInvoices, markInvoic
 import { notify } from "@/lib/notifications";
 import { eraseAccount } from "@/lib/erase";
 import { getNavFor } from "@/lib/api/broker";
+import { addEgress, removeEgress } from "@/lib/egressStore";
 
 /** Every admin action re-checks the caller is the admin login — never trust the UI. */
 async function requireAdmin(): Promise<boolean> {
@@ -159,5 +160,30 @@ export async function adminMarkInvoice(formData: FormData): Promise<void> {
       key: `paid-${iv.id}`,
     });
   }
+  revalidatePath("/admin");
+}
+
+
+/**
+ * The pool of addresses members' orders are sent from.
+ *
+ * One address serves one Groww account, so the pool is what decides how many
+ * clients can trade at once. Adding one here takes effect immediately — no
+ * redeploy — which is the point: an address bought this morning can be handed
+ * to the client signing up this afternoon.
+ */
+export async function adminAddEgress(formData: FormData): Promise<void> {
+  if (!(await requireAdmin())) return;
+  await addEgress({
+    ip: String(formData.get("ip") ?? ""),
+    proxy: String(formData.get("proxy") ?? ""),
+    note: String(formData.get("note") ?? ""),
+  });
+  revalidatePath("/admin");
+}
+
+export async function adminRemoveEgress(formData: FormData): Promise<void> {
+  if (!(await requireAdmin())) return;
+  await removeEgress(String(formData.get("ip") ?? ""));
   revalidatePath("/admin");
 }

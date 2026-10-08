@@ -1,6 +1,7 @@
 import "server-only";
 import https from "node:https";
 import { HttpsProxyAgent } from "https-proxy-agent";
+import { listEgress } from "../egressStore";
 
 /**
  * Which address a broker call leaves from.
@@ -14,14 +15,11 @@ import { HttpsProxyAgent } from "https-proxy-agent";
  *  - "proxy" — tunnel through a host that owns the address (CONNECT, HTTPS
  *    only, reachable from this server alone).
  *
- * Configured with GROWW_EGRESS_MAP, a JSON object keyed by the public address
- * the client registered on their Groww key:
- *
- *   {"69.62.66.123": {"proxy": "http://69.62.66.123:8888"},
- *    "72.60.30.154": {"local": true}}
+ * The pool lives in the admin-managed store (see lib/egressStore), which seeds
+ * itself from GROWW_EGRESS_MAP so an existing deployment keeps working.
  *
  * GROWW_REGISTERED_IP stays the default for the house account and is always
- * treated as a local address, so existing behaviour is unchanged.
+ * treated as a local address.
  */
 
 export type Egress =
@@ -33,42 +31,26 @@ const env = (k: string): string | undefined => {
   return v && v.trim() ? v.trim() : undefined;
 };
 
-type MapEntry = { proxy?: string; local?: boolean };
-
-function parseMap(): Record<string, MapEntry> {
-  const raw = env("GROWW_EGRESS_MAP");
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw) as Record<string, MapEntry>;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    console.error("[egress] GROWW_EGRESS_MAP is not valid JSON — ignoring it");
-    return {};
-  }
-}
-
 /** The address the house account (and any unmapped call) goes out from. */
 export function houseIp(): string | null {
   return env("GROWW_REGISTERED_IP") ?? null;
 }
 
 /** How to send from `ip`, or null if this server cannot send from it at all. */
-export function egressFor(ip: string | null | undefined): Egress | null {
+export async function egressFor(ip: string | null | undefined): Promise<Egress | null> {
   if (!ip) return null;
   const house = houseIp();
   if (house && ip === house) return { kind: "local", ip };
-  const entry = parseMap()[ip];
+  const entry = (await listEgress()).find((e) => e.ip === ip);
   if (!entry) return null;
-  if (entry.proxy) return { kind: "proxy", url: entry.proxy, ip };
-  if (entry.local) return { kind: "local", ip };
-  return null;
+  return entry.proxy ? { kind: "proxy", url: entry.proxy, ip } : { kind: "local", ip };
 }
 
 /** Every address a client may register on their key and still be able to trade. */
-export function sendableIps(): string[] {
+export async function sendableIps(): Promise<string[]> {
   const house = houseIp();
-  const mapped = Object.keys(parseMap()).filter((ip) => egressFor(ip) !== null);
-  return house ? [house, ...mapped.filter((ip) => ip !== house)] : mapped;
+  const pool = (await listEgress()).map((e) => e.ip);
+  return house ? [house, ...pool.filter((ip) => ip !== house)] : pool;
 }
 
 /* ------------------------------------------------------------------ agents */

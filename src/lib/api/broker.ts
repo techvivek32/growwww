@@ -30,7 +30,7 @@ async function userEgress(): Promise<Egress | undefined> {
   const uid = await currentUserId();
   if (!uid || uid === OWNER_ID) return undefined;
   const meta = await getUserBrokerMeta(uid);
-  return egressFor(meta?.staticIp) ?? undefined;
+  return (await egressFor(meta?.staticIp)) ?? undefined;
 }
 
 async function withUserCreds<T>(fn: () => Promise<T>): Promise<T> {

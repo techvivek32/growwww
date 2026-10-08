@@ -96,7 +96,7 @@ export async function connectBroker(_prev: FormState, formData: FormData): Promi
       stage: "format",
     };
   }
-  const egress = egressFor(ip) ?? undefined;
+  const egress = (await egressFor(ip)) ?? undefined;
 
   const probe = await runWithCreds({ apiKey: key.value, totpSecret: secret.value }, () =>
     runWithEgress(egress, () => probeConnection()),

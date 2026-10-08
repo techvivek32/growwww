@@ -256,10 +256,21 @@ export default function ConnectWizard({ assignedIp }: { assignedIp: string | nul
               </p>
             </div>
           ) : (
-            <p className="border-l-2 border-pub-accent pl-3.5 text-[14px]">
-              <strong className="text-pub-cream">Leave the static IP empty for now.</strong> We have no free address to
-              reserve for this account yet. Orders stay unavailable until one is assigned — everything else works.
-            </p>
+            <div className="border-l-2 border-pub-accent pl-3.5 text-[14px]">
+              <p>
+                <strong className="text-pub-cream">IP not allotted yet.</strong> Every account needs its own address, and
+                all of ours are taken right now. Call us and we will allot one for you — it takes a few minutes.
+              </p>
+              <a
+                href="tel:+918320693440"
+                className="mt-3 inline-flex items-center justify-center gap-2 bg-pub-cream px-5 py-3 text-[15px] font-medium text-pub-ink transition-colors hover:bg-white"
+              >
+                Call +91 83206 93440
+              </a>
+              <p className="mt-2 text-[13px] text-pub-muted">
+                You can still finish this step — your desk works, and orders switch on the moment an address is allotted.
+              </p>
+            </div>
           )}
         </Step>
 

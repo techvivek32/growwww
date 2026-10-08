@@ -10,9 +10,11 @@ import { listOrders, orderStatsByUser, type LedgerStatus } from "@/lib/ledger";
 import { registeredIp } from "@/lib/api/groww";
 import { engineStatus } from "@/lib/signals/engine";
 import { PageHead, Card, CardHead, Pill } from "@/components/ui";
-import { adminOpenAccount, adminDisconnectBroker, adminDeleteUser, adminKycDecision, adminScheduleKycCall, adminMarkInvoice } from "./actions";
+import { adminOpenAccount, adminDisconnectBroker, adminDeleteUser, adminKycDecision, adminScheduleKycCall, adminMarkInvoice, adminAddEgress, adminRemoveEgress } from "./actions";
 import { recentAdminAccess } from "@/lib/adminAccess";
 import SettleForm from "./SettleForm";
+import { listEgress } from "@/lib/egressStore";
+import { houseIp } from "@/lib/api/egress";
 
 export const metadata: Metadata = { title: "Admin · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -94,7 +96,7 @@ export default async function AdminPage() {
   // Admin login only. Anyone else who guesses the URL is sent to their own home.
   await requireAdminPage();
 
-  const [users, kyc, consents, members, invoices, orders, orderStats, access] = await Promise.all([
+  const [users, kyc, consents, members, invoices, orders, orderStats, access, pool] = await Promise.all([
     listUsers(),
     listKyc(),
     listConsents(),
@@ -103,7 +105,9 @@ export default async function AdminPage() {
     listOrders(undefined, Number.MAX_SAFE_INTEGER),
     orderStatsByUser(),
     recentAdminAccess(20),
+    listEgress(),
   ]);
+  const house = houseIp();
   const engine = engineStatus();
   const connected = users.filter((u) => u.hasBroker).length;
   const last7 = users.filter((u) => withinDays(u.createdAt, 7)).length;
@@ -223,6 +227,78 @@ export default async function AdminPage() {
       </Figs>
 
       {/* accounts — one row per user; replaces the old users table, keeps its actions */}
+      <Card pad={false} className="mb-6">
+        <CardTitle
+          title="Order addresses"
+          count={String(pool.length + (house ? 1 : 0))}
+          sub="An exchange ties one registered address to one Groww account, so each member needs their own. A new sign-up is handed the first address nobody holds; when none is left, the connect page tells them to call us."
+        />
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] border-collapse text-left">
+            <thead>
+              <tr className="border-b border-line font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">
+                <th className="px-4 py-3 font-medium">Address</th>
+                <th className="px-4 py-3 font-medium">Reached by</th>
+                <th className="px-4 py-3 font-medium">Held by</th>
+                <th className="px-4 py-3 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {house && (
+                <tr className="border-b border-line">
+                  <td className="px-4 py-3 tnum text-[12.5px] text-ink">{house}</td>
+                  <td className="px-4 py-3 text-[12px] text-ink2">This server</td>
+                  <td className="px-4 py-3 text-[12px]">
+                    {users.find((u) => u.brokerStaticIp === house)?.email ?? <span className="text-up">Free</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right text-[12px] text-ink3">Built in</td>
+                </tr>
+              )}
+              {pool.map((e) => {
+                const holder = users.find((u) => u.brokerStaticIp === e.ip);
+                return (
+                  <tr key={e.ip} className="border-b border-line last:border-0">
+                    <td className="px-4 py-3 tnum text-[12.5px] text-ink">{e.ip}</td>
+                    <td className="px-4 py-3 text-[12px] text-ink2">
+                      {e.proxy ? `Tunnel ${e.proxy}` : "Bound on this server"}
+                      {e.note ? <span className="block text-ink3">{e.note}</span> : null}
+                    </td>
+                    <td className="px-4 py-3 text-[12px]">
+                      {holder ? holder.email : <span className="text-up">Free</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {holder ? (
+                        <span className="text-[12px] text-ink3">In use</span>
+                      ) : (
+                        <form action={adminRemoveEgress}>
+                          <input type="hidden" name="ip" value={e.ip} />
+                          <button className="border border-line2 px-2.5 py-1 text-[12px] text-ink2 hover:bg-surfaceh">Remove</button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <form action={adminAddEgress} className="flex flex-wrap items-end gap-3 border-t border-line px-5 py-4">
+          <label className="flex flex-col gap-1">
+            <span className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">Address</span>
+            <input name="ip" required placeholder="72.60.30.154" className="h-9 w-44 border border-line2 bg-surface px-2.5 font-mono text-[12.5px] text-ink outline-none focus:border-ink" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">Tunnel (if another host owns it)</span>
+            <input name="proxy" placeholder="http://72.60.30.154:8888" className="h-9 w-60 border border-line2 bg-surface px-2.5 font-mono text-[12.5px] text-ink outline-none focus:border-ink" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">Note</span>
+            <input name="note" placeholder="where it came from" className="h-9 w-48 border border-line2 bg-surface px-2.5 text-[12.5px] text-ink outline-none focus:border-ink" />
+          </label>
+          <button className="h-9 border border-line2 px-4 text-[12.5px] font-semibold text-ink hover:bg-surfaceh">Add address</button>
+        </form>
+      </Card>
+
       <Card pad={false} className="mb-6">
         <CardTitle
           title="Accounts"
