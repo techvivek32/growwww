@@ -15,6 +15,7 @@ import { recentAdminAccess } from "@/lib/adminAccess";
 import SettleForm from "./SettleForm";
 import { listEgress } from "@/lib/egressStore";
 import { houseIp } from "@/lib/api/egress";
+import { adminEmail, ownerEmail } from "@/lib/auth";
 
 export const metadata: Metadata = { title: "Admin · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -108,6 +109,9 @@ export default async function AdminPage() {
     listEgress(),
   ]);
   const house = houseIp();
+  // The two sign-in addresses that are not user records — they never appear in
+  // the table below, yet a sign-up with either is told the account exists.
+  const reserved = [ownerEmail(), adminEmail()].filter(Boolean) as string[];
   const engine = engineStatus();
   const connected = users.filter((u) => u.hasBroker).length;
   const last7 = users.filter((u) => withinDays(u.createdAt, 7)).length;
@@ -305,6 +309,19 @@ export default async function AdminPage() {
           count={String(users.length)}
           sub="One row per user. Orders count only what was sent through MNHA since the order ledger started; NAV is the last value seen in the member's own session."
         />
+        {reserved.length > 0 && (
+          <p className="border-b border-line px-5 py-3 text-[12px] leading-relaxed text-ink3">
+            Reserved sign-in addresses, which are not accounts and never appear below:{" "}
+            {reserved.map((e, i) => (
+              <span key={e}>
+                {i > 0 ? " · " : ""}
+                <span className="text-ink2">{e}</span>
+              </span>
+            ))}
+            . A sign-up with either is told the account already exists — by design, so the form cannot be used to find out
+            who works here.
+          </p>
+        )}
         {users.length === 0 ? (
           <p className="px-5 py-10 text-center text-[13.5px] text-ink3">No registered users yet.</p>
         ) : (
