@@ -3,15 +3,16 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /**
- * A log of every time the admin opens or leaves a client's account. It is a
- * security log: it keeps the client's internal id (not their email or any
- * other personal detail), when, and the admin's IP — and only the latest
- * entries, so it rotates out by itself.
+ * A log of every time the admin opens or leaves a client's account, and of the
+ * acts the admin performs inside it. It is a security log: it keeps the
+ * client's internal id (not their email or any other personal detail), when,
+ * and the admin's IP — and only the latest entries, so it rotates out by
+ * itself.
  */
 
 export interface AdminAccess {
   at: number;
-  kind: "open" | "close";
+  kind: "open" | "close" | "connect-broker";
   userId: string;
   ip: string;
 }

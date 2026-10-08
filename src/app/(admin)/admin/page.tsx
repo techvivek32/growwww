@@ -402,7 +402,7 @@ export default async function AdminPage() {
                   <tr key={`${e.at}-${i}`} className="border-b border-line last:border-0">
                     <td className="tnum px-5 py-2.5 text-[12px] text-ink2">{LOG_TIME.format(new Date(e.at))}</td>
                     <td className="px-5 py-2.5 text-[12.5px] text-ink">{emailFor.get(e.userId) ?? <span className="text-ink3">deleted account</span>}</td>
-                    <td className="px-5 py-2.5 text-[12px]">{e.kind === "open" ? <span className="text-ink">Opened</span> : <span className="text-ink2">Back to admin</span>}</td>
+                    <td className="px-5 py-2.5 text-[12px]">{e.kind === "open" ? <span className="text-ink">Opened</span> : e.kind === "connect-broker" ? <span className="text-warn">Connected Groww for the client</span> : <span className="text-ink2">Back to admin</span>}</td>
                     <td className="tnum px-5 py-2.5 text-[12px] text-ink3">{e.ip}</td>
                   </tr>
                 ))}

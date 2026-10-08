@@ -2,7 +2,10 @@
 
 import { redirect } from "next/navigation";
 import { setBroker } from "@/lib/users";
-import { currentUserId, ADMIN_VIEW_REFUSAL, inAdminView } from "@/lib/session";
+import { currentUserId, inAdminView } from "@/lib/session";
+import { logAdminAccess } from "@/lib/adminAccess";
+import { clientIp } from "@/lib/clientIp";
+import { headers } from "next/headers";
 import { isReservedId } from "@/lib/auth";
 import { runWithCreds, runWithEgress } from "@/lib/api/credctx";
 import { egressFor } from "@/lib/api/egress";
@@ -42,8 +45,12 @@ const HINT: Record<ProbeStage, (status: number | null) => string> = {
 export async function connectBroker(_prev: FormState, formData: FormData): Promise<FormState> {
   const userId = await currentUserId();
   if (!userId || isReservedId(userId)) return { error: "You are not signed in as a user account." };
-  // Connecting records the client's Groww consent, so it is the client's own step.
-  if (await inAdminView()) return { error: ADMIN_VIEW_REFUSAL };
+  // Onboarding often happens with the admin and the client together, so the
+  // admin may connect from inside the client's account. It is not pretended to
+  // be the client's own act: it goes on the admin access log, and the Groww
+  // consent below is recorded against the client either way — which is why the
+  // log line matters.
+  const byAdmin = await inAdminView();
 
   // Each attempt mints a Groww token, and Groww caps those per key per day.
   if (!rateLimit(`connect:${userId}`, 10, 15 * 60_000).ok) {
@@ -112,6 +119,9 @@ export async function connectBroker(_prev: FormState, formData: FormData): Promi
   const saved = await setBroker(userId, key.value, secret.value, { ucc: probe.ucc, staticIp: ip, ipConfirmed: true });
   if (!saved) return { error: "Could not save the connection. Try again." };
   await recordConsentChange(userId, "groww", true); // a reconnect restores the Groww consent
+  if (byAdmin) {
+    await logAdminAccess({ kind: "connect-broker", userId, ip: clientIp(await headers()) }).catch(() => undefined);
+  }
 
   await notify(userId, {
     kind: "broker",
