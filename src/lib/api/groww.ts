@@ -3,7 +3,8 @@ import crypto from "node:crypto";
 import https from "node:https";
 import type { Holding, Order, OrderStatus, OrderType, Position, Product, Side } from "../types";
 import * as feed from "./growwFeed";
-import { currentCredState } from "./credctx";
+import { currentCredState, currentEgress } from "./credctx";
+import { agentFor } from "./egress";
 
 /**
  * Groww Trading API adapter.
@@ -52,15 +53,13 @@ export function hasCredentials(): boolean {
 
 /* ------------------------------------------------------------------ agent */
 
-const agent = new https.Agent({
-  family: 4,
-  autoSelectFamily: false,
-  keepAlive: true,
-  maxSockets: 8,
-  // When set, binds the source address. A wrong value throws EADDRNOTAVAIL
-  // rather than quietly going out of an unregistered interface.
-  ...(env("GROWW_REGISTERED_IP") ? { localAddress: env("GROWW_REGISTERED_IP") } : {}),
-});
+// The agent is chosen per request, not once per process: each client's key is
+// registered against one address, so the call must leave from THAT address —
+// bound locally when this host owns it, tunnelled when another host does.
+// With no per-request egress set, this is the house address exactly as before.
+function agent(): https.Agent {
+  return agentFor(currentEgress());
+}
 
 interface Reply<T> {
   status: number;
@@ -79,7 +78,7 @@ function request<T>(
         host: HOST,
         path,
         method: opts.method ?? "GET",
-        agent,
+        agent: agent(),
         timeout: 15_000,
         headers: {
           Authorization: `Bearer ${opts.token}`,

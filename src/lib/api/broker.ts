@@ -2,9 +2,10 @@ import "server-only";
 import * as groww from "./groww";
 import { CHAIN_UNDERLYINGS, getExpiries, getStrikesAround } from "../instruments";
 import type { Account, Holding, Order, OptionChain, Position, Trade } from "../types";
-import { runWithCreds, type CredState } from "./credctx";
+import { runWithCreds, runWithEgress, type CredState } from "./credctx";
+import { egressFor, type Egress } from "./egress";
 import { currentUserId } from "../session";
-import { getBroker, findById } from "../users";
+import { getBroker, findById, getUserBrokerMeta } from "../users";
 import { OWNER_ID, isReservedId } from "../auth";
 
 /**
@@ -20,8 +21,21 @@ async function credState(): Promise<CredState> {
   return (await getBroker(uid)) ?? "none";
 }
 
+/**
+ * A user's key is registered against ONE address, so the call must also LEAVE
+ * from that address — resolved here, beside the credentials, and never guessed
+ * elsewhere. The owner's house account keeps the default egress.
+ */
+async function userEgress(): Promise<Egress | undefined> {
+  const uid = await currentUserId();
+  if (!uid || uid === OWNER_ID) return undefined;
+  const meta = await getUserBrokerMeta(uid);
+  return egressFor(meta?.staticIp) ?? undefined;
+}
+
 async function withUserCreds<T>(fn: () => Promise<T>): Promise<T> {
-  return runWithCreds(await credState(), fn);
+  const [creds, egress] = await Promise.all([credState(), userEgress()]);
+  return runWithCreds(creds, () => runWithEgress(egress, fn));
 }
 
 /**

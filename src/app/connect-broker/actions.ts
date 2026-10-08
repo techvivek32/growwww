@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import { setBroker } from "@/lib/users";
 import { currentUserId, ADMIN_VIEW_REFUSAL, inAdminView } from "@/lib/session";
 import { isReservedId } from "@/lib/auth";
-import { runWithCreds } from "@/lib/api/credctx";
+import { runWithCreds, runWithEgress } from "@/lib/api/credctx";
+import { egressFor } from "@/lib/api/egress";
+import { assignableIp, mayClaimIp } from "@/lib/trading";
 import { rateLimit } from "@/lib/ratelimit";
 import { notify } from "@/lib/notifications";
 import { recordConsentChange } from "@/lib/consent";
@@ -73,7 +75,25 @@ export async function connectBroker(_prev: FormState, formData: FormData): Promi
     };
   }
 
-  const probe = await runWithCreds({ apiKey: key.value, totpSecret: secret.value }, () => probeConnection());
+  // The key is registered against ONE address on Groww, so the check has to go
+  // out from that same address — otherwise a perfectly good key fails here and
+  // the member is told to regenerate it for nothing.
+  const wanted = String(formData.get("staticIp") ?? "").trim();
+  const ip = wanted || (await assignableIp(userId)) || "";
+  if (!ip) {
+    return { error: "No outbound address is free for a new account right now. Please contact support.", stage: "ops" };
+  }
+  if (!(await mayClaimIp(userId, ip))) {
+    return {
+      error: "That address is not available for this account. Reload this page to get the address assigned to you.",
+      stage: "format",
+    };
+  }
+  const egress = egressFor(ip) ?? undefined;
+
+  const probe = await runWithCreds({ apiKey: key.value, totpSecret: secret.value }, () =>
+    runWithEgress(egress, () => probeConnection()),
+  );
   if (!probe.ok) {
     return {
       error: HINT[probe.stage](probe.status),
@@ -87,9 +107,9 @@ export async function connectBroker(_prev: FormState, formData: FormData): Promi
     };
   }
 
-  // No static IP is recorded: a member account is read-only, and our server's
-  // IP may sit on one Groww account only (it cannot be shared across clients).
-  const saved = await setBroker(userId, key.value, secret.value, { ucc: probe.ucc });
+  // Record the address this key is registered against: every later call for
+  // this member leaves from it, and the trading gate reads it.
+  const saved = await setBroker(userId, key.value, secret.value, { ucc: probe.ucc, staticIp: ip, ipConfirmed: true });
   if (!saved) return { error: "Could not save the connection. Try again." };
   await recordConsentChange(userId, "groww", true); // a reconnect restores the Groww consent
 

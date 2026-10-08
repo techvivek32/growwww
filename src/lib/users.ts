@@ -249,6 +249,14 @@ export async function hasBroker(userId: string): Promise<boolean> {
   return Boolean((await findById(userId))?.broker);
 }
 
+/** Addresses already registered by someone — one IP can serve one account only. */
+export async function ipsInUse(exceptUserId?: string): Promise<string[]> {
+  const store = await read();
+  return store.users
+    .filter((u) => u.id !== exceptUserId && u.broker?.staticIp)
+    .map((u) => u.broker!.staticIp as string);
+}
+
 /** Non-secret broker facts for one user — what the trading gate needs to decide. */
 export async function getUserBrokerMeta(
   userId: string,

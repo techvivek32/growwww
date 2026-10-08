@@ -165,7 +165,7 @@ function Submit({ ready }: { ready: boolean }) {
   );
 }
 
-export default function ConnectWizard() {
+export default function ConnectWizard({ assignedIp }: { assignedIp: string | null }) {
   const [state, action] = useActionState<FormState, FormData>(connectBroker, {});
   const [subscribed, setSubscribed] = useState(false);
   const [opened, setOpened] = useState(false);
@@ -244,11 +244,23 @@ export default function ConnectWizard() {
             Choose <strong className="text-pub-cream">TOTP</strong>. An access token expires every morning, and a key + secret
             pair needs your approval every day — the desk would stop working each morning.
           </p>
-          <p className="border-l-2 border-pub-accent pl-3.5 text-[14px]">
-            <strong className="text-pub-cream">Leave the static IP empty.</strong> Your MNHA account is view-only, and a static IP
-            is needed only for placing orders through the API. Don&apos;t add MNHA&apos;s server address — Groww allows one IP on
-            one account only, so it will be refused.
-          </p>
+          {assignedIp ? (
+            <div className="border-l-2 border-pub-accent pl-3.5 text-[14px]">
+              <p>
+                <strong className="text-pub-cream">Add this static IP to the key:</strong>
+              </p>
+              <p className="my-1.5 font-mono text-[15px] tracking-wide text-pub-cream select-all">{assignedIp}</p>
+              <p>
+                It is reserved for your account alone — Groww allows one IP on one account only, so nobody else is given
+                it. Your orders are sent from exactly this address; without it on the key, the exchange refuses them.
+              </p>
+            </div>
+          ) : (
+            <p className="border-l-2 border-pub-accent pl-3.5 text-[14px]">
+              <strong className="text-pub-cream">Leave the static IP empty for now.</strong> We have no free address to
+              reserve for this account yet, so the desk stays view-only until one is assigned.
+            </p>
+          )}
         </Step>
 
         <Step n="3" title="Paste, and we verify it live" done={false}>
@@ -280,6 +292,7 @@ export default function ConnectWizard() {
           </div>
 
           <form id="connect-form" action={action} className="space-y-5 pt-2">
+            {assignedIp && <input type="hidden" name="staticIp" value={assignedIp} />}
             <div>
               <label htmlFor="cb-apiKey" className="mb-2 block text-[11px] font-semibold tracking-[0.12em] text-pub-cream uppercase">
                 API key (TOTP token)

@@ -10,6 +10,7 @@ import AuthShell from "@/components/public/AuthShell";
 import AdminViewBanner from "@/components/AdminViewBanner";
 import ConnectWizard from "./ConnectWizard";
 import { MEMBER_HOME } from "@/lib/routes";
+import { assignableIp } from "@/lib/trading";
 
 export const metadata: Metadata = { title: "Connect Groww · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -25,6 +26,9 @@ export default async function ConnectBrokerPage({ searchParams }: { searchParams
   const { reconnect } = await searchParams;
   if (!reconnect && (await hasBroker(uid))) redirect(MEMBER_HOME);
 
+  // One address serves one Groww account, so each member is handed their own.
+  const assignedIp = await assignableIp(uid);
+
   return (
     <>
     <AdminViewBanner />
@@ -39,7 +43,7 @@ export default async function ConnectBrokerPage({ searchParams }: { searchParams
         </form>
       }
     >
-      <ConnectWizard />
+      <ConnectWizard assignedIp={assignedIp} />
     </AuthShell>
     </>
   );

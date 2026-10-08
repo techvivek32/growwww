@@ -1,6 +1,7 @@
 import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { BrokerCreds } from "@/lib/users";
+import type { Egress } from "./egress";
 
 /**
  * Per-request broker credentials, carried through the async call tree so a
@@ -25,4 +26,21 @@ export function runWithCreds<T>(state: CredState, fn: () => T): T {
 
 export function currentCredState(): CredState {
   return store.getStore();
+}
+
+/**
+ * Which address the current request's broker calls go out from.
+ *
+ * Kept beside the credentials because the two belong together: a client's key
+ * is registered against one address, so using their key from any other address
+ * gets the call refused. `undefined` means the default (the house address).
+ */
+const egressStore = new AsyncLocalStorage<Egress | undefined>();
+
+export function runWithEgress<T>(egress: Egress | undefined, fn: () => T): T {
+  return egressStore.run(egress, fn);
+}
+
+export function currentEgress(): Egress | undefined {
+  return egressStore.getStore();
 }
