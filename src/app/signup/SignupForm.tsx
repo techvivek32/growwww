@@ -40,10 +40,10 @@ function Details({ error }: { error?: string }) {
   );
 }
 
-function Code({ email, error, info }: { email?: string; error?: string; info?: string }) {
+function Code({ email, error, info, initialCode }: { email?: string; error?: string; info?: string; initialCode?: string }) {
   const [left, setLeft] = useState(RESEND_SECONDS);
   // Keep digits only, so a pasted "188 512" or "188-512" becomes "188512".
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(initialCode ?? "");
   useEffect(() => {
     const id = setInterval(() => setLeft((n) => (n <= 1 ? 0 : n - 1)), 1000);
     return () => clearInterval(id);
@@ -97,13 +97,13 @@ function Code({ email, error, info }: { email?: string; error?: string; info?: s
   );
 }
 
-export default function SignupForm() {
-  const [state, action] = useActionState<FormState, FormData>(signup, { step: "details" });
+export default function SignupForm({ initial, initialCode }: { initial?: FormState; initialCode?: string } = {}) {
+  const [state, action] = useActionState<FormState, FormData>(signup, initial ?? { step: "details" });
   return (
     <form action={action} className="mt-9">
       {state.step === "code" ? (
         // keyed so the resend countdown restarts whenever a new code is sent
-        <Code key={`${state.email}-${state.info ?? ""}`} email={state.email} error={state.error} info={state.info} />
+        <Code key={`${state.email}-${state.info ?? ""}`} email={state.email} error={state.error} info={state.info} initialCode={initialCode} />
       ) : (
         <Details error={state.error} />
       )}

@@ -33,7 +33,9 @@ export function sendSignupCode(to: string, code: string): Promise<boolean> {
     html: frame(
       "Your verification code",
       `<p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#4a463d">Enter this code on the sign-up page to create your account. It expires in 10 minutes.</p>
-<p style="margin:0 0 18px;font-family:'Courier New',monospace;font-size:34px;letter-spacing:8px;color:#15140f;background:#eee9dd;padding:14px 18px;display:inline-block;user-select:all;-webkit-user-select:all">${code}</p>
+<p style="margin:0 0 14px;font-family:'Courier New',monospace;font-size:34px;letter-spacing:8px;color:#15140f;background:#eee9dd;padding:14px 18px;display:inline-block;user-select:all;-webkit-user-select:all">${code}</p>
+<p style="margin:0 0 18px"><a href="${SITE}/signup?code=${code}" style="display:inline-block;background:#15140f;color:#fbf9f4;padding:12px 18px;text-decoration:none;font-size:14px">Open sign-up with this code →</a></p>
+<p style="margin:0 0 18px;font-size:13px;line-height:1.6;color:#6e695e">The button fills the code in for you, on the device where you started. Otherwise type the six digits above.</p>
 <p style="margin:0;font-size:13px;line-height:1.6;color:#6e695e">Didn't try to sign up? Ignore this email — no account is created without the code.</p>`,
     ),
   });

@@ -1,14 +1,32 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import AuthShell from "@/components/public/AuthShell";
 import SignupForm from "./SignupForm";
+import { SIGNUP_COOKIE, maskEmail } from "@/lib/signupFlow";
+import { pendingEmail } from "@/lib/signupOtp";
 
 export const metadata: Metadata = {
   title: "Create your account · MNHA Financials",
   description: "Create a MNHA Financials account and connect your own Groww trading API.",
 };
 
-export default function SignupPage() {
+export const dynamic = "force-dynamic";
+
+/**
+ * The code email links straight back here with the code in the query, so
+ * nobody retypes six digits. A sign-up is only mid-flight if the pending
+ * cookie is still there, so the step is decided on the server — the code lands
+ * in a form that is already on the code step, and never in the browser history
+ * of a device that has no sign-up running.
+ */
+export default async function SignupPage({ searchParams }: { searchParams: Promise<{ code?: string }> }) {
+  const [{ code }, jar] = await Promise.all([searchParams, cookies()]);
+  const token = jar.get(SIGNUP_COOKIE)?.value;
+  const email = token ? await pendingEmail(token) : null;
+  const fromMail = (code ?? "").replace(/\D/g, "").slice(0, 6);
+  const initial = email ? ({ step: "code" as const, email: maskEmail(email) }) : undefined;
+
   return (
     <AuthShell
       step={1}
@@ -26,7 +44,7 @@ export default function SignupPage() {
         An email and a password — your login to the desk. Next comes the agreement, then the guided Groww connection.
       </p>
 
-      <SignupForm />
+      <SignupForm initial={initial} initialCode={fromMail.length === 6 ? fromMail : undefined} />
 
       <p className="mt-6 text-[14px] text-pub-muted">
         Already have one?{" "}

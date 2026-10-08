@@ -11,6 +11,7 @@ import { notify } from "@/lib/notifications";
 import { mailConfigured } from "@/lib/mailer";
 import { sendAlreadyRegistered, sendSignupCode } from "@/lib/signupMail";
 import { CODE_TTL_MS, dropPending, pendingEmail, resendCode, startPending, verifyCode } from "@/lib/signupOtp";
+import { SIGNUP_COOKIE, maskEmail as mask } from "@/lib/signupFlow";
 
 /**
  * Sign-up in two steps: details, then the 6-digit code emailed to the address.
@@ -27,17 +28,11 @@ export interface FormState {
   info?: string;
 }
 
-const COOKIE = "mnha_signup";
+const COOKIE = SIGNUP_COOKIE;
 
 async function requestIp(): Promise<string> {
   const h = await headers();
   return clientIp(h);
-}
-
-function mask(email: string): string {
-  const [user, domain] = email.split("@");
-  if (!domain) return email;
-  return `${user.slice(0, 2)}${"•".repeat(Math.max(1, user.length - 2))}@${domain}`;
 }
 
 /** Without SMTP in development, the code is printed to the server console. */

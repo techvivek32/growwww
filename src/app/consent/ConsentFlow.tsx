@@ -130,6 +130,7 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
   const t = c.ui;
 
   const [scrolled, setScrolled] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [left, setLeft] = useState(READ_SECONDS);
   const [listened, setListened] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -306,6 +307,28 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
   const mediaReady = selfieUp && idUp;
   const viaQr = timeReady && !isPhone && !manual && !mediaReady;
 
+  /**
+   * Start the identity step over: the shots already captured are deleted on the
+   * server — not just unticked here — and a fresh QR is issued, so the phone
+   * that failed cannot upload against the old link.
+   */
+  const retake = async () => {
+    if (clearing) return;
+    setClearing(true);
+    setMediaErr(null);
+    try {
+      const r = await fetch("/api/consent/media", { method: "DELETE" });
+      if (!r.ok) throw new Error(await r.text());
+      setSelfieUp(false);
+      setIdUp(false);
+      await makeQr();
+    } catch {
+      setMediaErr(t.scanFailed);
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const makeQr = async () => {
     setQrErr(false);
     try {
@@ -421,6 +444,20 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
       {/* progress cues */}
       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px]">
         {tile(scrolled, scrolled ? t.readDone : t.readToEnd)}
+        {!scrolled && (
+          <button
+            type="button"
+            onClick={() => {
+              const el = boxRef.current;
+              if (!el) return;
+              el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+              setScrolled(true);
+            }}
+            className="font-medium text-ink underline decoration-mark decoration-2 underline-offset-4"
+          >
+            {t.jumpToEnd}
+          </button>
+        )}
         {tile(listened || timerDone, listened ? t.listenDone : timerDone ? t.timeDone : `${t.timeLeft} — ${left}s`)}
       </div>
 
@@ -431,9 +468,20 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
         <div className="mt-5 border border-line bg-surface p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-[13.5px] font-semibold text-ink">{viaQr ? t.scanTitle : t.identity}</p>
-            <p className="flex gap-4 text-[12.5px]">
+            <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px]">
               {tile(selfieUp, t.selfie)}
               {tile(idUp, t.idphoto)}
+              {(selfieUp || idUp) && (
+                <button
+                  type="button"
+                  onClick={() => void retake()}
+                  disabled={clearing}
+                  title={t.retakeHint}
+                  className="font-medium text-ink underline decoration-mark decoration-2 underline-offset-4 disabled:opacity-50"
+                >
+                  {clearing ? t.retaking : t.retake}
+                </button>
+              )}
             </p>
           </div>
 
@@ -458,6 +506,7 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
                   <button type="button" onClick={() => void makeQr()} className="font-medium text-ink underline decoration-mark decoration-2 underline-offset-4">
                     {t.scanRefresh}
                   </button>
+
                   <button type="button" onClick={() => setManual(true)} className="text-ink3 hover:text-ink">
                     {t.useComputer}
                   </button>
@@ -539,6 +588,7 @@ export default function ConsentFlow({ contract }: { contract: Record<Lang, Contr
             className="h-11 w-full rounded-lg border border-pub-faint bg-surface px-3.5 text-[14px] text-ink outline-none focus:border-pub-cream" />
         </label>
 
+        {!readReady && <p className="mt-2 text-[12px] text-ink3">{t.needRead}</p>}
         {!mediaReady && (readReady) && <p className="mt-2 text-[12px] text-ink3">{t.needMedia}</p>}
         {mediaReady && readReady && !requiredOk && <p className="mt-2 text-[12px] text-ink3">{t.needRequired}</p>}
         {state.error && <p role="alert" className="mt-3 rounded-lg border border-down/30 bg-downsoft px-3 py-2.5 text-[12.5px] text-down">{state.error}</p>}
