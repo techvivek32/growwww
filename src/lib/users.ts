@@ -276,7 +276,7 @@ export interface UserSummary {
   createdAt: number;
   hasBroker: boolean;
   brokerConnectedAt: number | null;
-  /** The static IP the user confirmed on their Groww key, if they did. */
+  /** The address this member's Groww traffic is sent from, once connected. */
   brokerStaticIp: string | null;
   brokerUcc: string | null;
 }
@@ -291,7 +291,7 @@ export async function listUsers(): Promise<UserSummary[]> {
       createdAt: u.createdAt,
       hasBroker: Boolean(u.broker),
       brokerConnectedAt: u.broker?.connectedAt ?? null,
-      brokerStaticIp: u.broker?.ipConfirmedAt ? (u.broker.staticIp ?? null) : null,
+      brokerStaticIp: u.broker?.staticIp ?? null,
       brokerUcc: u.broker?.ucc ?? null,
     }))
     .sort((a, b) => b.createdAt - a.createdAt);

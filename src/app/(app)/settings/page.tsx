@@ -141,7 +141,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                   <dd className="text-[14px] text-ink">Not needed</dd>
                 </div>
               </dl>
-              <p className="mt-2 text-[12.5px] leading-relaxed text-ink3">A static IP is needed only for placing orders through the API. Your account is view-only, so leave the IP on your Groww key empty — Groww allows one IP on one account only.</p>
+              <p className="mt-2 text-[12.5px] leading-relaxed text-ink3">This address is reserved for your account and is the one registered on your Groww key. The exchange requires every order to arrive from it, so your orders are always sent from here. One address serves one Groww account, so it is never shared.</p>
 
               <div className="mt-5 flex flex-wrap gap-2">
                 {keyOnFile && (

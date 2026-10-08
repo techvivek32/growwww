@@ -118,7 +118,7 @@ export default async function StockPage({
     ? Math.max(1, ...snapshot.buyBook.map((r) => r.qty), ...snapshot.sellBook.map((r) => r.qty))
     : 1;
 
-  // The order panel is the owner's desk only (members are view-only).
+  // The order panel appears for anyone who may place an order on this desk.
   const showOrderPanel = owner && !isIndex;
   const showDepth = snapshot !== null && (snapshot.buyBook.length > 0 || snapshot.sellBook.length > 0);
   const hasRail = showOrderPanel || topOptions.length > 0 || showDepth;

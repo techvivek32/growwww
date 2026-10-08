@@ -258,7 +258,7 @@ export default function ConnectWizard({ assignedIp }: { assignedIp: string | nul
           ) : (
             <p className="border-l-2 border-pub-accent pl-3.5 text-[14px]">
               <strong className="text-pub-cream">Leave the static IP empty for now.</strong> We have no free address to
-              reserve for this account yet, so the desk stays view-only until one is assigned.
+              reserve for this account yet. Orders stay unavailable until one is assigned — everything else works.
             </p>
           )}
         </Step>

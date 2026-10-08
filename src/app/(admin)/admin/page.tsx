@@ -283,7 +283,15 @@ export default async function AdminPage() {
                               <span className="tnum">{u.brokerConnectedAt ? fmtDayYr(u.brokerConnectedAt) : "Connected"}</span>
                             </p>
                             <p className="tnum text-ink2">UCC {u.brokerUcc ? maskUcc(u.brokerUcc) : "—"}</p>
-                            <p className="text-ink3" title="Member accounts are read-only; a static IP is needed only for orders, and one IP can sit on one Groww account only">View-only · no IP needed</p>
+                            {u.brokerStaticIp ? (
+                              <p className="tnum text-ink3" title="Orders for this account are sent from this address, which is the one registered on their Groww key">
+                                Orders from {u.brokerStaticIp}
+                              </p>
+                            ) : (
+                              <p className="text-warn" title="Without a registered address the exchange refuses orders on this account">
+                                No order address — reconnect needed
+                              </p>
+                            )}
                           </div>
                         ) : (
                           <span className="text-ink3">Not connected</span>

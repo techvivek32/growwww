@@ -80,6 +80,8 @@ export interface ConnectionStatus {
   live: boolean;
   /** Outbound calls are pinned to the registered source address. */
   ipPinned: boolean;
+  /** The address this account's orders are sent from, once one is reserved. */
+  orderIp: string | null;
 }
 
 /**
@@ -87,6 +89,12 @@ export interface ConnectionStatus {
  * a real authenticated round-trip. The margin call doubles as that probe.
  */
 export async function getConnectionStatus(): Promise<ConnectionStatus> {
+  const uid = await currentUserId();
+  const orderIp =
+    uid && uid !== OWNER_ID && !isReservedId(uid)
+      ? ((await getUserBrokerMeta(uid))?.staticIp ?? null)
+      : (process.env.GROWW_REGISTERED_IP?.trim() || null);
+
   return withUserCreds(async () => {
     const credentials = groww.hasCredentials();
     const live = credentials
@@ -95,7 +103,8 @@ export async function getConnectionStatus(): Promise<ConnectionStatus> {
     return {
       credentials,
       live,
-      ipPinned: Boolean(process.env.GROWW_REGISTERED_IP?.trim()),
+      ipPinned: Boolean(orderIp),
+      orderIp,
     };
   });
 }

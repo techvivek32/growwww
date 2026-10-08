@@ -116,7 +116,7 @@ const FAQ: [string, string][] = [
   ],
   [
     "Do I need to add an IP address on my Groww key?",
-    "No — leave it empty. Exchange rules require a registered static IP only for orders sent through the API, and MNHA places no orders on your account. A static IP can also sit on one Groww account only, so ours is never shared with you.",
+    "Yes, and we give you the exact one during setup. Exchange rules require orders sent through the API to arrive from a registered static IP, so we reserve an address for your account alone and show it in the connect step — you paste it onto your Groww key. One address serves one Groww account, so yours is never shared with another client.",
   ],
   [
     "What do I need before I start?",

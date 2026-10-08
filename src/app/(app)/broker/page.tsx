@@ -56,7 +56,7 @@ function ownerSteps(status: { credentials: boolean; live: boolean; ipPinned: boo
 }
 
 /** The same three facts, about the member's own key. */
-function memberSteps(status: { credentials: boolean; live: boolean }): Step[] {
+function memberSteps(status: { credentials: boolean; live: boolean; orderIp: string | null }): Step[] {
   return [
     {
       on: status.credentials,
@@ -71,9 +71,11 @@ function memberSteps(status: { credentials: boolean; live: boolean }): Step[] {
         : "Groww did not answer a read of your account just now. If this persists, re-connect from Settings.",
     },
     {
-      on: true,
-      label: "No static IP needed",
-      detail: "A static IP is needed only for placing orders through the API. Your account is view-only, so leave the IP on your Groww key empty — Groww allows one IP on one account only.",
+      on: Boolean(status.orderIp),
+      label: status.orderIp ? `Orders sent from ${status.orderIp}` : "No order address yet",
+      detail: status.orderIp
+        ? "This address is reserved for your account and is the one registered on your Groww key. The exchange requires orders to arrive from it, so every order you place here leaves from this address."
+        : "Your Groww key has no address reserved yet, so the exchange would refuse an order. Reconnect Groww from Settings — we will give you the address to register on the key.",
     },
   ];
 }
@@ -168,7 +170,7 @@ export default async function BrokerPage() {
         </ul>
       </Card>
 
-      {/* Order types and rate limits are the house desk's concern; member accounts are view-only. */}
+      {/* Order types and rate limits apply to every desk that places orders. */}
       {isOwner && (
         <Card>
           <CardHead title="Groww API limits" sub="What the integration paces itself against" />

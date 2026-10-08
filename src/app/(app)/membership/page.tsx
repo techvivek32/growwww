@@ -68,7 +68,7 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
   }
   const acc = active && membership && navInfo ? accrual(membership, navInfo.nav) : null;
   const bills = await listInvoices(uid);
-  // Member accounts are view-only today: MNHA places no trades for them, so a
+  // MNHA places no trades on a member's behalf — they place their own, so a
   // performance fee would be charged on gains MNHA had no part in.
   const readOnly = true;
 

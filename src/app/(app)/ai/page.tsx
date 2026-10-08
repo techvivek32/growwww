@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
-import { getAccount, getNav } from "@/lib/api/broker";
+import { getAccount, getNav, getConnectionStatus } from "@/lib/api/broker";
 import { engineStatus } from "@/lib/signals/engine";
 import { STRATEGIES } from "@/lib/signals/strategies";
 import { marketState } from "@/lib/market";
@@ -50,7 +50,8 @@ export default async function AiPage() {
   if (!uid) redirect("/login");
   const isOwner = uid === OWNER_ID;
 
-  const [account, nav] = await Promise.all([getAccount(), getNav()]);
+  const [account, nav, conn] = await Promise.all([getAccount(), getNav(), getConnectionStatus()]);
+  const orderIp = conn.orderIp;
   const engine = engineStatus();
   const ms = marketState();
   const now = nowMs();
@@ -120,10 +121,14 @@ export default async function AiPage() {
           {!isOwner && (
             <Row
               n="04"
-              label="Static IP"
-              value="Not needed"
-              note="A static IP is needed only for placing orders through the API. Your account is view-only, so leave the IP on your Groww key empty — Groww allows one IP on one account only."
-              tone="muted"
+              label="Order address"
+              value={orderIp ?? "Not assigned yet"}
+              note={
+                orderIp
+                  ? "Reserved for your account and registered on your Groww key. The exchange requires orders to arrive from this address, so yours are always sent from it — and one address serves one account, so it is never shared."
+                  : "No address is reserved for your account yet, so the exchange would refuse an order. Reconnect Groww from Settings and we will give you one."
+              }
+              tone={orderIp ? "up" : "warn"}
             />
           )}
           <Row

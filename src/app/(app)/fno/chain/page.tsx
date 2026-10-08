@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getOptionChain, getAccount, isConnected, canTrade } from "@/lib/api/broker";
 import { canTradeSession } from "@/lib/access";
-import { PageHead, Pill } from "@/components/ui";
+import { PageHead } from "@/components/ui";
 import ChainBoard from "@/components/ChainBoard";
 import NotConnected from "@/components/NotConnected";
 
@@ -52,7 +52,6 @@ export default async function OptionChainPage({
         sub={`${chain.underlying} · expiry ${fmtExpiry(chain.expiry)} · lot size ${chain.lotSize > 0 ? chain.lotSize : "—"}. Live strikes, premiums and open interest${
           owner ? " — pick any leg to open its order ticket." : "."
         }`}
-        right={owner ? undefined : <Pill>View only</Pill>}
       />
       <ChainBoard chain={chain} balance={account.balance} tradable={canTrade()} />
     </>

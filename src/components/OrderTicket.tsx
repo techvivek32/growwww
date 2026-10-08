@@ -431,7 +431,7 @@ function OrderTicketInner({
   );
 }
 
-/** Order entry exists only on the owner's desk; member accounts are view-only. */
+/** Order entry renders for any desk allowed to place orders. */
 export default function OrderTicket(props: Parameters<typeof OrderTicketInner>[0]) {
   return useCanTrade() ? <OrderTicketInner {...props} /> : null;
 }

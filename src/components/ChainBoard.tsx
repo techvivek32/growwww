@@ -17,7 +17,7 @@ import type { ChainLeg, OptionChain } from "@/lib/types";
  * on the rule between the strikes that bracket the live level.
  *
  * The owner's desk picks any leg to dock the order panel on the right.
- * Member accounts are view-only: no rail, no clickable legs — the table takes
+ * Without order permission there is no rail and no clickable legs — the table takes
  * the full width.
  */
 

@@ -363,7 +363,7 @@ function OrderPanelInner({
   );
 }
 
-/** Order entry exists only on the owner's desk; member accounts are view-only. */
+/** Order entry renders for any desk allowed to place orders. */
 export default function OrderPanel(props: Parameters<typeof OrderPanelInner>[0]) {
   return useCanTrade() ? <OrderPanelInner {...props} /> : null;
 }

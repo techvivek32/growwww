@@ -31,7 +31,7 @@ export async function proxy(req: NextRequest) {
     if (uid === ADMIN_ID) return adminMayOpen(path) ? pass() : sendTo(ADMIN_HOME);
     // Nobody else opens the console — the owner's trading account included.
     if (isAdminOnly(path)) return sendTo(uid === OWNER_ID ? OWNER_HOME : MEMBER_HOME);
-    // Member accounts are view-only: owner-only sections send them home.
+    // Owner-only sections send a member home.
     if (uid !== OWNER_ID && isOwnerOnly(path)) return sendTo(MEMBER_HOME);
     return pass();
   }

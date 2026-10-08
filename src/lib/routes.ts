@@ -1,5 +1,5 @@
 /**
- * Who can open what. Member accounts are view-only: no signals or alerts, no
+ * Who can open what. Signals, alerts and the research desk stay with the owner; no
  * manual order entry — their home is the MNHA AI page. The owner's account
  * keeps the full desk. Shared by the proxy (edge) and server pages, so it has
  * no server-only imports.

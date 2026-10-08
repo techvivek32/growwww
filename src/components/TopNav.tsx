@@ -57,7 +57,7 @@ export default function TopNav({
   unread?: number;
 }) {
   const pathname = usePathname();
-  // Member accounts see only view-only sections — no signals, alerts or order entry.
+  // Members see the sections open to them; signals and the research desk stay with the owner.
   const visible = NAV_ITEMS.filter((i) => isOwner || i.access !== "owner");
   const trading = visible.filter((i) => i.group === "trading");
   const system = visible.filter((i) => i.group === "system");

@@ -105,7 +105,6 @@ export default async function WatchlistPage({
             ? "Your lists, priced live. Add any NSE stock or index from the instrument master."
             : "Stocks and indices to keep an eye on, priced live from the exchange feed."
         }
-        right={owner ? undefined : <Pill>View only</Pill>}
       />
 
       {/* list tabs + controls */}
