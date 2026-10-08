@@ -38,6 +38,8 @@ export interface KycRecord {
   callAt: number | null;
   callLink: string | null;
   review: KycReview | null;
+  /** Last time the photos were replaced after the first submission. */
+  photosUpdatedAt?: number;
 }
 
 interface Store {
@@ -142,6 +144,7 @@ export interface KycView {
   review: KycReview | null;
   hasSelfie: boolean;
   hasDoc: boolean;
+  photosUpdatedAt: number | null;
 }
 
 /** Safe view for the user themselves — PAN masked, no ciphertext. Always the
@@ -149,7 +152,7 @@ export interface KycView {
 export async function getKycView(userId: string): Promise<KycView> {
   const r = await getKyc(userId);
   if (!r) {
-    return { status: "none", fullName: "", panMasked: "", address: "", submittedAt: 0, callAt: null, callLink: null, review: null, hasSelfie: false, hasDoc: false };
+    return { status: "none", fullName: "", panMasked: "", address: "", submittedAt: 0, callAt: null, callLink: null, review: null, hasSelfie: false, hasDoc: false, photosUpdatedAt: null };
   }
   return {
     status: r.status,
@@ -162,6 +165,7 @@ export async function getKycView(userId: string): Promise<KycView> {
     review: r.review,
     hasSelfie: Boolean(r.selfieFile),
     hasDoc: Boolean(r.docFile),
+    photosUpdatedAt: r.photosUpdatedAt ?? null,
   };
 }
 
@@ -208,6 +212,65 @@ export async function submitKyc(userId: string, s: KycSubmission): Promise<{ ok:
     };
     const i = store.records.findIndex((r) => r.userId === userId);
     if (i >= 0) store.records[i] = rec; else store.records.push(rec);
+    await write(store);
+    return { ok: true };
+  });
+}
+
+/**
+ * Replace the photos on a submission already in review.
+ *
+ * A wrong shot — a blurred selfie, the back of the card, someone else's
+ * document — should not mean filling the whole form again, and it must not
+ * silently leave the old file on disk for the reviewer to judge. So this swaps
+ * only the files, deletes whatever it replaced, and stamps the change so the
+ * reviewer can see the submission moved.
+ *
+ * Only a submission still IN REVIEW can be amended: once a decision is made,
+ * a change has to go through a fresh submission.
+ */
+export async function replaceKycPhotos(
+  userId: string,
+  files: { selfie?: { buffer: Buffer; name: string } | null; doc?: { buffer: Buffer; name: string } | null },
+): Promise<{ ok: boolean; error?: string }> {
+  const rec = await getKyc(userId);
+  if (!rec) return { ok: false, error: "There is nothing to amend yet — submit your details first." };
+  if (rec.status !== "submitted") {
+    return { ok: false, error: "This submission has already been reviewed, so its photos can no longer be changed." };
+  }
+  if (!files.selfie && !files.doc) return { ok: false, error: "Choose a new selfie or ID photo to replace." };
+
+  const dir = path.join(DIR, userId);
+  await mkdir(dir, { recursive: true });
+
+  let selfieFile = rec.selfieFile;
+  let docFile = rec.docFile;
+  const stale: string[] = [];
+
+  if (files.selfie) {
+    const next = `selfie.${extOf(files.selfie.name, "jpg")}`;
+    await writeFile(path.join(dir, next), files.selfie.buffer);
+    if (selfieFile && selfieFile !== next) stale.push(selfieFile);
+    selfieFile = next;
+  }
+  if (files.doc) {
+    const next = `doc.${extOf(files.doc.name, "jpg")}`;
+    await writeFile(path.join(dir, next), files.doc.buffer);
+    if (docFile && docFile !== next) stale.push(docFile);
+    docFile = next;
+  }
+  // Drop what was replaced — a reviewer must never see two versions, and the
+  // old image should not linger on disk after the user asked to change it.
+  for (const f of stale) await rm(path.join(dir, f), { force: true }).catch(() => undefined);
+
+  return enqueue(async () => {
+    const store = await read();
+    const r = store.records.find((x) => x.userId === userId);
+    if (!r) return { ok: false, error: "Submission not found." };
+    if (r.status !== "submitted") return { ok: false, error: "This submission has already been reviewed." };
+    r.selfieFile = selfieFile;
+    r.docFile = docFile;
+    r.photosUpdatedAt = nowMs();
     await write(store);
     return { ok: true };
   });

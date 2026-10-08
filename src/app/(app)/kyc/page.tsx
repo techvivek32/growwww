@@ -6,6 +6,7 @@ import { homeFor } from "@/lib/access";
 import { getKycView } from "@/lib/kyc";
 import { PageHead, Card, CardHead, Pill } from "@/components/ui";
 import KycForm from "./KycForm";
+import RetakeForm from "./RetakeForm";
 
 export const metadata: Metadata = { title: "Identity verification · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -66,6 +67,15 @@ export default async function KycPage() {
           ) : (
             <p className="mt-3 text-[12.5px] text-ink3">We&apos;ll post your call time here and notify you.</p>
           )}
+
+          <div className="mt-6 border-t border-line pt-5">
+            <p className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">Wrong photo?</p>
+            <p className="mt-1.5 mb-4 text-[13px] leading-relaxed text-ink2">
+              Replace it while this is still in review — your name, PAN, date of birth and address stay as they are.
+              {kyc.photosUpdatedAt ? ` Last changed ${fmt(kyc.photosUpdatedAt)}.` : ""}
+            </p>
+            <RetakeForm hasDoc={kyc.hasDoc} />
+          </div>
         </Card>
       )}
 
