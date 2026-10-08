@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { submitOrder, type OrderState } from "@/app/(app)/trade/actions";
 import { fmtMoney } from "@/lib/format";
-import { useIsOwner } from "./Viewer";
+import { useCanTrade } from "./Viewer";
 import type { OrderType, Product, Side } from "@/lib/types";
 
 /**
@@ -433,5 +433,5 @@ function OrderTicketInner({
 
 /** Order entry exists only on the owner's desk; member accounts are view-only. */
 export default function OrderTicket(props: Parameters<typeof OrderTicketInner>[0]) {
-  return useIsOwner() ? <OrderTicketInner {...props} /> : null;
+  return useCanTrade() ? <OrderTicketInner {...props} /> : null;
 }

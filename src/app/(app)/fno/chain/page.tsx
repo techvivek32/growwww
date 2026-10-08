@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getOptionChain, getAccount, isConnected, canTrade } from "@/lib/api/broker";
-import { isOwnerSession } from "@/lib/access";
+import { canTradeSession } from "@/lib/access";
 import { PageHead, Pill } from "@/components/ui";
 import ChainBoard from "@/components/ChainBoard";
 import NotConnected from "@/components/NotConnected";
@@ -25,7 +25,7 @@ export default async function OptionChainPage({
   const [chain, account, owner] = await Promise.all([
     getOptionChain(params.u, params.e),
     getAccount(),
-    isOwnerSession(),
+    canTradeSession(),
   ]);
 
   if (!chain) {

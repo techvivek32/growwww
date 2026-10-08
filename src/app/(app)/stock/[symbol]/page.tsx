@@ -7,7 +7,7 @@ import { canTrade, getAccount, getOptionChain } from "@/lib/api/broker";
 import { equityName } from "@/lib/instruments";
 import { CHAIN_UNDERLYINGS } from "@/lib/instruments";
 import { fmtMoney, fmtNum, fmtCompact, fmtPct, toneText } from "@/lib/format";
-import { isOwnerSession } from "@/lib/access";
+import { canTradeSession } from "@/lib/access";
 import { Card, CardHead, Pill, SymbolChip } from "@/components/ui";
 import { LivePrice, LiveChange } from "@/components/Live";
 import PriceChart from "@/components/PriceChart";
@@ -45,7 +45,7 @@ export default async function StockPage({
     isIndex ? Promise.resolve(indexName) : equityName(raw).catch(() => null),
     getAccount(),
     hasChain ? getOptionChain(raw).catch(() => null) : Promise.resolve(null),
-    isOwnerSession(),
+    canTradeSession(),
   ]);
 
   // Unknown symbol: no name in the master, no chart, no quote.

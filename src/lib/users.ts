@@ -249,6 +249,19 @@ export async function hasBroker(userId: string): Promise<boolean> {
   return Boolean((await findById(userId))?.broker);
 }
 
+/** Non-secret broker facts for one user — what the trading gate needs to decide. */
+export async function getUserBrokerMeta(
+  userId: string,
+): Promise<{ staticIp: string | null; ipConfirmed: boolean; ucc: string | null } | null> {
+  const b = (await findById(userId))?.broker;
+  if (!b) return null;
+  return {
+    staticIp: b.staticIp ?? null,
+    ipConfirmed: Boolean(b.ipConfirmedAt),
+    ucc: b.ucc ?? null,
+  };
+}
+
 export interface UserSummary {
   id: string;
   email: string;

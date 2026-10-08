@@ -4,7 +4,7 @@ import { getQuotes, type Quote } from "@/lib/api/yahoo";
 import { getTicks, hasCredentials, type Tick } from "@/lib/api/groww";
 import { canTrade } from "@/lib/api/broker";
 import { getWatchlists } from "@/lib/watchlists";
-import { isOwnerSession } from "@/lib/access";
+import { canTradeSession } from "@/lib/access";
 import { fmtMoney, fmtPct, fmtCompact, toneText } from "@/lib/format";
 import { PageHead, SymbolChip, Sparkline, Pill } from "@/components/ui";
 import { TableWrap, Th, Td, Tr } from "@/components/Table";
@@ -72,7 +72,7 @@ export default async function WatchlistPage({
   searchParams: Promise<{ list?: string; q?: string; edit?: string }>;
 }) {
   const { list: listParam, q, edit } = await searchParams;
-  const owner = await isOwnerSession();
+  const owner = await canTradeSession();
   const filter = (q ?? "").trim().toUpperCase();
   // The lists live in one shared store, so editing them is the owner's desk
   // only — a member account reads them.

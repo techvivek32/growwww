@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { fmtNum, fmtCompact } from "@/lib/format";
 import { useTick } from "./LiveTicks";
 import OrderPanel from "./OrderPanel";
-import { useIsOwner } from "./Viewer";
+import { useCanTrade } from "./Viewer";
 import type { ChainLeg, OptionChain } from "@/lib/types";
 
 /**
@@ -120,7 +120,7 @@ export default function ChainBoard({
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Selected | null>(null);
-  const canTrade = useIsOwner();
+  const canTrade = useCanTrade();
 
   // The pill follows the live level, not the render-time one.
   const tick = useTick(chain.underlying);

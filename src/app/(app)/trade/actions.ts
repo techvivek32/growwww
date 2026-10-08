@@ -6,6 +6,7 @@ import { lotSizeOf } from "@/lib/instruments";
 import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
 import { hasBroker } from "@/lib/users";
+import { DENIAL_MESSAGE, tradePermission } from "@/lib/trading";
 import { rateLimit } from "@/lib/ratelimit";
 import { notify } from "@/lib/notifications";
 import { appendOrder } from "@/lib/ledger";
@@ -58,8 +59,11 @@ function fail(message: string): OrderState {
 export async function submitOrder(_prev: OrderState, form: FormData): Promise<OrderState> {
   const userId = await currentUserId();
   if (!userId) return fail("Your session expired. Sign in again.");
-  // Member accounts are view-only: manual order entry is the owner's desk only.
-  if (userId !== OWNER_ID) return fail("Manual orders are not available on this account.");
+  // A member may trade once the static IP registered on their OWN Groww key is
+  // the address this server sends orders from. Without that match Groww refuses
+  // the order at the gate, so refusing it here is both honest and faster.
+  const permission = await tradePermission(userId);
+  if (!permission.allowed) return fail(DENIAL_MESSAGE[permission.reason ?? "no-broker"]);
   // Throttle the order path so a stuck client or a script cannot machine-gun
   // the broker: at most 30 submissions a minute per user.
   if (!rateLimit(`order:${userId}`, 30, 60_000).ok) {
@@ -176,7 +180,9 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
 export async function cancelOrderAction(_prev: OrderState, form: FormData): Promise<OrderState> {
   const userId = await currentUserId();
   if (!userId) return fail("Your session expired. Sign in again.");
-  if (userId !== OWNER_ID) return fail("Manual orders are not available on this account.");
+  // Cancelling is part of the same desk: whoever may place may also cancel.
+  const permission = await tradePermission(userId);
+  if (!permission.allowed) return fail(DENIAL_MESSAGE[permission.reason ?? "no-broker"]);
   if (!rateLimit(`cancel:${userId}`, 30, 60_000).ok) {
     return fail("Too many cancellations in a short window. Pause a moment and retry.");
   }

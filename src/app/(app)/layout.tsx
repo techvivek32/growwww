@@ -6,6 +6,7 @@ import { hasBroker } from "@/lib/users";
 import { hasConsented } from "@/lib/consent";
 import { unreadCount } from "@/lib/notifications";
 import { ADMIN_ID, OWNER_ID } from "@/lib/auth";
+import { mayTrade } from "@/lib/trading";
 import { ADMIN_HOME } from "@/lib/routes";
 import TopNav from "@/components/TopNav";
 import IndexStrip from "@/components/IndexStrip";
@@ -40,11 +41,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     if (!(await hasBroker(uid))) redirect("/connect-broker");
   }
 
-  const [account, unread] = await Promise.all([getAccount(), unreadCount(uid)]);
+  const [account, unread, canTrade] = await Promise.all([getAccount(), unreadCount(uid), mayTrade(uid)]);
   const isOwner = uid === OWNER_ID;
 
   return (
-    <ViewerProvider isOwner={isOwner}>
+    <ViewerProvider isOwner={isOwner} canTrade={canTrade}>
     <AdminViewBanner />
     <AutoTradeProvider>
       <LiveTicksProvider>
@@ -53,7 +54,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <main className="mx-auto max-w-[1360px] px-4 py-6 lg:px-6 lg:py-8">{children}</main>
       <footer className="mx-auto max-w-[1360px] px-4 pb-10 lg:px-6">
         <p className="border-t border-line pt-5 text-[11.5px] leading-relaxed text-ink3">
-          {isOwner
+          {canTrade
             ? "MNHA Financials is a decision-support terminal, not investment advice. Setups are generated from price and volume data and can be wrong. Orders you confirm here are placed on your own Groww account — you place them, you own them."
             : "MNHA Financials shows your own Groww account, read-only. Nothing here is investment advice, and no order is placed from this page. Your money and positions stay with Groww."}
         </p>

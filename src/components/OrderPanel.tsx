@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { submitOrder, type OrderState } from "@/app/(app)/trade/actions";
 import { fmtMoney } from "@/lib/format";
-import { useIsOwner } from "./Viewer";
+import { useCanTrade } from "./Viewer";
 import type { OrderType, Product, Side } from "@/lib/types";
 
 /**
@@ -365,5 +365,5 @@ function OrderPanelInner({
 
 /** Order entry exists only on the owner's desk; member accounts are view-only. */
 export default function OrderPanel(props: Parameters<typeof OrderPanelInner>[0]) {
-  return useIsOwner() ? <OrderPanelInner {...props} /> : null;
+  return useCanTrade() ? <OrderPanelInner {...props} /> : null;
 }
