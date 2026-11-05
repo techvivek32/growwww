@@ -1,0 +1,14 @@
+[Unit]
+Description=MNHA research: after-close daily bars, paper-book publish and mark (no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/mnha-research.env
+WorkingDirectory=/opt/mnha-research
+ExecStart=/opt/mnha-research/.venv/bin/python -m mnha_research daily
+Nice=5
+StandardOutput=append:/opt/mnha-research/data/paper.log
+StandardError=append:/opt/mnha-research/data/paper.log
+TimeoutStartSec=2h

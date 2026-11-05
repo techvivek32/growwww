@@ -44,3 +44,10 @@ yarn-error.log*
 
 # MediaPipe runtime, copied from node_modules at build time (scripts/copy-mediapipe.mjs)
 /public/mediapipe/wasm/
+
+# research engine — runtime data, venv and build stamp stay on the research box
+/research/data/
+/research/.venv/
+/research/CODE_VERSION
+__pycache__/
+.pytest_cache/

@@ -1,0 +1,13 @@
+[Unit]
+Description=MNHA live paper trading: after 15:15: price the day's paper books (no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/mnha-research.env
+WorkingDirectory=/opt/mnha-research
+ExecStart=/opt/mnha-research/.venv/bin/python -m mnha_research live-settle
+StandardOutput=append:/opt/mnha-research/data/live.log
+StandardError=append:/opt/mnha-research/data/live.log
+TimeoutStartSec=1h

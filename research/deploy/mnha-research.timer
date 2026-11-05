@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly MNHA research refresh (Saturday 06:00 IST)
+
+[Timer]
+OnCalendar=Sat *-*-* 00:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

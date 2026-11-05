@@ -1,0 +1,9 @@
+[Unit]
+Description=MNHA paper trading after the NSE close (Mon-Fri 16:30 IST)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 11:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

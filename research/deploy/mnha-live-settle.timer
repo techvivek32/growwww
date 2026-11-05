@@ -1,0 +1,9 @@
+[Unit]
+Description=MNHA live paper trading: settle (15:25 IST, Mon-Fri)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:55:00 UTC
+Persistent=false
+
+[Install]
+WantedBy=timers.target

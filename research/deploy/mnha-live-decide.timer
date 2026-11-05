@@ -1,0 +1,9 @@
+[Unit]
+Description=MNHA live paper trading: decide (09:17 IST (waits for 09:20), Mon-Fri)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 03:47:00 UTC
+Persistent=false
+
+[Install]
+WantedBy=timers.target

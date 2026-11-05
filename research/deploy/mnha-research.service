@@ -1,0 +1,14 @@
+[Unit]
+Description=MNHA research: ingest Groww candles, then screen, validate, rank and train
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/mnha-research.env
+WorkingDirectory=/opt/mnha-research
+ExecStart=/opt/mnha-research/.venv/bin/python -m mnha_research all
+Nice=10
+StandardOutput=append:/opt/mnha-research/data/research.log
+StandardError=append:/opt/mnha-research/data/research.log
+TimeoutStartSec=infinity

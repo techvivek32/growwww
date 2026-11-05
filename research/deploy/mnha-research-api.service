@@ -1,0 +1,14 @@
+[Unit]
+Description=MNHA research API (read-only, localhost)
+After=network-online.target
+
+[Service]
+EnvironmentFile=/etc/mnha-research.env
+WorkingDirectory=/opt/mnha-research
+ExecStart=/opt/mnha-research/.venv/bin/python -m mnha_research serve
+Restart=on-failure
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=MNHA live paper trading: before the open: bars to the last session, NSE files, models
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/mnha-research.env
+WorkingDirectory=/opt/mnha-research
+ExecStart=/opt/mnha-research/.venv/bin/python -m mnha_research live-prepare
+StandardOutput=append:/opt/mnha-research/data/live.log
+StandardError=append:/opt/mnha-research/data/live.log
+TimeoutStartSec=2h
