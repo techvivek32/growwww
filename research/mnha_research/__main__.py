@@ -176,7 +176,9 @@ def main(argv: list[str] | None = None) -> int:
     elif cmd == "serve":
         import uvicorn
 
-        uvicorn.run("mnha_research.api:app", host="127.0.0.1", port=8100, workers=1)
+        import os
+
+        uvicorn.run("mnha_research.api:app", host=os.environ.get("MNHA_API_HOST", "127.0.0.1"), port=8100, workers=1)
     else:
         p.print_help()
         return 2

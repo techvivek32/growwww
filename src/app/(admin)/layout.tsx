@@ -34,6 +34,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <span className="border border-line px-2 py-1 font-mono text-[10.5px] tracking-[0.08em] text-ink2 uppercase">
             Admin console
           </span>
+          <Link href="/admin/paper" className="ml-2 hidden text-[12.5px] text-ink2 underline-offset-2 hover:text-ink hover:underline sm:inline">
+            Paper trading
+          </Link>
           <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
             <ThemeToggle />
             <form action={logout}>

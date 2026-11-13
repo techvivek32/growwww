@@ -1,16 +1,39 @@
-"""Read-only research API for the dashboard. Binds to localhost; the Next.js
-server reaches it over an SSH tunnel or a firewall rule, never the open web.
+"""Read-only research API for the dashboard. Binds to localhost by default. With
+MNHA_API_HOST=0.0.0.0 and MNHA_API_TOKEN set, the paper-trading summary at /live
+is served to the Vercel app (bearer token; everything else stays local-only).
 Nothing here can place an order or change a strategy."""
 
 from __future__ import annotations
 
 import json
+import os
+import secrets
+import time
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 
 from . import db
 
 app = FastAPI(title="MNHA research", version="0.1.0")
+
+
+@app.middleware("http")
+async def _local_only(request: Request, call_next):
+    """Everything except /health and /live is for localhost (the SSH tunnel), whatever the bind address."""
+    host = request.client.host if request.client else ""
+    if request.url.path not in ("/health", "/live") and host not in ("127.0.0.1", "::1"):
+        return JSONResponse({"detail": "local only"}, status_code=403)
+    return await call_next(request)
+
+
+def _authorised(authorization: str | None) -> None:
+    token = os.environ.get("MNHA_API_TOKEN", "")
+    if not token:
+        raise HTTPException(503, "MNHA_API_TOKEN is not set on the research box")
+    given = (authorization or "").removeprefix("Bearer ").strip()
+    if not given or not secrets.compare_digest(given, token):
+        raise HTTPException(401, "bad token")
 
 
 def _rows(sql: str, params: tuple = ()) -> list[dict]:
@@ -126,6 +149,30 @@ def alpha_latest() -> dict:
     if not rid:
         return {}
     return run(rid)
+
+
+@app.get("/live")
+def live_summary(authorization: str | None = Header(default=None)) -> dict:
+    """Live PAPER trading for the dashboard: the 2026 strategy (livex) and the reference books (live)."""
+    _authorised(authorization)
+    from . import live, livex
+
+    out: dict = {"as_of": time.time(), "book": livex.BOOK, "livex": None, "live": None}
+    try:
+        out["livex"] = livex.report()
+        with db.tx() as con:
+            r = con.execute("SELECT * FROM livex_days WHERE day=?", (live.today_ist(),)).fetchone()
+            out["livex"]["today"] = dict(r) if r else None
+            out["livex"]["trades"] = [dict(x) for x in con.execute("SELECT * FROM livex_trades ORDER BY day DESC, leg LIMIT 400")]
+            out["livex"]["days_all"] = [dict(x) for x in con.execute(
+                "SELECT day, status, skip, pick, pick_px, pick_ltp, flip, flip_symbol, flip_px, decided_at, settled_at FROM livex_days ORDER BY day")]
+    except Exception as e:  # noqa: BLE001  (tables absent before the first session)
+        out["livex_error"] = str(e)[:200]
+    try:
+        out["live"] = live.report()
+    except Exception as e:  # noqa: BLE001
+        out["live_error"] = str(e)[:200]
+    return out
 
 
 @app.get("/paper")

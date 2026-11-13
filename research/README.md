@@ -74,6 +74,13 @@ The models used in a year are fitted once on every session before 1 January, exa
 2. run `lab-build`;
 3. run `live-train` for the new year.
 
+**Dashboard.** The Vercel app shows the paper record at `/admin/paper` (admin login). It reads the box's `/live` endpoint with a bearer token; every other endpoint stays localhost-only. To enable it, on the box add to `/etc/mnha-research.env`:
+```
+MNHA_API_HOST=0.0.0.0
+MNHA_API_TOKEN=<a long random string>
+```
+then `ufw allow 8100/tcp && systemctl restart mnha-research-api`, and in Vercel set `RESEARCH_API_URL=http://<box-ip>:8100` and `RESEARCH_API_TOKEN` to the same string. The token travels over plain HTTP, so treat it as read access to the paper record only; put the API behind a domain with TLS before exposing anything more.
+
 `live-report` shows each book's ₹ result per month, twice:
 - from the 09:20 bar close (the backtest's convention);
 - from the live price at the moment the decision was stored (closer to what a real order would have got).
