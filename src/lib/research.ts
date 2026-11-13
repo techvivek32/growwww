@@ -76,11 +76,34 @@ export interface LivexReport {
   days_all: LivexDay[];
 }
 
+/** Book B: the same picks with a fixed 0.5% stop on every position, exits at the live price. */
+export interface Sl05Trade {
+  day: string;
+  leg: string;
+  symbol: string;
+  entry: number;
+  exit: number | null;
+  why: string | null;
+  net: number;
+}
+
+export interface Sl05Report {
+  days: number;
+  net_rs?: number;
+  pct_of_book?: number;
+  per_month_pct?: Record<string, number>;
+  stopped_out_share?: number;
+  worst_day_rs?: number;
+  trades?: Sl05Trade[];
+  today?: { leg: string; symbol: string; side: number; qty: number; entry: number; entry_at: number; exit: number | null; exit_at: number | null; why: string | null; net: number | null }[];
+}
+
 export interface LiveSummary {
   as_of: number;
   book: number;
   livex: LivexReport | null;
   livex_error?: string;
+  sl05?: Sl05Report;
   live: unknown;
 }
 

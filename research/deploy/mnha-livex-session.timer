@@ -1,0 +1,9 @@
+[Unit]
+Description=MNHA paper-trading session (09:12 IST, Mon-Fri)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 03:42:00 UTC
+Persistent=false
+
+[Install]
+WantedBy=timers.target

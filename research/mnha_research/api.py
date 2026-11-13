@@ -169,6 +169,14 @@ def live_summary(authorization: str | None = Header(default=None)) -> dict:
     except Exception as e:  # noqa: BLE001  (tables absent before the first session)
         out["livex_error"] = str(e)[:200]
     try:
+        from . import livex_session
+
+        out["sl05"] = livex_session.report_sl05()
+        with db.tx() as con:
+            out["sl05"]["today"] = [dict(x) for x in con.execute("SELECT * FROM livex_fast WHERE day=? AND book='sl05'", (live.today_ist(),))]
+    except Exception as e:  # noqa: BLE001
+        out["sl05_error"] = str(e)[:200]
+    try:
         out["live"] = live.report()
     except Exception as e:  # noqa: BLE001
         out["live_error"] = str(e)[:200]

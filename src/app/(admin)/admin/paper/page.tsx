@@ -196,6 +196,38 @@ function Body({ data }: { data: LiveSummary }) {
         )}
       </Card>
 
+      <Card>
+        <CardHead
+          title="Book B: fixed 0.5% stop"
+          sub="The same picks, but every position is closed at the live price the moment it is 0.5% against us; no profit target. Book A above is the strategy as tested."
+          right={
+            data.sl05 && data.sl05.days > 0 ? (
+              <Pill tone={(data.sl05.net_rs ?? 0) >= 0 ? "up" : "down"}>
+                {inr(data.sl05.net_rs ?? 0)} · {pct(data.sl05.pct_of_book ?? 0)}
+              </Pill>
+            ) : undefined
+          }
+        />
+        {data.sl05?.today && data.sl05.today.length > 0 && (
+          <ul className="mb-3 space-y-1 text-[12.5px] text-ink">
+            {data.sl05.today.map((t) => (
+              <li key={t.leg}>
+                <span className="font-semibold">{t.side < 0 ? "Short" : "Long"} {t.symbol}</span> · entry {t.entry.toFixed(2)} ({t.qty} sh)
+                {t.exit ? ` · exit ${t.exit.toFixed(2)} at ${fmtTime(t.exit_at)} (${t.why}) · ${inr(t.net ?? 0)}` : " · open, stop at " + (t.side < 0 ? (t.entry * 1.005).toFixed(2) : (t.entry * 0.995).toFixed(2))}
+              </li>
+            ))}
+          </ul>
+        )}
+        {data.sl05 && data.sl05.days > 0 ? (
+          <p className="text-[12.5px] text-ink3">
+            {data.sl05.days} sessions · {Math.round((data.sl05.stopped_out_share ?? 0) * 100)}% of positions stopped out · worst day {inr(data.sl05.worst_day_rs ?? 0)} ·
+            {" "}monthly {Object.entries(data.sl05.per_month_pct ?? {}).map(([m, p]) => `${m} ${pct(p)}`).join(", ") || "—"}
+          </p>
+        ) : (
+          <p className="text-[12.5px] text-ink3">No session yet.</p>
+        )}
+      </Card>
+
       <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
         <Card pad={false}>
           <div className="p-4 sm:p-5 pb-0 sm:pb-0">

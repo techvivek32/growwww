@@ -24,6 +24,7 @@
   live-settle   after 15:15: price today's paper books from the day's bars
   live-report   paper results per book so far
   live-parity   replay past sessions through the live code and compare with the backtest (--days)
+  livex-session  the whole paper day in one process (09:12-15:30 IST): decide, 5-second stop checks, flip, settle
   livex-train / livex-decide / livex-flip / livex-mark / livex-settle / livex-report / livex-replay (--days)
                 the 2026 strategy: ENS3 one-stock short, regime skip, 0.5% market stop, 10:15 flip (paper, no orders)
   all         universe → probe → ingest → quality → research → alpha
@@ -150,6 +151,10 @@ def main(argv: list[str] | None = None) -> int:
             out = livex.settle()
         elif cmd == "livex-mark":
             out = livex.mark()
+        elif cmd == "livex-session":
+            from . import livex_session
+
+            out = livex_session.session()
         elif cmd == "livex-report":
             out = livex.report()
         elif cmd == "livex-replay":
