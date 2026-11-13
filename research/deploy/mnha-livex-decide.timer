@@ -1,0 +1,9 @@
+[Unit]
+Description=MNHA livex decide (09, Mon-Fri)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 03:46:00 UTC
+Persistent=false
+
+[Install]
+WantedBy=timers.target

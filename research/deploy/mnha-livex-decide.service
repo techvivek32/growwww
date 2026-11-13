@@ -1,0 +1,13 @@
+[Unit]
+Description=MNHA live paper trading, 2026 strategy: livex-decide (no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/mnha-research.env
+WorkingDirectory=/opt/mnha-research
+ExecStart=/opt/mnha-research/.venv/bin/python -m mnha_research livex-decide
+StandardOutput=append:/opt/mnha-research/data/livex.log
+StandardError=append:/opt/mnha-research/data/livex.log
+TimeoutStartSec=16 IST (waits for 09:20):40min

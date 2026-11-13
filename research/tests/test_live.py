@@ -46,3 +46,23 @@ def test_picks_take_the_lowest_scores_per_book():
     df = pd.DataFrame({"symbol": list("ABCDE"), "score": [0.3, -0.2, 0.1, -0.5, np.nan], "px_0920": 1.0})
     pk = live.picks(df)
     assert list(pk["k1"].symbol) == ["D"] and list(pk["k3"].symbol) == ["D", "B", "C"]
+
+
+def test_livex_expiry_days_and_flip_decision():
+    import datetime as dt
+
+    from mnha_research import livex
+
+    d = lambda s: (dt.date.fromisoformat(s) - dt.date(1970, 1, 1)).days  # noqa: E731
+    assert livex.expiry_days(d("2026-10-21")) == 4.0  # last Tuesday 2026-10-27: Thu, Fri, Mon, Tue
+    assert livex.expiry_days(d("2026-10-27")) == 0.0 and np.isnan(livex.expiry_days(d("2026-10-28")))
+    assert livex.expiry_days(d("2025-08-20")) == 6.0  # last Thursday 2025-08-28
+    P = {}
+    for sym, o0, c11 in (("A", 100.0, 101.0), ("B", 200.0, 200.4), ("C", 40.0, 44.0)):
+        a = np.full((5, NB), np.nan)
+        a[0] = o0; a[3] = c11; a[3, 0] = o0; a[1] = np.maximum(a[0], a[3]); a[2] = np.minimum(a[0], a[3]); a[4] = 1.0
+        P[sym] = a
+    do, top, med = livex.flip_decision(P)
+    assert do and top == "A" and med == pytest.approx(0.01)  # C is the top gainer but below the Rs 50 floor
+    P["A"][3, 1:] = 100.1  # moves 0.1%, 0.2%, 10%: the median 0.2% is below the 0.25% threshold
+    assert livex.flip_decision(P)[0] is False

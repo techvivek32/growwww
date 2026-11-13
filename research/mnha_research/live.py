@@ -511,9 +511,13 @@ def prepare() -> dict:
     except Exception as e:  # information features only: a missing day becomes NaN, as in history
         out["nse"] = {"error": str(e)[:300]}
     Y = day_to_date(today_ist()).year
+    out["lab_build"] = lab.build()  # the panel must reach the previous session (livex's volume baseline reads it)
     if not model_path(Y).exists():
-        lab.build()
         out["train"] = train(Y)
+    from . import livex
+
+    if not livex.model_path(Y).exists():
+        out["livex_train"] = livex.train(Y)
     out["seconds"] = round(time.time() - t0)
     log(json.dumps(out, default=str))
     return out

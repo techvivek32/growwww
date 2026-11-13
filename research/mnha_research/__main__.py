@@ -24,6 +24,8 @@
   live-settle   after 15:15: price today's paper books from the day's bars
   live-report   paper results per book so far
   live-parity   replay past sessions through the live code and compare with the backtest (--days)
+  livex-train / livex-decide / livex-flip / livex-settle / livex-report / livex-replay (--days)
+                the 2026 strategy: ENS3 one-stock short, regime skip, 0.5% market stop, 10:15 flip (paper, no orders)
   all         universe → probe → ingest → quality → research → alpha
   status      print run status
   serve       start the read-only API on 127.0.0.1:8100
@@ -129,6 +131,28 @@ def main(argv: list[str] | None = None) -> int:
         elif cmd == "live-parity":
             days = [(dt.date.fromisoformat(x) - dt.date(1970, 1, 1)).days for x in (a.days or "").split(",") if x]
             out = [live.parity(d) for d in days]
+        else:
+            p.print_help()
+            return 2
+        print(json.dumps(out, default=str, indent=1))
+    elif cmd.startswith("livex-"):
+        import datetime as dt
+
+        from . import livex
+
+        if cmd == "livex-train":
+            out = livex.train(a.year)
+        elif cmd == "livex-decide":
+            out = livex.decide(wait=not a.no_wait)
+        elif cmd == "livex-flip":
+            out = livex.flip()
+        elif cmd == "livex-settle":
+            out = livex.settle()
+        elif cmd == "livex-report":
+            out = livex.report()
+        elif cmd == "livex-replay":
+            days = [(dt.date.fromisoformat(x) - dt.date(1970, 1, 1)).days for x in (a.days or "").split(",") if x]
+            out = [livex.replay(d) for d in days]
         else:
             p.print_help()
             return 2

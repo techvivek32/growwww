@@ -1,0 +1,9 @@
+[Unit]
+Description=MNHA livex settle (15, Mon-Fri)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:57:00 UTC
+Persistent=false
+
+[Install]
+WantedBy=timers.target

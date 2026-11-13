@@ -25,6 +25,7 @@ It runs on its own box (Hostinger KVM 1: 1 vCPU, 4 GB) at `/opt/mnha-research`.
 | paper | Forward test. A book freezes one alpha model. Every Friday after the close it stores that week's ranked list with a timestamp, and marks the book at the next session's close. No orders | `paper_books`, `paper_picks`, `paper_marks` |
 | lab | Intraday research panel (`lab-build`): one row per (session, eligible stock) from 2020-07, with every feature known at 09:20 and the day's 72 five-minute bars. Walk-forward models, walk-forward variant selection (`lab.select`), tick-aware slippage, Groww intraday costs, an exposure check and a leak test. Sessions from 2026-05-01 are sealed (`lab.load(final=True)` only) | `data/lab/panel.parquet`, `data/lab/paths.npz` |
 | live | Live PAPER trading of the 09:20 short rule on real Groww data — no orders, ever. `live-prepare` (08:10 IST) brings bars, NSE files and this year's frozen models up to date; `live-decide` (09:20) scores the first 5-minute bar with exactly the backtest's features and stores each book's picks plus the live price at decision time; `live-settle` (15:25) prices the books from the day's bars with the backtest's fills and costs. Books: `k1` (whole book in the lowest score, to 15:15), `k1_stops` (same pick, 3% stop + 0.5% market stop), `k3` (three shorts). `live-parity` replays past sessions through the live code and compares picks with the backtest | `live_days`, `live_rows`, `live_picks`, `live_trades`; `live-report` |
+| livex | Live PAPER trading of the strategy chosen for 2026 by the 1-lakh variant search (no auction, no overnight): the ENS3 score (session z-score average of three walk-forward models: F_STAGE2, +F_EXTRA, +first-bar volume), one short with the whole book at 09:20, a regime skip (2 of: NIFTY gap top 20%, first-bar breadth top 20%, Monday), a 0.5% market stop, a 10:15 flip (cover and buy the top gainer when the median stock is up 0.25% since the open), square-off 15:15. `livex-decide` 09:20, `livex-flip` 10:15, `livex-settle` 15:27. `livex-replay --days` reproduces the backtest engine's picks and ₹ on past sessions (14 of 15 checked exact; one borderline market-stop day) | `livex_days`, `livex_rows`, `livex_trades`; `livex-report` |
 | nse-update | NSE delivery share (MTO) and stock F&O open interest for every session since the last stored one | `data/nse/delivery.parquet`, `data/nse/fo_oi.parquet` |
 
 Execution rules, cost model and the statistics are documented at the top of
@@ -61,9 +62,10 @@ tail -f /opt/mnha-research/data/live.log
 ```
 
 The timers run Mon–Fri:
-- `live-prepare` at 08:10 IST;
-- `live-decide` at 09:17, waiting for the 09:15 bar to complete at 09:20;
-- `live-settle` at 15:25.
+- `live-prepare` at 08:10 IST (bars, NSE files, the lab panel up to the previous session, models);
+- `live-decide` at 09:17 and `livex-decide` at 09:16, both waiting for the 09:15 bar to complete at 09:20;
+- `livex-flip` at 10:13, waiting for the 10:15 bar;
+- `live-settle` at 15:25 and `livex-settle` at 15:27.
 
 A holiday is recognised when no bars arrive by 09:35.
 

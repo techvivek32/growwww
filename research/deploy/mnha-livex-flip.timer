@@ -1,0 +1,9 @@
+[Unit]
+Description=MNHA livex flip (10, Mon-Fri)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 04:43:00 UTC
+Persistent=false
+
+[Install]
+WantedBy=timers.target
