@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS livex_days (
 );
 CREATE TABLE IF NOT EXISTS livex_rows (day INTEGER NOT NULL, symbol TEXT NOT NULL, score REAL, z_base REAL, z_ext REAL, z_fbv REAL,
   px_0920 REAL, PRIMARY KEY (day, symbol));
+CREATE TABLE IF NOT EXISTS livex_marks (day INTEGER NOT NULL, at REAL NOT NULL, minute INTEGER NOT NULL, phase TEXT NOT NULL,
+  pick TEXT, pick_entry REAL, pick_ltp REAL, pick_qty REAL, pick_pnl REAL, mkt_move REAL, flip_symbol TEXT, flip_entry REAL, flip_ltp REAL,
+  flip_qty REAL, flip_pnl REAL, running_net REAL, n_quotes INTEGER, PRIMARY KEY (day, minute));
 CREATE TABLE IF NOT EXISTS livex_trades (day INTEGER NOT NULL, leg TEXT NOT NULL, symbol TEXT NOT NULL, side INTEGER NOT NULL,
   qty REAL NOT NULL, entry REAL NOT NULL, exit REAL NOT NULL, entry_bar INTEGER NOT NULL, exit_bar INTEGER NOT NULL, why INTEGER NOT NULL,
   gross REAL NOT NULL, costs REAL NOT NULL, net REAL NOT NULL, PRIMARY KEY (day, leg, symbol));
@@ -434,6 +437,66 @@ def settle(day: int | None = None) -> dict:
     return out
 
 
+def _ltp_many(symbols: list[str]) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for i in range(0, len(symbols), 40):
+        try:
+            q, _at = live.ltp(symbols[i:i + 40])
+            out.update(q)
+        except Exception as e:  # noqa: BLE001
+            log(f"ltp chunk failed: {e}")
+    return out
+
+
+def mark() -> dict:
+    """Every few minutes during the session: the open paper position marked at Groww's live prices (LTP), the
+    average stock's move since 09:20 (the market stop watches 0.5%), and the flip leg. Informational: the day's
+    official result is still `settle`, priced from the 5-minute bars."""
+    now = time.time()
+    day, minute = live.today_ist(now), int(live.minute_ist(now))
+    if not (9 * 60 + 22 <= minute <= 15 * 60 + 20):
+        return {"status": "outside 09:22-15:20 IST"}
+    con = _db()
+    r = con.execute("SELECT status, skip, pick, pick_px, flip, flip_symbol, flip_px FROM livex_days WHERE day=?", (day,)).fetchone()
+    if not r or r[0] not in ("decided", "flipped"):
+        return {"status": f"no open paper position ({r[0] if r else 'not decided'})"}
+    status, skip, pick, pick_px, flip_on, flip_sym, flip_px = r
+    rows = [x[0] for x in con.execute("SELECT symbol FROM livex_rows WHERE day=?", (day,))]
+    px0 = dict(con.execute("SELECT symbol, px_0920 FROM livex_rows WHERE day=?", (day,)).fetchall())
+    q = _ltp_many(rows)
+    moves = [q[s_] / px0[s_] - 1 for s_ in rows if s_ in q and px0.get(s_)]
+    mkt = float(np.mean(moves)) if moves else np.nan
+    out = {"day": day_to_date(day).isoformat(), "time": f"{minute // 60:02d}:{minute % 60:02d}", "phase": "skip" if skip else status,
+           "mkt_move_since_0920": round(mkt, 5), "market_stop_at": MSTOP, "quotes": len(q)}
+    pick_pnl = flip_pnl = 0.0
+    pq = fq = None
+    if not skip and pick and pick in q:
+        slip = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([pick_px]), np.array([day]))[0]) / pick_px)
+        e = pick_px * (1 - slip)
+        pq = math.floor(BOOK / e)
+        short_open = not (status == "flipped" and flip_on)
+        pick_pnl = (e - q[pick]) * pq if short_open else None
+        out["short"] = {"symbol": pick, "entry": round(e, 2), "ltp": q[pick], "qty": pq, "open": short_open,
+                        "running_pnl": None if pick_pnl is None else round(pick_pnl, 2)}
+    if flip_on and flip_sym:
+        fl = q.get(flip_sym) or _ltp_many([flip_sym]).get(flip_sym)
+        if fl:
+            s2 = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([flip_px]), np.array([day]))[0]) / flip_px)
+            e2 = flip_px * (1 + s2)
+            fq = math.floor(BOOK / e2)
+            flip_pnl = (fl - e2) * fq
+            out["flip_long"] = {"symbol": flip_sym, "entry": round(e2, 2), "ltp": fl, "qty": fq, "running_pnl": round(flip_pnl, 2)}
+    running = (pick_pnl or 0.0) + (flip_pnl or 0.0)
+    out["running_net_before_costs"] = round(running, 2)
+    with con:
+        con.execute("INSERT OR REPLACE INTO livex_marks VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (day, now, minute, out["phase"], pick, out.get("short", {}).get("entry"), q.get(pick) if pick else None, pq,
+                     pick_pnl if pick_pnl is not None else None, mkt if np.isfinite(mkt) else None, flip_sym,
+                     out.get("flip_long", {}).get("entry"), out.get("flip_long", {}).get("ltp"), fq, flip_pnl or None, running, len(q)))
+    log(json.dumps(out))
+    return out
+
+
 def report() -> dict:
     con = _db()
     D = pd.read_sql_query("SELECT * FROM livex_days ORDER BY day", con)
@@ -441,7 +504,10 @@ def report() -> dict:
     daily = T.groupby("day").net.sum().reindex(D[D.status == "settled"].day, fill_value=0.0)
     mo = daily.groupby(pd.to_datetime(daily.index, unit="D").to_period("M")).sum()
     eq = daily.cumsum()
-    return {"sessions": {k: int(v) for k, v in D.status.value_counts().items()}, "skip_days": int(D.skip.fillna(0).sum()),
+    mk = con.execute("SELECT * FROM livex_marks WHERE day=? ORDER BY minute DESC LIMIT 1", (live.today_ist(),)).fetchone()
+    marks = [dict(x) for x in con.execute("SELECT minute, running_net, mkt_move, pick_ltp FROM livex_marks WHERE day=? ORDER BY minute", (live.today_ist(),))]
+    return {"mark": dict(mk) if mk else None, "marks_today": marks,
+            "sessions": {k: int(v) for k, v in D.status.value_counts().items()}, "skip_days": int(D.skip.fillna(0).sum()),
             "flip_days": int(D.flip.fillna(0).sum()), "net_rs": round(float(daily.sum())), "pct_of_book": round(float(daily.sum() / BOOK * 100), 2),
             "per_month_pct": {str(k): round(float(v / BOOK * 100), 2) for k, v in mo.items()},
             "day_win_rate": round(float((daily > 0).mean()), 3) if len(daily) else None, "worst_day_rs": round(float(daily.min())) if len(daily) else None,

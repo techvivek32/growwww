@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireAdminPage } from "@/lib/access";
-import { liveSummary, dayToIso, type LiveSummary, type LivexDay, type LivexLeg } from "@/lib/research";
+import { liveSummary, dayToIso, type LiveSummary, type LivexDay, type LivexLeg, type LivexMark, type LivexReport } from "@/lib/research";
 import { Card, CardHead, Pill, StatTile } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Paper trading · MNHA Financials" };
@@ -66,6 +66,74 @@ export default async function PaperPage() {
   );
 }
 
+const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+
+/** The open paper position at the latest live mark, and the day's running P&L so far. */
+function LiveNow({ mark, marks }: { mark: LivexMark; marks: LivexReport["marks_today"] }) {
+  const running = mark.running_net ?? 0;
+  const mkt = mark.mkt_move ?? 0;
+  const stopDist = 0.005 - mkt; // the market stop covers the short once the average stock is up 0.5% since 09:20
+  const shortOpen = mark.pick_pnl != null;
+  return (
+    <Card className="border-brand/40">
+      <CardHead
+        title="Live now"
+        sub={`Marked at ${hhmm(mark.minute)} IST from Groww live prices (${mark.n_quotes} quotes). Before charges; the official result comes from the 15:15 settlement.`}
+        right={<Pill tone={running >= 0 ? "up" : "down"}>{inr(running)} running</Pill>}
+      />
+      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div>
+          <dt className={eyebrow}>{shortOpen ? "Short (open)" : "Short (covered)"}</dt>
+          <dd className="mt-1 text-[15px] font-semibold text-ink">{mark.pick ?? "—"}</dd>
+          <dd className="tnum text-[12px] text-ink3">entry {mark.pick_entry?.toFixed(2) ?? "—"} · now {mark.pick_ltp?.toFixed(2) ?? "—"} · {mark.pick_qty ?? "—"} sh</dd>
+        </div>
+        <div>
+          <dt className={eyebrow}>Short P&L</dt>
+          <dd className={`tnum mt-1 text-[15px] font-semibold ${(mark.pick_pnl ?? 0) >= 0 ? "text-up" : "text-down"}`}>{mark.pick_pnl == null ? "—" : inr(mark.pick_pnl)}</dd>
+        </div>
+        <div>
+          <dt className={eyebrow}>Market since 09:20</dt>
+          <dd className={`tnum mt-1 text-[15px] font-semibold ${mkt >= 0.005 ? "text-down" : "text-ink"}`}>{pct(mkt * 100)}</dd>
+          <dd className="text-[12px] text-ink3">{mkt >= 0.005 ? "market stop level reached" : `stop at +0.50% (${pct(stopDist * 100)} away)`}</dd>
+        </div>
+        <div>
+          <dt className={eyebrow}>Flip long</dt>
+          <dd className="mt-1 text-[15px] font-semibold text-ink">{mark.flip_symbol ?? (mark.minute < 10 * 60 + 15 ? "check at 10:15" : "none today")}</dd>
+          {mark.flip_symbol && (
+            <dd className={`tnum text-[12px] ${(mark.flip_pnl ?? 0) >= 0 ? "text-up" : "text-down"}`}>
+              {mark.flip_entry?.toFixed(2)} → {mark.flip_ltp?.toFixed(2)} · {mark.flip_pnl == null ? "—" : inr(mark.flip_pnl)}
+            </dd>
+          )}
+        </div>
+      </dl>
+      {marks.length > 1 && (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-line">
+                <th className={th}>Time</th>
+                <th className={`${th} text-right`}>Running P&L</th>
+                <th className={`${th} text-right`}>Market since 09:20</th>
+                <th className={`${th} text-right`}>Short LTP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...marks].reverse().slice(0, 12).map((m) => (
+                <tr key={m.minute} className="border-b border-line last:border-0">
+                  <td className={td}>{hhmm(m.minute)}</td>
+                  <td className={`${td} tnum text-right ${(m.running_net ?? 0) >= 0 ? "text-up" : "text-down"}`}>{m.running_net == null ? "—" : inr(m.running_net)}</td>
+                  <td className={`${td} tnum text-right`}>{m.mkt_move == null ? "—" : pct(m.mkt_move * 100)}</td>
+                  <td className={`${td} tnum text-right`}>{m.pick_ltp?.toFixed(2) ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function Body({ data }: { data: LiveSummary }) {
   const r = data.livex;
   const book = data.book;
@@ -95,6 +163,8 @@ function Body({ data }: { data: LiveSummary }) {
         <StatTile label="Worst day" value={r.worst_day_rs == null ? "—" : inr(r.worst_day_rs)} tone={r.worst_day_rs && r.worst_day_rs < 0 ? "down" : "neutral"} />
         <StatTile label="Largest fall" value={r.max_fall_rs == null ? "—" : inr(-(r.max_fall_rs ?? 0))} sub="from the running peak" />
       </div>
+
+      {r.mark && today && today.status !== "settled" && <LiveNow mark={r.mark} marks={r.marks_today} />}
 
       <Card>
         <CardHead

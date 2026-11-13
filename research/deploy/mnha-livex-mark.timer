@@ -1,0 +1,9 @@
+[Unit]
+Description=MNHA livex mark every 5 minutes, 09:22-15:20 IST, Mon-Fri
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 03..09:02/5:00 UTC
+Persistent=false
+
+[Install]
+WantedBy=timers.target

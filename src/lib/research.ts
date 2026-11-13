@@ -38,7 +38,30 @@ export interface LivexDay {
   flags?: string | null;
 }
 
+/** The open paper position marked at Groww's live prices, written every 5 minutes during the session. */
+export interface LivexMark {
+  day: number;
+  at: number;
+  minute: number;
+  phase: string;
+  pick: string | null;
+  pick_entry: number | null;
+  pick_ltp: number | null;
+  pick_qty: number | null;
+  pick_pnl: number | null;
+  mkt_move: number | null;
+  flip_symbol: string | null;
+  flip_entry: number | null;
+  flip_ltp: number | null;
+  flip_qty: number | null;
+  flip_pnl: number | null;
+  running_net: number | null;
+  n_quotes: number;
+}
+
 export interface LivexReport {
+  mark: LivexMark | null;
+  marks_today: { minute: number; running_net: number | null; mkt_move: number | null; pick_ltp: number | null }[];
   sessions: Record<string, number>;
   skip_days: number;
   flip_days: number;
