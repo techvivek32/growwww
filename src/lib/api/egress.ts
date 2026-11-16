@@ -18,8 +18,10 @@ import { listEgress } from "../egressStore";
  * The pool lives in the admin-managed store (see lib/egressStore), which seeds
  * itself from GROWW_EGRESS_MAP so an existing deployment keeps working.
  *
- * GROWW_REGISTERED_IP stays the default for the house account and is always
- * treated as a local address.
+ * GROWW_REGISTERED_IP stays the default for the house account. It is a local
+ * address — unless GROWW_HOUSE_PROXY names a tunnel: then this server does not
+ * own the house address (the app moved to another host) and the house
+ * account's calls go through the host that does, so its key keeps working.
  */
 
 export type Egress =
@@ -36,11 +38,19 @@ export function houseIp(): string | null {
   return env("GROWW_REGISTERED_IP") ?? null;
 }
 
+/** The tunnel to the house address when another host owns it, else undefined. */
+function houseProxy(): string | undefined {
+  return env("GROWW_HOUSE_PROXY");
+}
+
 /** How to send from `ip`, or null if this server cannot send from it at all. */
 export async function egressFor(ip: string | null | undefined): Promise<Egress | null> {
   if (!ip) return null;
   const house = houseIp();
-  if (house && ip === house) return { kind: "local", ip };
+  if (house && ip === house) {
+    const proxy = houseProxy();
+    return proxy ? { kind: "proxy", url: proxy, ip } : { kind: "local", ip };
+  }
   const entry = (await listEgress()).find((e) => e.ip === ip);
   if (!entry) return null;
   return entry.proxy ? { kind: "proxy", url: entry.proxy, ip } : { kind: "local", ip };
@@ -61,11 +71,14 @@ const agents = new Map<string, https.Agent>();
 
 const BASE = { family: 4 as const, autoSelectFamily: false, keepAlive: true, maxSockets: 8 };
 
-/** The default agent: house address when configured, otherwise the OS default. */
-export const defaultAgent = new https.Agent({
-  ...BASE,
-  ...(houseIp() ? { localAddress: houseIp() as string } : {}),
-});
+/** The default agent: the house address (bound here, or tunnelled to the host
+ *  that owns it) when configured, otherwise the OS default. */
+export const defaultAgent: https.Agent = houseProxy()
+  ? (new HttpsProxyAgent(houseProxy() as string, BASE) as unknown as https.Agent)
+  : new https.Agent({
+      ...BASE,
+      ...(houseIp() ? { localAddress: houseIp() as string } : {}),
+    });
 
 export function agentFor(egress: Egress | undefined | null): https.Agent {
   if (!egress) return defaultAgent;
