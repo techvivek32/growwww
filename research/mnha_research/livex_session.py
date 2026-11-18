@@ -178,8 +178,11 @@ def report_sl05() -> dict:
     return {"days": int(len(daily)), "net_rs": round(float(daily.sum())), "pct_of_book": round(float(daily.sum() / livex.BOOK * 100), 2),
             "per_month_pct": {str(k): round(float(v / livex.BOOK * 100), 2) for k, v in mo.items()},
             "stopped_out_share": round(float((T.why == "stop 0.5%").mean()), 3), "worst_day_rs": round(float(daily.min())),
-            "trades": [{"day": day_to_date(int(r.day)).isoformat(), "leg": r.leg, "symbol": r.symbol, "entry": round(r.entry, 2),
-                        "exit": round(r.exit, 2) if r.exit else None, "why": r.why, "net": round(r.net)} for r in T.sort_values("day", ascending=False).head(30).itertuples()]}
+            "trades": [{"day": day_to_date(int(r.day)).isoformat(), "leg": r.leg, "symbol": r.symbol, "side": int(r.side),
+                        "qty": int(r.qty), "entry": round(r.entry, 2), "entry_at": r.entry_at,
+                        "exit": round(r.exit, 2) if r.exit else None, "exit_at": r.exit_at, "why": r.why,
+                        "costs": round(r.costs, 2) if r.costs is not None else None,
+                        "net": round(r.net)} for r in T.sort_values("day", ascending=False).head(60).itertuples()]}
 
 
 def replay_b(day: int) -> dict:

@@ -81,9 +81,14 @@ export interface Sl05Trade {
   day: string;
   leg: string;
   symbol: string;
+  side?: number;
+  qty?: number;
   entry: number;
+  entry_at?: number | null;
   exit: number | null;
+  exit_at?: number | null;
   why: string | null;
+  costs?: number | null;
   net: number;
 }
 

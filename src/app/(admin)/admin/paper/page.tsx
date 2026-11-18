@@ -46,9 +46,14 @@ export default async function PaperPage() {
             The 2026 intraday rule, run every trading day on live Groww data with no orders: one stock shorted at 09:20 (full ₹5 lakh), a 0.5% market stop, a 10:15 flip into the top gainer on strong mornings, square-off at 15:15. Figures are after brokerage, charges and slippage.
           </p>
         </div>
-        <Link href="/admin" className="text-[12.5px] text-ink2 underline-offset-2 hover:underline">
-          ← Admin
-        </Link>
+        <div className="flex shrink-0 items-center gap-4">
+          <Link href="/admin/paper/report" className="text-[12.5px] font-semibold text-ink underline-offset-2 hover:underline">
+            Daily report (PDF) →
+          </Link>
+          <Link href="/admin" className="text-[12.5px] text-ink2 underline-offset-2 hover:underline">
+            ← Admin
+          </Link>
+        </div>
       </div>
 
       {state.kind === "unconfigured" && (
@@ -67,6 +72,8 @@ export default async function PaperPage() {
 }
 
 const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+/** Book A fills at the CLOSE of a 5-minute bar: bar 0 closes 09:20, bar b at 09:20 + 5b. */
+const barTime = (b: number) => hhmm(9 * 60 + 20 + 5 * b);
 
 /** The open paper position at the latest live mark, and the day's running P&L so far. */
 function LiveNow({ mark, marks }: { mark: LivexMark; marks: LivexReport["marks_today"] }) {
@@ -306,6 +313,56 @@ function Body({ data }: { data: LiveSummary }) {
           </div>
         </Card>
       </div>
+
+      <Card pad={false}>
+        <div className="p-4 sm:p-5 pb-0 sm:pb-0">
+          <CardHead
+            title="Every trade (Book A)"
+            sub="Each leg with quantity, entry and exit price and time, exit reason, charges and net. Fills are 5-minute bar closes; a day's PDF is on the Daily report page."
+          />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full border-t border-line">
+            <thead>
+              <tr className="border-b border-line">
+                <th className={th}>Day</th>
+                <th className={th}>Leg</th>
+                <th className={th}>Stock</th>
+                <th className={`${th} text-right`}>Qty</th>
+                <th className={`${th} text-right`}>Entry</th>
+                <th className={th}>At</th>
+                <th className={`${th} text-right`}>Exit</th>
+                <th className={th}>At</th>
+                <th className={th}>Reason</th>
+                <th className={`${th} text-right`}>Charges</th>
+                <th className={`${th} text-right`}>Net</th>
+              </tr>
+            </thead>
+            <tbody>
+              {r.trades.length === 0 && (
+                <tr>
+                  <td className={`${td} text-ink3`} colSpan={11}>No trade yet.</td>
+                </tr>
+              )}
+              {r.trades.slice(0, 80).map((t) => (
+                <tr key={`${t.day}-${t.leg}-${t.symbol}`} className="border-b border-line last:border-0">
+                  <td className={td}>{fmtDay(t.day)}</td>
+                  <td className={td}>{t.leg === "flip_long" ? "Flip long" : "Short"}</td>
+                  <td className={`${td} font-semibold`}>{t.symbol}</td>
+                  <td className={`${td} tnum text-right`}>{t.qty}</td>
+                  <td className={`${td} tnum text-right`}>{t.entry.toFixed(2)}</td>
+                  <td className={td}>{barTime(t.entry_bar)}</td>
+                  <td className={`${td} tnum text-right`}>{t.exit.toFixed(2)}</td>
+                  <td className={td}>{barTime(t.exit_bar)}</td>
+                  <td className={`${td} text-ink2`}>{WHY[t.why] ?? t.why}</td>
+                  <td className={`${td} tnum text-right`}>{t.costs.toFixed(2)}</td>
+                  <td className={`${td} tnum text-right font-semibold ${t.net >= 0 ? "text-up" : "text-down"}`}>{inr(t.net)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </>
   );
 }
