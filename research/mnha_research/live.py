@@ -202,6 +202,34 @@ def fetch_today(symbols: list[str], day: dt.date, workers: int = FETCH_WORKERS) 
     return out
 
 
+def fetch_range_day(symbols: list[str], day: int, workers: int = FETCH_WORKERS) -> dict[str, pd.DataFrame]:
+    """A past (or current) session's 5-minute bars per symbol from the range endpoint, which serves days the
+    backtesting endpoint lags on. Its volume is cumulative within the day; it is converted to per-bar volume."""
+    out: dict[str, pd.DataFrame] = {}
+    Groww().token()
+    s_ms = (day * 86_400 - config.IST_OFFSET_S + (9 * 60 + 15) * 60) * 1000
+    e_ms = (day * 86_400 - config.IST_OFFSET_S + (15 * 60 + 30) * 60) * 1000
+
+    def one(s):
+        try:
+            bars = _client().candles(s, 5, s_ms, e_ms)
+        except GrowwError as e:
+            return s, None, str(e)[:200]
+        if not bars:
+            return s, None, "no bars"
+        df = pd.DataFrame([b.__dict__ for b in bars]).sort_values("time")
+        v = df["volume"].to_numpy(dtype=float)
+        if len(v) > 1 and np.all(np.diff(v) >= -1e-9):  # cumulative: diff it
+            df["volume"] = np.concatenate([[v[0]], np.diff(v)])
+        return s, df, None
+
+    with cf.ThreadPoolExecutor(max_workers=workers) as ex:
+        for s, df, _err in ex.map(one, symbols):
+            if df is not None:
+                out[s] = df
+    return out
+
+
 def first_bar(df: pd.DataFrame, day: int) -> dict | None:
     t = df["time"].to_numpy(dtype=np.int64)
     k = np.nonzero((ist_day(t) == day) & (ist_minute(t) == config.SESSION_OPEN))[0]
@@ -471,6 +499,9 @@ def settle(day: int | None = None) -> dict:
     rows = [r[0] for r in con.execute("SELECT symbol FROM live_rows WHERE day=?", (day,))]
     got = fetch_today(rows, date)
     P = {s: a for s, df in got.items() if (a := paths(df, day)) is not None}
+    if len(P) < MIN_ROWS:
+        got = fetch_range_day(rows, day)
+        P = {s: a for s, df in got.items() if (a := paths(df, day)) is not None}
     if len(P) < MIN_ROWS:
         raise RuntimeError(f"only {len(P)} full sessions of bars")
     R = np.stack([P[s][3] / P[s][3, 0] - 1 for s in P])

@@ -320,7 +320,11 @@ def decide(wait: bool = True) -> dict:
 # ------------------------------------------------------------ 10:15 and settlement
 def _paths_today(day: int, symbols: list[str]) -> dict[str, np.ndarray]:
     got = live.fetch_today(symbols, day_to_date(day))
-    return {s: a for s, df_ in got.items() if (a := live.paths(df_, day)) is not None}
+    P = {s: a for s, df_ in got.items() if (a := live.paths(df_, day)) is not None}
+    if len(P) < max(1, len(symbols) // 2):  # the backtesting endpoint lags on recent past days: use the range endpoint
+        got = live.fetch_range_day(symbols, day)
+        P = {s: a for s, df_ in got.items() if (a := live.paths(df_, day)) is not None}
+    return P
 
 
 def _partial_paths(day: int, symbols: list[str], upto_bar: int) -> dict[str, np.ndarray]:

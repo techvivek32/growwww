@@ -174,3 +174,42 @@ def report_sl05() -> dict:
             "stopped_out_share": round(float((T.why == "stop 0.5%").mean()), 3), "worst_day_rs": round(float(daily.min())),
             "trades": [{"day": day_to_date(int(r.day)).isoformat(), "leg": r.leg, "symbol": r.symbol, "entry": round(r.entry, 2),
                         "exit": round(r.exit, 2) if r.exit else None, "why": r.why, "net": round(r.net)} for r in T.sort_values("day", ascending=False).head(30).itertuples()]}
+
+
+def replay_b(day: int) -> dict:
+    """Book B for a PAST session from the 5-minute bars (when the 5-second loop did not run): the same entries as
+    book A, a 0.5% stop checked bar by bar (a bar whose high/low reaches the stop fills at the stop price, or at
+    the worse open), the flip cover/long at the 10:15 close, square-off 15:15."""
+    con = _db()
+    r = con.execute("SELECT status, skip, pick, pick_px, flip, flip_symbol, flip_px FROM livex_days WHERE day=?", (day,)).fetchone()
+    if not r or r[0] != "settled" or r[1] or not r[2]:
+        return {"day": day_to_date(day).isoformat(), "status": "nothing to replay"}
+    _status, _skip, pick, pick_px, flip_on, flip_sym, flip_px = r
+    P = livex._paths_today(day, [pick] + ([flip_sym] if flip_on and flip_sym else []))
+    con.execute("DELETE FROM livex_fast WHERE day=? AND book='sl05'", (day,))
+    con.commit()
+    t0 = day * 86400 - 19800
+    out = []
+
+    def run_leg(leg, sym, side, raw_entry, eb, xb_rule, why_rule):
+        a = P[sym]
+        _open_leg(con, day, leg, sym, side, raw_entry, t0 + (9 * 60 + 20 + 5 * eb) * 60)
+        e = con.execute("SELECT entry FROM livex_fast WHERE day=? AND book='sl05' AND leg=?", (day, leg)).fetchone()[0]
+        sp = e * (1 + STOP) if side < 0 else e * (1 - STOP)
+        for i in range(eb + 1, xb_rule + 1):
+            o, h, l = a[0, i], a[1, i], a[2, i]
+            hit = (o >= sp or h >= sp) if side < 0 else (o <= sp or l <= sp)
+            if hit:
+                px = o if ((side < 0 and o >= sp) or (side > 0 and o <= sp)) else sp
+                _close_leg(con, day, leg, float(px), t0 + (9 * 60 + 20 + 5 * i) * 60, "stop 0.5%")
+                return
+        _close_leg(con, day, leg, float(a[3, xb_rule]), t0 + (9 * 60 + 20 + 5 * xb_rule) * 60, why_rule)
+
+    if flip_on and flip_sym and flip_sym in P:
+        run_leg("short", pick, -1, float(pick_px), 0, livex.FLIP_BAR, "flip cover")
+        run_leg("flip_long", flip_sym, 1, float(flip_px), livex.FLIP_BAR, livex.EXIT_BAR, "square-off 15:15")
+    else:
+        run_leg("short", pick, -1, float(pick_px), 0, livex.EXIT_BAR, "square-off 15:15")
+    rows = [dict(zip(("leg", "symbol", "entry", "exit", "why", "net"), x)) for x in con.execute(
+        "SELECT leg, symbol, entry, exit, why, net FROM livex_fast WHERE day=? AND book='sl05'", (day,))]
+    return {"day": day_to_date(day).isoformat(), "legs": rows, "net": round(sum(x["net"] or 0 for x in rows), 2)}
