@@ -318,7 +318,9 @@ function Body({ data }: { data: LiveSummary }) {
         <div className="p-4 sm:p-5 pb-0 sm:pb-0">
           <CardHead
             title="Every trade (Book A)"
-            sub="Each leg with quantity, entry and exit price and time, exit reason, charges and net. Fills are 5-minute bar closes; a day's PDF is on the Daily report page."
+            sub={`Each leg with quantity, entry and exit price and time, exit reason, charges and net. Fills are 5-minute bar closes; a day's PDF is on the Daily report page.${
+              r.trades.length > 80 ? ` Showing the latest 80 of ${r.trades.length} legs served.` : ""
+            }`}
           />
         </div>
         <div className="overflow-x-auto">

@@ -166,6 +166,9 @@ def _quote(legs) -> float:
     raise RuntimeError("no quote for the open short")
 
 
+TRADE_DAYS = 180  # sessions of legs served to the dashboard; it reports anything older as not served
+
+
 def report_sl05() -> dict:
     con = _db()
     import pandas as pd
@@ -175,14 +178,18 @@ def report_sl05() -> dict:
         return {"days": 0}
     daily = T.groupby("day").net.sum()
     mo = daily.groupby(pd.to_datetime(daily.index, unit="D").to_period("M")).sum()
-    return {"days": int(len(daily)), "net_rs": round(float(daily.sum())), "pct_of_book": round(float(daily.sum() / livex.BOOK * 100), 2),
+    # Legs of the latest TRADE_DAYS sessions, cut by DAY: half a day's legs would make the
+    # dashboard's day total a number no session ever produced. The summary above stays complete.
+    served = sorted(T.day.unique())[-TRADE_DAYS:]
+    W = T[T.day.isin(served)]
+    return {"days": int(len(daily)), "trades_from": int(served[0]), "net_rs": round(float(daily.sum())), "pct_of_book": round(float(daily.sum() / livex.BOOK * 100), 2),
             "per_month_pct": {str(k): round(float(v / livex.BOOK * 100), 2) for k, v in mo.items()},
             "stopped_out_share": round(float((T.why == "stop 0.5%").mean()), 3), "worst_day_rs": round(float(daily.min())),
             "trades": [{"day": day_to_date(int(r.day)).isoformat(), "leg": r.leg, "symbol": r.symbol, "side": int(r.side),
                         "qty": int(r.qty), "entry": round(r.entry, 2), "entry_at": r.entry_at,
                         "exit": round(r.exit, 2) if r.exit else None, "exit_at": r.exit_at, "why": r.why,
                         "costs": round(r.costs, 2) if r.costs is not None else None,
-                        "net": round(r.net)} for r in T.sort_values("day", ascending=False).head(60).itertuples()]}
+                        "net": round(r.net)} for r in W.sort_values("day", ascending=False).itertuples()]}
 
 
 def replay_b(day: int) -> dict:

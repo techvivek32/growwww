@@ -73,6 +73,8 @@ export interface LivexReport {
   max_fall_rs: number | null;
   today: LivexDay | null;
   trades: LivexLeg[];
+  /** Earliest IST day whose legs are in `trades` — older days exist in the record but are not served. */
+  trades_from?: number | null;
   days_all: LivexDay[];
 }
 
@@ -94,13 +96,15 @@ export interface Sl05Trade {
 
 export interface Sl05Report {
   days: number;
+  /** Earliest IST day whose legs are in `trades` — older days exist in the record but are not served. */
+  trades_from?: number | null;
   net_rs?: number;
   pct_of_book?: number;
   per_month_pct?: Record<string, number>;
   stopped_out_share?: number;
   worst_day_rs?: number;
   trades?: Sl05Trade[];
-  today?: { leg: string; symbol: string; side: number; qty: number; entry: number; entry_at: number; exit: number | null; exit_at: number | null; why: string | null; net: number | null }[];
+  today?: { leg: string; symbol: string; side: number; qty: number; entry: number; entry_at: number; exit: number | null; exit_at: number | null; why: string | null; costs?: number | null; net: number | null }[];
 }
 
 export interface LiveSummary {
@@ -109,6 +113,7 @@ export interface LiveSummary {
   livex: LivexReport | null;
   livex_error?: string;
   sl05?: Sl05Report;
+  sl05_error?: string;
   live: unknown;
 }
 

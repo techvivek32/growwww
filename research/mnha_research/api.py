@@ -151,6 +151,14 @@ def alpha_latest() -> dict:
     return run(rid)
 
 
+TRADE_DAYS = 180  # sessions of legs served to the dashboard; it reports anything older as not served
+
+
+def _first_served_day(con, table: str) -> int | None:
+    r = con.execute(f"SELECT MIN(day) FROM (SELECT DISTINCT day FROM {table} ORDER BY day DESC LIMIT ?)", (TRADE_DAYS,)).fetchone()
+    return int(r[0]) if r and r[0] is not None else None
+
+
 @app.get("/live")
 def live_summary(authorization: str | None = Header(default=None)) -> dict:
     """Live PAPER trading for the dashboard: the 2026 strategy (livex) and the reference books (live)."""
@@ -163,7 +171,11 @@ def live_summary(authorization: str | None = Header(default=None)) -> dict:
         with db.tx() as con:
             r = con.execute("SELECT * FROM livex_days WHERE day=?", (live.today_ist(),)).fetchone()
             out["livex"]["today"] = dict(r) if r else None
-            out["livex"]["trades"] = [dict(x) for x in con.execute("SELECT * FROM livex_trades ORDER BY day DESC, leg LIMIT 400")]
+            # Every leg of the latest TRADE_DAYS sessions. Cut by DAY, never by leg count: half a
+            # day's legs would make the dashboard's day total a number no session ever produced.
+            out["livex"]["trades_from"] = first = _first_served_day(con, "livex_trades")
+            out["livex"]["trades"] = [dict(x) for x in con.execute(
+                "SELECT * FROM livex_trades WHERE day >= ? ORDER BY day DESC, leg", (first or 0,))]
             out["livex"]["days_all"] = [dict(x) for x in con.execute(
                 "SELECT day, status, skip, pick, pick_px, pick_ltp, flip, flip_symbol, flip_px, decided_at, settled_at FROM livex_days ORDER BY day")]
     except Exception as e:  # noqa: BLE001  (tables absent before the first session)

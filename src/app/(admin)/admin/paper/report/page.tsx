@@ -56,6 +56,7 @@ export default async function PaperReportPage({ searchParams }: { searchParams: 
   const r = state.data.livex;
   const book = state.data.book;
   const days = [...r.days_all].sort((a, b) => b.day - a.day);
+  const todayDay = r.today?.day ?? null;
   const isoOf = (d: number) => dayToIso(d);
   const chosen = dayParam && days.find((d) => isoOf(d.day) === dayParam) ? days.find((d) => isoOf(d.day) === dayParam)! : days[0];
 
@@ -72,15 +73,40 @@ export default async function PaperReportPage({ searchParams }: { searchParams: 
   const netA = legsA.reduce((s, t) => s + t.net, 0);
   const costsA = legsA.reduce((s, t) => s + t.costs, 0);
   const iso = isoOf(chosen.day);
-  const legsB: Sl05Trade[] = (state.data.sl05?.trades ?? []).filter((t) => t.day === iso);
+  const servedA = r.trades_from == null || chosen.day >= r.trades_from;
+  const sl05 = state.data.sl05;
+  const servedB = sl05?.trades_from == null || chosen.day >= sl05.trades_from;
+  // Closed legs come from the record; the open leg of a running session only exists in sl05.today.
+  const closedB: Sl05Trade[] = (sl05?.trades ?? []).filter((t) => t.day === iso);
+  const openB: Sl05Trade[] =
+    chosen.day === todayDay
+      ? (sl05?.today ?? [])
+          .filter((t) => !closedB.some((c) => c.leg === t.leg))
+          .map((t) => ({ ...t, day: iso, net: t.net ?? 0, open: t.net == null }))
+      : [];
+  const legsB: (Sl05Trade & { open?: boolean })[] = [...closedB, ...openB];
   const netB = legsB.reduce((s, t) => s + t.net, 0);
+  const openLegsB = legsB.filter((t) => t.open).length;
   const monthKey = iso.slice(0, 7);
   const monthPct = r.per_month_pct[monthKey];
 
   return (
     <div className="mx-auto max-w-[900px] px-4 py-6 print:max-w-none print:px-0 print:py-0">
-      {/* Hide the admin chrome when printing: the report stands on its own page. */}
-      <style>{`@media print { .app-header, .app-footer, footer { display: none !important } body { background: #fff } }`}</style>
+      {/* Print: drop the admin chrome, and force the light palette whatever the on-screen theme —
+          browsers do not print backgrounds, so dark-theme text would come out white on white.
+          Nothing here may hide the report's own disclaimer. */}
+      <style>{`@media print {
+  .app-header { display: none !important }
+  :root, .dark, :root.dark {
+    --c-bg: #fff; --c-surface: #fff; --c-text: #15140f; --c-text-2: #4a463d; --c-text-3: #6e695e;
+    --c-border: #d9d2c4; --c-border-strong: #15140f; --c-up: #2c6a47; --c-down: #b23a1c;
+    color-scheme: light;
+  }
+  body { background: #fff }
+  table { page-break-inside: auto }
+  tr { page-break-inside: avoid }
+}
+@page { size: A4 landscape; margin: 12mm }`}</style>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 print:hidden">
         <Link href="/admin/paper" className="text-[12.5px] text-ink2 underline-offset-2 hover:underline">← Paper trading</Link>
@@ -136,9 +162,20 @@ export default async function PaperReportPage({ searchParams }: { searchParams: 
           <h2 className="text-[14px] font-semibold text-ink">Book A — the strategy as tested</h2>
           <p className="mt-0.5 text-[11.5px] text-ink3">One stock shorted at the 09:20 bar close, 0.5% market stop, 10:15 flip on strong mornings, square-off 15:15. Fills at 5-minute bar closes.</p>
           {legsA.length === 0 ? (
-            <p className="mt-2 text-[12.5px] text-ink3">{chosen.skip ? "No trade — day skipped." : chosen.status === "settled" ? "No legs stored." : "Legs are stored at the 15:25 settlement."}</p>
+            <p className="mt-2 text-[12.5px] text-ink3">
+              {chosen.status === "no_session"
+                ? "Holiday — no legs."
+                : chosen.skip
+                  ? "No trade — day skipped."
+                  : !servedA
+                    ? "Older than the legs served to this dashboard — the record on the research box still holds them."
+                    : chosen.status === "settled"
+                      ? "No legs stored."
+                      : "Legs are stored at the settlement, shortly after 15:15."}
+            </p>
           ) : (
-            <table className="mt-2 w-full border-t border-line">
+            <div className="mt-2 overflow-x-auto print:overflow-visible">
+            <table className="w-full border-t border-line">
               <thead>
                 <tr>
                   <th className={th}>Leg</th>
@@ -179,6 +216,7 @@ export default async function PaperReportPage({ searchParams }: { searchParams: 
                 </tr>
               </tbody>
             </table>
+            </div>
           )}
         </section>
 
@@ -186,9 +224,22 @@ export default async function PaperReportPage({ searchParams }: { searchParams: 
           <h2 className="text-[14px] font-semibold text-ink">Book B — fixed 0.5% stop</h2>
           <p className="mt-0.5 text-[11.5px] text-ink3">The same picks, every position closed at the live price the moment it is 0.5% against us. Exits at live quotes, not bar closes.</p>
           {legsB.length === 0 ? (
-            <p className="mt-2 text-[12.5px] text-ink3">No Book B record for this day.</p>
+            <p className="mt-2 text-[12.5px] text-ink3">
+              {state.data.sl05_error
+                ? `Book B could not be read from the research box: ${state.data.sl05_error}`
+                : chosen.status === "no_session"
+                  ? "Holiday — no legs."
+                  : chosen.skip
+                    ? "No trade — day skipped."
+                    : !servedB
+                      ? "Older than the legs served to this dashboard — the record on the research box still holds them."
+                      : chosen.status === "settled"
+                        ? "No Book B legs stored for this day."
+                        : "Book B legs appear as they close; a position may still be open."}
+            </p>
           ) : (
-            <table className="mt-2 w-full border-t border-line">
+            <div className="mt-2 overflow-x-auto print:overflow-visible">
+            <table className="w-full border-t border-line">
               <thead>
                 <tr>
                   <th className={th}>Leg</th>
@@ -215,17 +266,22 @@ export default async function PaperReportPage({ searchParams }: { searchParams: 
                     <td className={td}>{atTime(t.entry_at)}</td>
                     <td className={`${td} ${num}`}>{t.exit?.toFixed(2) ?? "—"}</td>
                     <td className={td}>{atTime(t.exit_at)}</td>
-                    <td className={td}>{t.why ?? "—"}</td>
+                    <td className={td}>{t.open ? "open" : t.why ?? "—"}</td>
                     <td className={`${td} ${num}`}>{t.costs?.toFixed(2) ?? "—"}</td>
-                    <td className={`${td} ${num} font-semibold ${t.net >= 0 ? "text-up" : "text-down"}`}>{t.net.toFixed(2)}</td>
+                    <td className={`${td} ${num} font-semibold ${t.open ? "text-ink3" : t.net >= 0 ? "text-up" : "text-down"}`}>
+                      {t.open ? "—" : t.net.toFixed(2)}
+                    </td>
                   </tr>
                 ))}
                 <tr>
-                  <td className={`${td} font-semibold`} colSpan={10}>Day total</td>
+                  <td className={`${td} font-semibold`} colSpan={10}>
+                    Day total{openLegsB > 0 ? ` (closed legs only — ${openLegsB} still open)` : ""}
+                  </td>
                   <td className={`${td} ${num} font-semibold ${netB >= 0 ? "text-up" : "text-down"}`}>{netB.toFixed(2)}</td>
                 </tr>
               </tbody>
             </table>
+            </div>
           )}
         </section>
 
