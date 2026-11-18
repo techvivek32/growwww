@@ -301,17 +301,39 @@ export function liveDataRefusal(): GrowwRefusal | null {
   return r && Date.now() - r.at < 10 * 60_000 ? r : null;
 }
 
+/* 429: Groww throttles bursts during market hours. A read is retried after a
+ * short, jittered pause, and one key's throttle pauses that key's OTHER reads
+ * too (the cooldown map), so parallel renders stop hammering the limit.
+ * Writes (orders) are never retried — a doubled order is worse than a miss. */
+const RETRY_WAITS = [700, 1500];
+const cooldownUntil = new Map<string, number>(); // key fingerprint -> epoch ms
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 /** Envelope unwrap: Groww wraps everything in { status, payload }. */
 async function get<T>(path: string): Promise<T | null> {
   const token = await accessToken();
-  const res = await request<{ status?: string; payload?: T; error?: { code?: string; message?: string } }>(path, { token });
-  if (res.status !== 200 || res.body?.status !== "SUCCESS") {
-    noteRefusal(path, res.status, res.body);
-    return null;
-  }
   const creds = resolveCreds();
-  if (creds) refusals.delete(`${keyFingerprint(creds.apiKey)}:${callKind(path)}`);
-  return res.body.payload ?? null;
+  const fp = creds ? keyFingerprint(creds.apiKey) : "";
+  for (let attempt = 0; ; attempt++) {
+    const wait = (cooldownUntil.get(fp) ?? 0) - Date.now();
+    if (wait > 0) await sleep(Math.min(wait, 2500));
+    const res = await request<{ status?: string; payload?: T; error?: { code?: string; message?: string } }>(path, { token });
+    if (res.status === 429 && attempt < RETRY_WAITS.length) {
+      const pause = RETRY_WAITS[attempt] + Math.floor(Math.random() * 400);
+      const until = Date.now() + pause;
+      if (until > (cooldownUntil.get(fp) ?? 0)) cooldownUntil.set(fp, until);
+      continue;
+    }
+    if (res.status !== 200 || res.body?.status !== "SUCCESS") {
+      noteRefusal(path, res.status, res.body);
+      return null;
+    }
+    if (creds) refusals.delete(`${fp}:${callKind(path)}`);
+    return res.body.payload ?? null;
+  }
 }
 
 /** Same envelope, for writes. Returns the full body so callers can read
