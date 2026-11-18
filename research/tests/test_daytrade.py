@@ -55,3 +55,49 @@ def test_trades_long_top_short_bottom_with_intraday_costs():
     j = int(r.symbol[1:])
     assert r.entry == p.O[t, j] * (1 + daytrade.ENTRY_SLIP_BPS / 1e4 * r.side)
     assert (T.costs > 0).all() and (T.costs < 0.002 * T.qty * T.entry).all()  # intraday, not delivery
+
+
+def _head(d, n):
+    p = d["p"]
+    q = alpha.Panel(p.days[:n], p.symbols, p.O[:n], p.H[:n], p.L[:n], p.C[:n], p.V[:n], p.bench_o[:n], p.bench_c[:n])
+    return {**d, "p": q, "member": d["member"][:n], "deliv": d["deliv"][:n], "oi": {k: v[:n] for k, v in d["oi"].items()}}
+
+
+def test_stage1_final_matches_a_fresh_walk_forward_as_the_panel_grows(monkeypatch, tmp_path):
+    from mnha_research import config, nse
+
+    monkeypatch.setattr(config, "DATA", tmp_path)
+    monkeypatch.setattr(nse, "building", lambda: False)
+    monkeypatch.setattr(daytrade, "MIN_TRAIN_YEARS", 1)
+    monkeypatch.setattr(daytrade, "HGB", {**daytrade.HGB, "max_iter": 20, "min_samples_leaf": 200})
+    calls = []
+    real = daytrade.walk_forward
+    monkeypatch.setattr(daytrade, "walk_forward", lambda des, **kw: calls.append(kw.get("only_years")) or real(des, **kw))
+    full = panel(D=900)  # 2011-01-26 .. 2013-07: folds 2012 and 2013
+
+    des = daytrade.design(_head(full, 880))
+    np.testing.assert_array_equal(daytrade.stage1_final(des), real(des, final=True)["pred"])
+    assert calls == [None]  # nothing stored: recomputed whole
+
+    des = daytrade.design(_head(full, 890))  # ten more sessions of 2013
+    calls.clear()
+    np.testing.assert_array_equal(daytrade.stage1_final(des), real(des, final=True)["pred"])
+    assert calls == [{2013}]  # 2012's fold kept, 2013 refitted
+
+    d = _head(full, 890)
+    d["deliv"] = d["deliv"].copy()
+    d["deliv"][300] *= 0.5  # a revised day of 2011 changes what every kept fold read
+    des = daytrade.design(d)
+    calls.clear()
+    np.testing.assert_array_equal(daytrade.stage1_final(des), real(des, final=True)["pred"])
+    assert calls == [None]
+
+    stored = np.load(tmp_path / "daytrade_pred_final.npy")
+    d = _head(full, 890)
+    d["member"] = np.zeros_like(d["member"])  # no membership file: nothing is eligible
+    try:
+        daytrade.stage1_final(daytrade.design(d))
+        raise AssertionError("an empty score must not be stored")
+    except RuntimeError:
+        pass
+    np.testing.assert_array_equal(np.load(tmp_path / "daytrade_pred_final.npy"), stored)

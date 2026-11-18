@@ -94,7 +94,7 @@ def build() -> dict:
     d = dtm.load()
     des = dtm.design(d)
     p = d["p"]
-    pred1 = np.load(config.DATA / "daytrade_pred_final.npy")
+    pred1 = dtm.stage1_final(des)  # brought up to today's panel: it gains a session every day
     D, S = p.C.shape
     elig = des["elig"] & (p.days >= START_DAY)[:, None] & np.isfinite(pred1)
 

@@ -18,6 +18,8 @@
   paper       publish this week's lists (if due) and mark the paper books
   daily       after-close job: daily bars → paper publish → paper mark
   nse-update  fetch NSE delivery share and F&O open interest up to yesterday
+  nse-history build data/nse from NSE's archives on a new host: symbol changes, monthly
+              F&O membership since 2003, delivery share and open interest since 2010 (resumable)
   live-train  freeze this year's intraday models (needs lab-build) for live paper trading
   live-prepare  before the open: bars, NSE files, models (live paper trading; no orders)
   live-decide   09:20: score today's first 5-minute bar, store the paper picks
@@ -114,6 +116,13 @@ def main(argv: list[str] | None = None) -> int:
         from . import nse
 
         print(json.dumps(nse.update(), indent=1))
+    elif cmd == "nse-history":
+        from . import nse
+
+        r = nse.history()
+        print(json.dumps(r, indent=1))
+        if not r["complete"]:
+            return 1  # live-setup stops here: nothing is trained on a partial history
     elif cmd.startswith("live-"):
         import datetime as dt
 

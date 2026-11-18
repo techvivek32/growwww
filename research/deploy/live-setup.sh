@@ -6,6 +6,7 @@ set -eu
 cd /opt/mnha-research
 set -a; . /etc/mnha-research.env; set +a
 .venv/bin/python -m mnha_research init
+.venv/bin/python -m mnha_research nse-history  # a new host: NSE membership and history (resumable)
 .venv/bin/python -m mnha_research nse-update
 .venv/bin/python -m mnha_research ingest --intervals 1440,5 --ignore-market-hours
 .venv/bin/python -m mnha_research lab-build

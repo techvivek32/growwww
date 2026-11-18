@@ -41,6 +41,7 @@ lies outside its own high-low range is corrupt data: no trade is taken on it
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import math
 import time
@@ -240,7 +241,8 @@ def _model(seed: int) -> HistGradientBoostingRegressor:
     return HistGradientBoostingRegressor(**HGB, early_stopping=False, random_state=seed)
 
 
-def walk_forward(des: dict, final: bool = False, seed: int = config.SEED) -> dict:
+def walk_forward(des: dict, final: bool = False, seed: int = config.SEED, only_years: set[int] | None = None) -> dict:
+    """`only_years`: fit just those years' folds (the rest of `pred` stays NaN)."""
     p = des["d"]["p"]
     years = np.array([day_to_date(int(x)).year for x in p.days])
     rows_ok = des["elig"].any(axis=1)
@@ -250,6 +252,8 @@ def walk_forward(des: dict, final: bool = False, seed: int = config.SEED) -> dic
     for Y in range(first_year + MIN_TRAIN_YEARS, int(years[-1]) + 1):
         if not final and Y >= HOLDOUT_FROM.year:
             break
+        if only_years is not None and Y not in only_years:
+            continue
         train = np.nonzero(rows_ok & (years < Y))[0]
         test = np.nonzero(rows_ok & (years == Y))[0]
         if not len(test):
@@ -263,6 +267,83 @@ def walk_forward(des: dict, final: bool = False, seed: int = config.SEED) -> dic
         folds.append({"year": Y, "train_rows": int(m.sum()), "test_sessions": int(len(test))})
         log(f"daytrade fold {Y}: {int(m.sum())} train rows, {len(test)} sessions")
     return {"pred": pred, "folds": folds}
+
+
+def _pred_paths(final: bool):
+    name = f"daytrade_pred_{'final' if final else 'dev'}"
+    return config.DATA / f"{name}.npy", config.DATA / f"{name}.meta.json"
+
+
+def _before_last_year(des: dict) -> tuple[int, int]:
+    """(the panel's last year, the number of rows before it)."""
+    days = des["d"]["p"].days
+    last = day_to_date(int(days[-1])).year
+    return last, int(np.searchsorted(days, (dt.date(last, 1, 1) - dt.date(1970, 1, 1)).days))
+
+
+def _inputs_key(des: dict, upto: int) -> str:
+    """Hash of everything the folds of rows [0, upto) read: the symbols, the days, which cells are eligible, their
+    features and their labels. The same key means refitting those folds gives the same scores."""
+    p = des["d"]["p"]
+    rows = np.arange(upto)
+    X, ii, jj = matrix(des, rows)
+    h = hashlib.sha256(json.dumps(list(p.symbols)).encode())
+    for a in (p.days[:upto].astype(np.int64), ii.astype(np.int64), jj.astype(np.int64), X,
+              des["y_dm"][rows[ii], jj].astype(np.float32)):
+        h.update(np.ascontiguousarray(a).tobytes())
+    return h.hexdigest()
+
+
+def _save_pred(pred: np.ndarray, des: dict, final: bool, key: str | None = None) -> None:
+    """The score, then its key (written last, so a score without a matching key is never reused)."""
+    path, meta_path = _pred_paths(final)
+    last, upto = _before_last_year(des)
+    meta = {"sessions": int(pred.shape[0]), "last_day": day_to_date(int(des["d"]["p"].days[-1])).isoformat(),
+            "upto": upto, "inputs": key or _inputs_key(des, upto)}
+    meta_path.unlink(missing_ok=True)
+    tmp = path.with_name(path.stem + ".tmp.npy")
+    np.save(tmp, pred)
+    tmp.replace(path)
+    tmp = meta_path.with_name(meta_path.name + ".tmp")
+    tmp.write_text(json.dumps(meta))
+    tmp.replace(meta_path)
+
+
+def stage1_final(des: dict) -> np.ndarray:
+    """The final walk-forward stage-1 score for every row of `des`'s panel, as `run(final=True)` computes it.
+
+    The panel gains a session every day. The folds of the years before the panel's last year are kept from the
+    stored score when everything they read (symbols, days, eligible cells, features, labels) is unchanged; the
+    last year's fold is refitted, which is what a new `run(final=True)` gives. Anything else (no stored score, a
+    new year, another symbol set, revised history) is recomputed whole."""
+    from . import nse
+
+    if nse.building():
+        raise RuntimeError("data/nse is still being built (nse-history): no stage-1 score on a partial history")
+    p = des["d"]["p"]
+    D, S = p.C.shape
+    last, upto = _before_last_year(des)
+    key = _inputs_key(des, upto)
+    path, meta_path = _pred_paths(True)
+    pred = None
+    try:
+        meta = json.loads(meta_path.read_text())
+        old = np.load(path)
+        if meta.get("upto") == upto and meta.get("inputs") == key and old.shape[0] >= upto and old.shape[1] == S:
+            pred = np.full((D, S), np.nan, dtype=np.float32)
+            pred[:upto] = old[:upto]
+    except (OSError, ValueError):
+        pass
+    if pred is not None:
+        pred[upto:] = walk_forward(des, final=True, only_years={last})["pred"][upto:]
+        log(f"stage 1: folds before {last} kept, {last} refitted ({D} sessions)")
+    else:
+        pred = walk_forward(des, final=True)["pred"]
+        log(f"stage 1 recomputed for {D} sessions (no stored score for these inputs)")
+    if not np.isfinite(pred).any():  # never store this over a real score
+        raise RuntimeError("stage 1 scored no session: no stock is eligible on any day (data/nse/fo_membership.json missing?)")
+    _save_pred(pred, des, True, key)
+    return pred
 
 
 # ------------------------------------------------------------ portfolio
@@ -388,6 +469,8 @@ def run(final: bool = False, data_version: str | None = None) -> dict:
     des = design(d)
     wf = walk_forward(des, final=final)
     pred = wf["pred"]
+    if not np.isfinite(pred).any():
+        raise RuntimeError("daytrade scored no session: no stock is eligible on any day (data/nse/fo_membership.json missing?)")
     p = d["p"]
     hold = (HOLDOUT_FROM - dt.date(1970, 1, 1)).days
     have = np.isfinite(pred).any(axis=1)
@@ -426,7 +509,7 @@ def run(final: bool = False, data_version: str | None = None) -> dict:
                     ("daytrade_final" if final else "daytrade_dev", "done", t0, time.time(), d["data_version"],
                      (config.ROOT / "CODE_VERSION").read_text().strip() if (config.ROOT / "CODE_VERSION").exists() else None,
                      json.dumps({"final": final, "configs": CONFIGS, "hgb": HGB}), config.SEED, json.dumps(out, default=str)))
-    np.save(config.DATA / f"daytrade_pred_{'final' if final else 'dev'}.npy", pred)
+    _save_pred(pred, des, final)
     return out
 
 
