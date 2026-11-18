@@ -248,19 +248,15 @@ def regime_flags(models: dict, day: int, n_gap: float, m_first_up: float) -> dic
 
 
 # ------------------------------------------------------------ 09:20
-def decide(wait: bool = True) -> dict:
-    now = time.time()
-    day = live.today_ist(now)
+def prepare_ctx(day: int | None = None) -> dict:
+    """Everything the 09:20 decision needs that is known BEFORE the open: models, the daily panel up to the previous
+    session, the candidate list, the stocks' intraday habits and the volume baseline. The session loop computes it
+    at 09:12 so the 09:20 decision itself takes seconds."""
+    day = day if day is not None else live.today_ist()
     date = day_to_date(day)
-    con = _db()
-    if con.execute("SELECT 1 FROM livex_days WHERE day=? AND status IN ('decided','flipped','settled')", (day,)).fetchone():
-        return {"day": date.isoformat(), "status": "already decided"}
-    if date.weekday() >= 5:
-        return {"day": date.isoformat(), "status": "weekend"}
     models = load_models(date.year)
-    late = live.minute_ist(now) > 9 * 60 + 35
     d = dtm.load()
-    if late and d["p"].days[-1] >= day:
+    if d["p"].days[-1] >= day:  # today's (partial) daily bar is already stored: decide from the bars before it
         p0 = d["p"]
         k = p0.days < day
         d = {**d, "p": type(p0)(p0.days[k], p0.symbols, p0.O[k], p0.H[k], p0.L[k], p0.C[k], p0.V[k], p0.bench_o[k], p0.bench_c[k], p0.actions),
@@ -271,7 +267,25 @@ def decide(wait: bool = True) -> dict:
         raise RuntimeError(f"daily bars end {day_to_date(last)} but the last session was {day_to_date(want)} — run live-prepare")
     syms = live.candidates(d, day)
     hab = habits(syms, day)
-    log(f"livex decide {date}: {len(syms)} candidates, habits for {len(hab)}; waiting for the 09:15 bar")
+    panel_vs = panel_volume_baseline(day)
+    log(f"livex context {date}: {len(syms)} candidates, habits for {len(hab)}, volume baseline for {len(panel_vs)}")
+    return {"day": day, "models": models, "d": d, "syms": syms, "hab": hab, "panel_vs": panel_vs}
+
+
+def decide(wait: bool = True, ctx: dict | None = None) -> dict:
+    now = time.time()
+    day = live.today_ist(now)
+    date = day_to_date(day)
+    con = _db()
+    if con.execute("SELECT 1 FROM livex_days WHERE day=? AND status IN ('decided','flipped','settled')", (day,)).fetchone():
+        return {"day": date.isoformat(), "status": "already decided"}
+    if date.weekday() >= 5:
+        return {"day": date.isoformat(), "status": "weekend"}
+    late = live.minute_ist(now) > 9 * 60 + 35
+    if ctx is None or ctx.get("day") != day:
+        ctx = prepare_ctx(day)
+    models, d, syms, hab = ctx["models"], ctx["d"], ctx["syms"], ctx["hab"]
+    log(f"livex decide {date}: waiting for the 09:15 bar")
     while wait and not late and live.minute_ist() < 9 * 60 + 20 + 2 / 60:
         time.sleep(1)
     bars, ready_at = {}, None
@@ -290,7 +304,7 @@ def decide(wait: bool = True) -> dict:
         return {"day": date.isoformat(), "status": "no session (holiday?)"}
     bench = bars.pop(config.BENCHMARK, None)
     nf = nifty_first(day, bars.pop("NIFTY", None))
-    df = full_features(d, day, bars, bench["o"] if bench else np.nan, hab, nf, models)
+    df = full_features(d, day, bars, bench["o"] if bench else np.nan, hab, nf, models, panel_vs=ctx["panel_vs"])
     if len(df) < live.MIN_ROWS:
         raise RuntimeError(f"only {len(df)} scorable rows")
     flags = regime_flags(models, day, nf[1], float(df.m_first_up.iloc[0]))

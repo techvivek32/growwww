@@ -84,6 +84,12 @@ def session() -> dict:
     if date.weekday() >= 5:
         return {"status": "weekend"}
     con = _db()
+    log(f"session {date}: preparing the decision context")
+    ctx = None
+    try:
+        ctx = livex.prepare_ctx(day)
+    except Exception as e:  # noqa: BLE001  decide() will retry the preparation itself
+        log(f"context preparation failed: {e}")
     log(f"session {date}: waiting for 09:20")
     decided = False
     flipped = False
@@ -97,7 +103,7 @@ def session() -> dict:
             break
         try:
             if not decided and minute >= 9 * 60 + 20 + 2 / 60:
-                out = livex.decide(wait=False)
+                out = livex.decide(wait=False, ctx=ctx)
                 decided = out.get("status") not in (None, "weekend")
                 summary["decide"] = out
                 if out.get("status", "").startswith("no session"):
