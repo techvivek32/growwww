@@ -11,13 +11,17 @@ export function Card({
   children,
   className = "",
   pad = true,
+  id,
 }: {
   children: ReactNode;
   className?: string;
   pad?: boolean;
+  /** An anchor for in-page navigation (the admin sidebar links to sections this way). */
+  id?: string;
 }) {
   return (
     <div
+      id={id}
       className={`rounded-xl border border-line bg-surface ${pad ? "p-4 sm:p-5" : ""} ${className}`}
       style={{ boxShadow: "var(--shadow-card)" }}
     >

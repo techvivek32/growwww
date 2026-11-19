@@ -6,6 +6,7 @@ import { homeFor } from "@/lib/access";
 import { logout } from "@/app/login/actions";
 import ThemeToggle from "@/components/ThemeToggle";
 import { LogoMark, Wordmark } from "@/components/public/Brand";
+import AdminNav from "./AdminNav";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +35,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <span className="border border-line px-2 py-1 font-mono text-[10.5px] tracking-[0.08em] text-ink2 uppercase">
             Admin console
           </span>
-          <Link href="/admin/paper" className="ml-2 hidden text-[12.5px] text-ink2 underline-offset-2 hover:text-ink hover:underline sm:inline">
-            Paper trading
-          </Link>
           <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
             <ThemeToggle />
             <form action={logout}>
@@ -53,7 +51,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-[1360px] px-4 py-6 lg:px-6 lg:py-8">{children}</main>
+      <div className="mx-auto flex max-w-[1360px] items-start gap-6 px-4 py-6 lg:px-6 lg:py-8">
+        <AdminNav />
+        <main className="min-w-0 flex-1">{children}</main>
+      </div>
     </>
   );
 }

@@ -191,7 +191,7 @@ export default async function AdminPage() {
       </div>
 
       {/* onboarding funnel */}
-      <Card className="mb-4">
+      <Card className="mb-4 scroll-mt-24" id="funnel">
         <CardHead title="Onboarding funnel" sub="Each step as a share of all sign-ups" />
         <div className="grid grid-cols-2 gap-x-6 gap-y-5 border-t border-line pt-5 sm:grid-cols-3 lg:grid-cols-5">
           {funnel.map((f) => {
@@ -231,7 +231,7 @@ export default async function AdminPage() {
       </Figs>
 
       {/* accounts — one row per user; replaces the old users table, keeps its actions */}
-      <Card pad={false} className="mb-6">
+      <Card pad={false} className="mb-6 scroll-mt-24" id="addresses">
         <CardTitle
           title="Order addresses"
           count={String(pool.length + (house ? 1 : 0))}
@@ -303,7 +303,7 @@ export default async function AdminPage() {
         </form>
       </Card>
 
-      <Card pad={false} className="mb-6">
+      <Card pad={false} className="mb-6 scroll-mt-24" id="accounts">
         <CardTitle
           title="Accounts"
           count={String(users.length)}
@@ -471,7 +471,7 @@ export default async function AdminPage() {
       </Card>
 
       {/* admin access log */}
-      <Card pad={false} className="mb-6">
+      <Card pad={false} className="mb-6 scroll-mt-24" id="access">
         <CardTitle
           title="Admin access to client accounts"
           count={String(access.length)}
@@ -506,7 +506,7 @@ export default async function AdminPage() {
       </Card>
 
       {/* fee ledger */}
-      <Card pad={false} className="mb-6">
+      <Card pad={false} className="mb-6 scroll-mt-24" id="fees">
         <CardTitle
           title="Fee ledger"
           count={String(invoices.length)}
@@ -618,7 +618,7 @@ export default async function AdminPage() {
       </Card>
 
       {/* order log */}
-      <Card pad={false} className="mb-6">
+      <Card pad={false} className="mb-6 scroll-mt-24" id="orders">
         <CardTitle
           title="Order log"
           count={`latest ${orderLog.length} of ${orders.length}`}
@@ -676,7 +676,7 @@ export default async function AdminPage() {
         )}
       </Card>
 
-      <Card>
+      <Card id="signals" className="scroll-mt-24">
         <CardHead title="Signal engine" sub="Shared research runs on the house account" />
         <dl className="grid grid-cols-2 gap-4 border-t border-line pt-4 text-[13.5px] sm:grid-cols-4">
           <div><dt className={eyebrow}>Status</dt><dd className="mt-1.5 font-semibold text-ink">{engine.running ? "Running" : "Idle"}</dd></div>
@@ -687,7 +687,7 @@ export default async function AdminPage() {
       </Card>
 
       {/* KYC review */}
-      <Card pad={false} className="mt-6">
+      <Card pad={false} className="mt-6 scroll-mt-24" id="kyc">
         <CardTitle
           title="Identity verification"
           count={String(kyc.length)}
@@ -741,7 +741,7 @@ export default async function AdminPage() {
       </Card>
 
       {/* Members */}
-      <Card pad={false} className="mt-6">
+      <Card pad={false} className="mt-6 scroll-mt-24" id="members">
         <CardTitle
           title="Members"
           count={String(members.length)}
@@ -783,7 +783,7 @@ export default async function AdminPage() {
       </Card>
 
       {/* Consent audit */}
-      <Card pad={false} className="mt-6">
+      <Card pad={false} className="mt-6 scroll-mt-24" id="consents">
         <CardTitle
           title="Consent audit"
           count={String(consents.length)}
