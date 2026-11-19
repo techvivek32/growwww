@@ -5,9 +5,8 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 /**
- * The admin console's left navigation. Page links highlight by route; the
- * dashboard's sections are in-page anchors. On small screens it folds into a
- * "Menu" button under the header.
+ * The admin console's left navigation: one page per item, the current one
+ * highlighted. On small screens it folds into a "Menu" button under the header.
  */
 
 const GROUPS: { title: string; items: { label: string; href: string; hint?: string }[] }[] = [
@@ -15,26 +14,24 @@ const GROUPS: { title: string; items: { label: string; href: string; hint?: stri
     title: "Overview",
     items: [
       { label: "Dashboard", href: "/admin" },
-      { label: "Onboarding funnel", href: "/admin#funnel" },
-      { label: "Signal engine", href: "/admin#signals" },
     ],
   },
   {
     title: "Clients",
     items: [
-      { label: "Accounts", href: "/admin#accounts" },
-      { label: "Identity verification", href: "/admin#kyc" },
-      { label: "Members", href: "/admin#members" },
-      { label: "Consent audit", href: "/admin#consents" },
-      { label: "Admin access log", href: "/admin#access" },
+      { label: "Accounts", href: "/admin/accounts" },
+      { label: "Identity verification", href: "/admin/kyc" },
+      { label: "Members", href: "/admin/members" },
+      { label: "Consent audit", href: "/admin/consents" },
+      { label: "Admin access log", href: "/admin/access" },
     ],
   },
   {
     title: "Trading",
     items: [
-      { label: "Order addresses", href: "/admin#addresses" },
-      { label: "Order log", href: "/admin#orders" },
-      { label: "Fee ledger", href: "/admin#fees" },
+      { label: "Order addresses", href: "/admin/addresses" },
+      { label: "Order log", href: "/admin/orders" },
+      { label: "Fee ledger", href: "/admin/fees" },
     ],
   },
   {
@@ -47,9 +44,7 @@ const GROUPS: { title: string; items: { label: string; href: string; hint?: stri
 ];
 
 function isActive(pathname: string, href: string): boolean {
-  const base = href.split("#")[0];
-  if (href.includes("#")) return false;
-  return base === "/admin" ? pathname === "/admin" : pathname === base || pathname.startsWith(base + "/");
+  return href === "/admin" ? pathname === "/admin" : pathname === href || pathname.startsWith(href + "/");
 }
 
 export default function AdminNav() {
