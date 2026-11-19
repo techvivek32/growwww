@@ -181,7 +181,13 @@ def _client() -> Groww:
 
 
 def fetch_today(symbols: list[str], day: dt.date, workers: int = FETCH_WORKERS) -> dict[str, pd.DataFrame]:
-    """Today's 5-minute bars per symbol (backtesting endpoint: per-bar volume, like the stored history)."""
+    """A session's 5-minute bars per symbol. For the CURRENT session the range endpoint is used: it serves a bar
+    the moment it closes, while the backtesting endpoint has been seen to lag by minutes (2026-11-19: the 09:15
+    bar arrived at 09:25). Past sessions come from the backtesting endpoint (per-bar volume, like the stored
+    history), with the range endpoint as the fallback."""
+    day_n = (day - dt.date(1970, 1, 1)).days
+    if day_n >= today_ist():
+        return fetch_range_day(symbols, day_n, workers)
     out: dict[str, pd.DataFrame] = {}
     Groww().token()  # mint (or load) the access token before the threads start
     gsym = {s: ingest.groww_symbol(s) for s in symbols}
