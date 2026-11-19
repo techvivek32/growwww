@@ -9,14 +9,12 @@ export interface NavItem {
   /** Shorter label used once the rail has to scroll on small screens. */
   short?: string;
   group: "trading" | "system";
-  /** "owner": shown only on the owner's account (signals, alerts, order entry). */
+  /** "owner": shown only on the owner's account (scanner, terminal). */
   access?: "owner";
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/ai", label: "MNHA AI", short: "MNHA AI", group: "trading" },
-  { href: "/stocks/alerts", label: "Stock Alerts", short: "Alerts", group: "trading", access: "owner" },
-  { href: "/fno/alerts", label: "F&O", short: "F&O", group: "trading", access: "owner" },
+  { href: "/ai", label: "Home", short: "Home", group: "trading" },
   { href: "/fno/chain", label: "Option Chain", short: "Chain", group: "trading" },
   { href: "/stocks/scanner", label: "Scanner", group: "trading", access: "owner" },
   { href: "/stocks/watchlist", label: "Watchlist", group: "trading" },

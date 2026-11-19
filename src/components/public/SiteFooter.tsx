@@ -8,7 +8,6 @@ const COLS: { head: string; links: [string, string][] }[] = [
       ["/#path", "How it works"],
       ["/#desk", "The desk"],
       ["/#try", "Risk maths"],
-      ["/#ai", "MNHA AI"],
       ["/#faq", "Questions"],
     ],
   },
@@ -70,8 +69,8 @@ export default function SiteFooter() {
           <p className="max-w-[48rem] text-[12px] leading-relaxed text-[#5f5a50]">
             MNHA Financials is decision-support software, not a broker and not an investment adviser. It is not
             registered with SEBI as a Research Analyst or Investment Adviser, and nothing on this site is a
-            recommendation to buy or sell any security. Setups are generated from price and volume data and can be
-            wrong; past or backtested results do not predict future results. Trading in equities and derivatives
+            recommendation to buy or sell any security. Prices and figures come from market data and can be
+            wrong or late; past results do not predict future results. Trading in equities and derivatives
             carries a risk of loss — SEBI&apos;s own studies found roughly 9 in 10 individual F&amp;O traders lost
             money. Orders you confirm are placed on your own Groww account through Groww&apos;s official API.
             &ldquo;Groww&rdquo; is a trademark of its owner; MNHA Financials is independent and is not affiliated

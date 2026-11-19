@@ -71,15 +71,6 @@ function istDate(d: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: IST }).format(d);
 }
 
-/** 09:17–09:23 IST: the research server's paper books fetch the 09:15 bars for
- *  hundreds of symbols on the house Groww key from 09:20, so the website's bulk
- *  reads sit it out (from 09:17, so one started earlier is done by then). */
-export function inOpeningBurst(now: Date = new Date()): boolean {
-  const p = istParts(now);
-  const mins = p.hour * 60 + p.minute;
-  return mins >= 9 * 60 + 17 && mins < 9 * 60 + 23;
-}
-
 /** For the admin console: the holiday list needs the exchange's next calendar —
  *  the current year has no dates, or (from 15 December) the next year has none. */
 export function holidayListNotice(now: Date = new Date()): string | null {

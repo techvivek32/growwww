@@ -4,26 +4,14 @@ import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
 import { getAccount, getNav, getConnectionStatus } from "@/lib/api/broker";
-import { engineStatus } from "@/lib/signals/engine";
-import { STRATEGIES } from "@/lib/signals/strategies";
 import { marketState } from "@/lib/market";
 import WaveArt from "@/components/public/WaveArt";
 import AutoRefresh from "@/components/AutoRefresh";
 
-export const metadata: Metadata = { title: "MNHA AI · MNHA Financials" };
+export const metadata: Metadata = { title: "Home · MNHA Financials" };
 export const dynamic = "force-dynamic";
 
 const inr = (v: number) => `₹${Math.round(v).toLocaleString("en-IN")}`;
-const nowMs = () => Date.now();
-
-function ago(ts: number | null, now: number): string {
-  if (!ts) return "not yet";
-  const s = Math.max(0, Math.floor((now - ts) / 1000));
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return `${Math.floor(s / 86400)} d ago`;
-}
 
 function Row({ n, label, value, note, tone = "ink" }: { n: string; label: string; value: string; note?: string; tone?: "ink" | "up" | "warn" | "muted" }) {
   const cls = tone === "up" ? "text-up" : tone === "warn" ? "text-warn" : tone === "muted" ? "text-ink3" : "text-ink";
@@ -40,31 +28,28 @@ function Row({ n, label, value, note, tone = "ink" }: { n: string; label: string
 }
 
 /**
- * The member home. Everything on it is read live: the engine's real status,
- * the market session, the member's own Groww link. It states plainly what the
- * AI does today — it studies the market — and that it places no orders on the
- * member's account until automatic trading actually exists and is switched on.
+ * The home page. Everything on it is read live: the market session, and for a
+ * member their own Groww link and order address. It says plainly that MNHA
+ * places no order by itself.
  */
-export default async function AiPage() {
+export default async function HomePage() {
   const uid = await currentUserId();
   if (!uid) redirect("/login");
   const isOwner = uid === OWNER_ID;
 
   const [account, nav, conn] = await Promise.all([getAccount(), getNav(), getConnectionStatus()]);
   const orderIp = conn.orderIp;
-  const engine = engineStatus();
   const ms = marketState();
-  const now = nowMs();
-  const running = engine.running;
-  // "Live" only while the market is open — the engine scans in session.
-  const working = running && ms.isLive;
   const connected = account.balance !== null;
+  const whoSends = isOwner
+    ? "An order goes to Groww only when you confirm it."
+    : "An order goes to Groww only when you confirm it, or when you ask MNHA's admin to place it for you.";
 
   return (
     <div className="mx-auto max-w-5xl">
       <AutoRefresh seconds={60} />
 
-      {/* status hero */}
+      {/* hero */}
       <section className="relative overflow-hidden border border-line">
         <div className="absolute inset-0">
           <WaveArt variant="band" uid="ai-hero" />
@@ -72,21 +57,19 @@ export default async function AiPage() {
         <div className="relative p-5 sm:p-10">
           <div className="max-w-[34rem] bg-surface p-7 sm:p-10">
             <p className="flex items-center gap-2 font-mono text-[11px] tracking-[0.12em] text-ink3 uppercase">
-              <span className={`h-2 w-2 rounded-full ${working ? "live-dot bg-up" : "bg-ink3"}`} />
-              {working ? "Live" : running ? "Idle" : "Not running"} · {ms.label}
+              <span className={`h-2 w-2 rounded-full ${ms.isLive ? "live-dot bg-up" : "bg-ink3"}`} />
+              {ms.label} · {ms.clock}
             </p>
             <h1 className="pub-display mt-5 text-[clamp(2.6rem,6vw,4.2rem)] leading-[0.98] text-ink">
-              MNHA AI is <em>{working ? "running." : running ? "idle." : "not running."}</em>
+              Your desk, <em>{ms.isLive ? "live." : "ready."}</em>
             </h1>
             <p className="mt-5 text-[15.5px] leading-relaxed text-ink2">
-              {working
-                ? `It is studying the NSE right now with ${STRATEGIES.length} rule-based strategies, re-scoring each one on its live outcomes. Last scan ${ago(engine.lastScan, now)}.`
-                : running
-                  ? `The market is closed, so it is waiting for the next session. It studies the NSE with ${STRATEGIES.length} rule-based strategies during market hours. Last scan ${ago(engine.lastScan, now)}.`
-                  : "The engine is not running on our server right now. This page refreshes itself."}
+              {connected
+                ? "Your own Groww account on one calm desk: holdings, positions, orders and live option chains."
+                : "Your desk shows your own Groww account as soon as it can be read. This page refreshes itself."}
             </p>
             <p className="mt-4 border-l-2 border-mark pl-3.5 text-[13.5px] leading-relaxed text-ink2">
-              MNHA AI places <strong className="text-ink">no orders</strong> on your account.
+              MNHA places <strong className="text-ink">no orders</strong> by itself. {whoSends}
             </p>
           </div>
         </div>
@@ -96,17 +79,10 @@ export default async function AiPage() {
       <section className="mt-10">
         <h2 className="pub-display text-[28px] leading-tight text-ink">Status</h2>
         <ul className="mt-4 border-t border-ink/80">
-          <Row
-            n="01"
-            label="Engine"
-            value={working ? (engine.scanning ? "Running · scanning now" : "Running") : running ? "Idle · market closed" : "Not running"}
-            note={`Last scan ${ago(engine.lastScan, now)} · strategies re-scored ${ago(engine.lastBacktest, now)}.`}
-            tone={working ? "up" : "muted"}
-          />
-          <Row n="02" label="Market" value={ms.label} note={`${ms.date} · ${ms.clock} · NSE session 09:15–15:30 IST`} tone={ms.isLive ? "up" : "muted"} />
+          <Row n="01" label="Market" value={ms.label} note={`${ms.date} · ${ms.clock} · NSE session 09:15–15:30 IST`} tone={ms.isLive ? "up" : "muted"} />
           {!isOwner && (
             <Row
-              n="03"
+              n="02"
               label="Your Groww"
               value={connected ? "Connected" : "Not reachable right now"}
               note={
@@ -119,7 +95,7 @@ export default async function AiPage() {
           )}
           {!isOwner && (
             <Row
-              n="04"
+              n="03"
               label="Order address"
               value={orderIp ?? "Not assigned yet"}
               note={
@@ -131,10 +107,10 @@ export default async function AiPage() {
             />
           )}
           <Row
-            n={isOwner ? "03" : "05"}
+            n={isOwner ? "02" : "04"}
             label="Orders"
-            value="None placed by MNHA AI"
-            note="MNHA AI places no orders on your account. Every trade on it is your own decision."
+            value="None placed automatically"
+            note={`Nothing is bought or sold for you by itself. ${whoSends} Every trade is your own decision.`}
             tone="muted"
           />
         </ul>

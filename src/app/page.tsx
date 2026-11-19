@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getPublicTape } from "@/lib/publicTape";
-import { STRATEGIES } from "@/lib/signals/strategies";
 import { pubFonts } from "@/components/public/fonts";
 import { LogoMark } from "@/components/public/Brand";
 import SiteNav from "@/components/public/SiteNav";
@@ -9,12 +8,12 @@ import SiteFooter from "@/components/public/SiteFooter";
 import WaveArt from "@/components/public/WaveArt";
 import TickerCard from "@/components/public/TickerCard";
 import RiskCalculator from "@/components/public/RiskCalculator";
-import { Arrow, Button, Container, Display, Eyebrow, Mono, TextLink } from "@/components/public/ui";
+import { Arrow, Button, Container, Display, Eyebrow, TextLink } from "@/components/public/ui";
 
 export const metadata: Metadata = {
-  title: "MNHA Financials — your Groww account on one calm desk, with MNHA AI",
+  title: "MNHA Financials — your Groww account on one calm desk",
   description:
-    "Connect your own Groww account: holdings, positions, orders and live option chains on one calm desk, while MNHA AI studies the NSE on our server. Your money never leaves Groww, and MNHA AI never trades for you.",
+    "Connect your own Groww account: holdings, positions, orders and live option chains on one calm desk. Your money never leaves Groww, and nothing is bought or sold for you automatically.",
   robots: { index: true, follow: true },
   alternates: { canonical: "/" },
 };
@@ -100,7 +99,7 @@ const PATH: { n: string; title: string; body: string; rows: [string, string, str
     rows: [
       ["3.1", "Balance, holdings and positions, live", "live"],
       ["3.2", "Option chains, indices and quotes", "live"],
-      ["3.3", "MNHA AI's live status on your home screen", "live"],
+      ["3.3", "Orders sent only when you confirm them", "live"],
     ],
   },
 ];
@@ -144,10 +143,9 @@ const FAQ: [string, string][] = [
 
 export default async function Landing() {
   const tape = await getPublicTape();
-  const setups = STRATEGIES.length;
 
   const DESK: [string, string, string][] = [
-    ["T/01", "MNHA AI", `Its live status on your home screen: the engine studying the NSE with ${setups} rule-based strategies.`],
+    ["T/01", "Order ticket", "Place an order on your own Groww account; it is sent only after you confirm it."],
     ["T/02", "Your account", "Balance, holdings and positions, read straight from your Groww account."],
     ["T/03", "Orders & fills", "Today's order book and fills, exactly as Groww reports them."],
     ["T/04", "Option chains", "NIFTY, BANK NIFTY, FIN NIFTY, SENSEX and BANKEX — real strikes, premiums and open interest."],
@@ -157,7 +155,7 @@ export default async function Landing() {
   ];
 
   const STATS: [string, string][] = [
-    [String(setups), "Strategies studied"],
+    ["3", "Agreement languages"],
     ["5", "Option chains"],
     ["0", "Automatic orders"],
     ["₹0", "Held by us"],
@@ -187,8 +185,8 @@ export default async function Landing() {
               </Display>
               <p className="mt-8 max-w-[34rem] text-[18px] leading-[1.6] text-pub-muted">
                 Connect your Groww account: balance, holdings, positions and live option chains on one calm
-                desk — while MNHA AI studies the NSE on our server. Your money never leaves Groww, and MNHA AI never
-                trades for you. No tips, no hype.
+                desk. Your money never leaves Groww, and nothing is bought or sold for you
+                automatically. No tips, no hype.
               </p>
               <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-5">
                 <Button href="/signup">Create your account</Button>
@@ -355,51 +353,11 @@ export default async function Landing() {
           </Container>
         </section>
 
-        {/* 7 · MNHA AI on art */}
-        <section id="ai" className="relative overflow-hidden py-14 sm:py-20">
-          <WaveArt variant="band" uid="band" />
-          <Container className="relative">
-            <div className="max-w-[48rem] bg-pub-card p-7 sm:p-14">
-              <Eyebrow n="05">MNHA AI</Eyebrow>
-              <Display className="mt-6 text-[clamp(2.2rem,3.8vw,3.2rem)] leading-[1.0] text-pub-cream">
-                An engine that studies the market — and says so <em>plainly.</em>
-              </Display>
-              <p className="mt-5 text-[16px] leading-[1.6] text-pub-muted">
-                MNHA AI runs on our server. It studies the NSE with {setups} rule-based strategies and re-scores each one
-                on its live outcomes. Your home screen shows its real status — and it places no orders on your account.
-              </p>
-              <ul className="mt-9 border-t border-pub-cream">
-                {(
-                  [
-                    ["01", G.bars, "Studies the market", `${setups} rule-based strategies, long and short, run on real NSE candles during market hours.`],
-                    ["02", G.peak, "Scores itself", "Each strategy is re-scored on its live outcomes; one that stops working is retired on its own."],
-                    ["03", G.shield, "Shows its status", "Running or idle, last scan, market session — read live, on your home screen."],
-                    ["04", G.bank, "Places no orders", "MNHA AI never buys or sells anything for you. It studies the market; every trade is yours to decide."],
-                  ] as const
-                ).map(([n, icon, title, body]) => (
-                  <li key={n} className="grid grid-cols-[2rem_1.75rem_1fr] items-start gap-4 border-b border-pub-hair py-5">
-                    <span className="pt-0.5 font-plex text-[11px] text-pub-muted">{n}</span>
-                    <span className="text-pub-cream">{icon}</span>
-                    <span>
-                      <span className="block text-[16.5px] font-semibold text-pub-cream">{title}</span>
-                      <span className="mt-1 block text-[14.5px] leading-relaxed text-pub-muted">{body}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
-                <Button href="/signup">Create your account</Button>
-                <Mono className="text-pub-muted">No tips · no hype · no auto-trading</Mono>
-              </div>
-            </div>
-          </Container>
-        </section>
-
-        {/* 8 · FAQ */}
+        {/* 7 · FAQ */}
         <section id="faq" className="py-24 sm:py-32">
           <Container className="grid gap-12 lg:grid-cols-12">
             <div className="lg:col-span-4">
-              <Eyebrow n="06">Questions</Eyebrow>
+              <Eyebrow n="05">Questions</Eyebrow>
               <Display className="mt-6 text-[clamp(2.4rem,4vw,3.4rem)] leading-[1.0] text-pub-cream">
                 The things people ask <em>first.</em>
               </Display>

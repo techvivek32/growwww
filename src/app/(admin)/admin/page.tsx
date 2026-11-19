@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { requireAdminPage } from "@/lib/access";
 import { liveSummary } from "@/lib/research";
 import { loadAdmin } from "./sections";
-import { Attention, Engine, Funnel, Hero, KeyStats, Money, PaperSnapshot, RecentAccess, RecentOrders, Signups } from "./dashboard";
+import { Attention, Funnel, Hero, KeyStats, Money, PaperSnapshot, RecentAccess, RecentOrders, Signups } from "./dashboard";
 
 export const metadata: Metadata = { title: "Admin · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -33,7 +33,6 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <div className="space-y-4">
           <Attention d={d} />
           <Signups d={d} />
-          <Engine d={d} />
           <RecentAccess d={d} />
         </div>
       </div>

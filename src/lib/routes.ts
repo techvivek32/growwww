@@ -1,12 +1,12 @@
 /**
- * Who can open what. Signals, alerts and the research desk stay with the owner; no
- * manual order entry — their home is the MNHA AI page. The owner's account
- * keeps the full desk. Shared by the proxy (edge) and server pages, so it has
+ * Who can open what. The scanner, the terminal and the demo board stay with the
+ * owner; everyone's home is the Home page (/ai). The owner's account keeps the
+ * full desk. Shared by the proxy (edge) and server pages, so it has
  * no server-only imports.
  */
 
 /** Sections only the owner's account may open. */
-export const OWNER_ONLY = ["/stocks/alerts", "/fno/alerts", "/stocks/scanner", "/terminal", "/linked-accounts"];
+export const OWNER_ONLY = ["/stocks/scanner", "/terminal", "/linked-accounts"];
 
 /** The admin console — only the admin login opens it, not even the owner's account. */
 export const ADMIN_ONLY = ["/admin"];
@@ -15,7 +15,7 @@ export const ADMIN_ONLY = ["/admin"];
  *  files that the console links to. */
 const ADMIN_MAY_OPEN = [...ADMIN_ONLY, "/api/kyc/file", "/api/consent/media"];
 
-export const OWNER_HOME = "/stocks/alerts";
+export const OWNER_HOME = "/ai";
 export const MEMBER_HOME = "/ai";
 export const ADMIN_HOME = "/admin";
 

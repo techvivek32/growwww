@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AGREEMENT_VERSION, currentConsent } from "@/lib/consent";
+import { AGREEMENT_VERSION, INVITE_TO_SIGN, currentConsent } from "@/lib/consent";
 
 /**
  * For a member whose signed agreement is an earlier version that is still
@@ -8,7 +8,8 @@ import { AGREEMENT_VERSION, currentConsent } from "@/lib/consent";
  */
 export default async function AgreementUpdateNotice({ userId }: { userId: string }) {
   const signed = await currentConsent(userId);
-  if (!signed || signed.agreementVersion === AGREEMENT_VERSION) return null;
+  // 3.3 signers only: their text predates orders from MNHA. 3.4 signers need nothing.
+  if (!signed || !INVITE_TO_SIGN.includes(signed.agreementVersion)) return null;
   const version = AGREEMENT_VERSION.split(" ")[0];
   return (
     <div className="border-b border-line bg-surface">

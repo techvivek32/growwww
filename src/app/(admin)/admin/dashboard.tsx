@@ -1,14 +1,14 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Card, CardHead, Pill, StatTile } from "@/components/ui";
-import { AGREEMENT_VERSION, isAcceptedVersion } from "@/lib/consent";
+import { AGREEMENT_VERSION, INVITE_TO_SIGN, isAcceptedVersion } from "@/lib/consent";
 import { holidayListNotice } from "@/lib/market";
 import type { LiveSummary } from "@/lib/research";
 import type { AdminData } from "./sections";
 
 /**
  * The admin dashboard: what needs attention today, the headline numbers, the
- * onboarding funnel, money, the live paper book, the signal engine, and the
+ * onboarding funnel, money, the live paper book, and the
  * latest activity. Every tile links to the page that owns it.
  */
 
@@ -19,14 +19,6 @@ const LOG_TIME = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "shor
 const inr = (v: number) => `₹${Math.round(v).toLocaleString("en-IN")}`;
 const inr2 = (v: number) => `₹${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(2)}%`;
-function ago(ts: number | null): string {
-  if (!ts) return "—";
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
-}
 const eyebrow = "font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase";
 const isPast = (ts: number) => Date.now() >= ts;
 type Tone = "warn" | "down" | "neutral";
@@ -102,10 +94,10 @@ export function Attention({ d }: { d: AdminData }) {
   const noAddress = d.users.filter((u) => u.hasBroker && !u.brokerStaticIp);
   const ended = d.activeMembers.filter((m) => isPast(m.periodEndsAt));
   const onOld = d.users.filter((u) => !d.signedNow.has(u.id) && d.signedOld.has(u.id));
-  // An earlier version that still counts (3.3) blocks nothing: those members are only invited to
-  // sign the new one. A version that no longer counts must be signed again before they get in.
+  // An earlier version that still counts blocks nothing: 3.3 signers are only invited to sign the
+  // new one, and 3.4 signers need nothing. A version that no longer counts must be signed again.
   const mustResign = onOld.filter((u) => !isAcceptedVersion(d.signedOld.get(u.id)?.agreementVersion ?? ""));
-  const invited = onOld.length - mustResign.length;
+  const invited = onOld.filter((u) => INVITE_TO_SIGN.includes(d.signedOld.get(u.id)?.agreementVersion ?? "")).length;
   const holidayNote = holidayListNotice();
   const all: { n: number; text: string; href: string; tone: Tone }[] = [
     { n: d.pendingKyc, text: "identity verification waiting for review", href: "/admin/kyc", tone: "warn" },
@@ -242,21 +234,6 @@ export function PaperSnapshot({ live }: { live: { kind: "ok"; data: LiveSummary 
           </div>
         </div>
       )}
-    </Card>
-  );
-}
-
-/* ------------------------------------------------------------ engine */
-export function Engine({ d }: { d: AdminData }) {
-  const e = d.engine;
-  return (
-    <Card>
-      <CardHead title="Signal engine" sub="Shared research runs on the house account." right={<Pill tone={e.running ? "up" : "neutral"}>{e.running ? "running" : "idle"}</Pill>} />
-      <dl className="grid grid-cols-3 gap-3">
-        <div><dt className={eyebrow}>Scanning</dt><dd className="mt-1 text-[14px] font-semibold text-ink">{e.scanning ? "Yes" : "No"}</dd></div>
-        <div><dt className={eyebrow}>Last scan</dt><dd className="tnum mt-1 text-[14px] font-semibold text-ink">{ago(e.lastScan)}</dd></div>
-        <div><dt className={eyebrow}>Edge recomputed</dt><dd className="tnum mt-1 text-[14px] font-semibold text-ink">{ago(e.lastBacktest)}</dd></div>
-      </dl>
     </Card>
   );
 }

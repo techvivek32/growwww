@@ -62,7 +62,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <footer className="mx-auto max-w-[1360px] px-4 pb-10 lg:px-6">
         <p className="border-t border-line pt-5 text-[11.5px] leading-relaxed text-ink3">
           {canTrade
-            ? "MNHA Financials is a decision-support terminal, not investment advice. Setups are generated from price and volume data and can be wrong. Orders you confirm here, or ask MNHA's admin to place, go to your own Groww account — they are yours."
+            ? "MNHA Financials is a decision-support terminal, not investment advice. Prices and figures come from market data and can be wrong or late. Orders you confirm here, or ask MNHA's admin to place, go to your own Groww account — they are yours."
             : "MNHA Financials shows your own Groww account, read-only. Nothing here is investment advice, and no order is placed from this page. Your money and positions stay with Groww."}
         </p>
       </footer>

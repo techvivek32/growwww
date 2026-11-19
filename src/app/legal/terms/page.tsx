@@ -56,7 +56,7 @@ export default function TermsPage() {
         <div className="space-y-2">
           <H>4. No guarantee of results</H>
           <p>
-            Any strategy status, analysis or statistics are generated mechanically from historical and live market data. Past
+            Any analysis or statistics are generated mechanically from historical and live market data. Past
             performance does not predict future results. The Service makes no promise of profit and no promise against
             loss. Trading in equities and derivatives carries substantial risk, including the loss of your entire
             capital. See our <a href="/legal/risk-disclosure" className="text-brandtext hover:opacity-75">Risk Disclosure</a>.

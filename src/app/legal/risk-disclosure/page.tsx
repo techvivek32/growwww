@@ -43,10 +43,10 @@ export default function RiskPage() {
         <div className="space-y-2">
           <H>Nothing shown is advice or a prediction</H>
           <p>
-            MNHA AI&apos;s strategies are mechanical rules read off historical and live data, and anything the Service
-            shows — a status, an analysis, a figure — is not a forecast, not personalised advice, and not a
-            recommendation to buy, sell or hold. A strategy with a positive historical edge can still lose, and edges
-            decay as markets change. Nothing here guarantees a future outcome.
+            Anything the Service shows — a price, an analysis, a figure — is read off historical and live data, and
+            is not a forecast, not personalised advice, and not a recommendation to buy, sell or hold. A strategy
+            with a positive historical edge can still lose, and edges decay as markets change. Nothing here
+            guarantees a future outcome.
           </p>
         </div>
 

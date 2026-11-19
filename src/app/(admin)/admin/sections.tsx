@@ -7,7 +7,6 @@ import { listConsents, AGREEMENT_VERSION, isAcceptedVersion, type ConsentRecord 
 import { listMembers, listInvoices, accrual, type Membership, type InvoiceStatus } from "@/lib/membership";
 import { listOrders, orderStatsByUser, type LedgerStatus } from "@/lib/ledger";
 import { registeredIp } from "@/lib/api/groww";
-import { engineStatus } from "@/lib/signals/engine";
 import { Card, CardHead, Pill } from "@/components/ui";
 import { adminOpenAccount, adminDisconnectBroker, adminDeleteUser, adminKycDecision, adminScheduleKycCall, adminMarkInvoice, adminAddEgress, adminRemoveEgress } from "./actions";
 import { recentAdminAccess, type AdminAccess } from "@/lib/adminAccess";
@@ -119,7 +118,6 @@ export async function loadAdmin() {
   // The two sign-in addresses that are not user records — they never appear in
   // the table below, yet a sign-up with either is told the account exists.
   const reserved = [ownerEmail(), adminEmail()].filter(Boolean) as string[];
-  const engine = engineStatus();
   const connected = users.filter((u) => u.hasBroker).length;
   const last7 = users.filter((u) => withinDays(u.createdAt, 7)).length;
   const pendingKyc = kyc.filter((k) => k.status === "submitted").length;
@@ -168,17 +166,17 @@ export async function loadAdmin() {
   const ordersToday = orders.filter((o) => istDay(o.at) === today);
   const countStatus = (list: typeof orders, s: LedgerStatus) => list.filter((o) => o.status === s).length;
   const orderLog = orders.slice(0, 100);
-  return { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, engine, connected, last7, pendingKyc,
+  return { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, connected, last7, pendingKyc,
            activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday,
            countStatus, orderLog };
 }
 export type AdminData = Awaited<ReturnType<typeof loadAdmin>>;
-const D = "const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, engine, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;";
+const D = "const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;";
 
 
 /** Order addresses: the pool of registered egress addresses. */
 export function AddressesSection({ d }: { d: AdminData }) {
-  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, engine, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
+  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
   return (
     <>
       <Card pad={false}>
@@ -258,7 +256,7 @@ export function AddressesSection({ d }: { d: AdminData }) {
 
 /** Accounts: one row per user, with the admin actions. */
 export function AccountsSection({ d }: { d: AdminData }) {
-  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, engine, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
+  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
   return (
     <>
       <Card pad={false}>
@@ -435,7 +433,7 @@ export function AccountsSection({ d }: { d: AdminData }) {
 
 /** Admin access log. */
 export function AccessSection({ d }: { d: AdminData }) {
-  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, engine, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
+  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
   return (
     <>
       <Card pad={false}>
@@ -480,7 +478,7 @@ export function AccessSection({ d }: { d: AdminData }) {
 
 /** Fee ledger and settlement. */
 export function FeesSection({ d }: { d: AdminData }) {
-  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, engine, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
+  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
   return (
     <>
       <Card pad={false}>
@@ -599,7 +597,7 @@ export function FeesSection({ d }: { d: AdminData }) {
 
 /** Order log. */
 export function OrdersSection({ d }: { d: AdminData }) {
-  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, engine, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
+  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
   return (
     <>
       <Card pad={false}>
@@ -670,7 +668,7 @@ export function OrdersSection({ d }: { d: AdminData }) {
 
 /** Identity verification review. */
 export function KycSection({ d }: { d: AdminData }) {
-  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, engine, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
+  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
   return (
     <>
       <Card pad={false}>
@@ -731,7 +729,7 @@ export function KycSection({ d }: { d: AdminData }) {
 
 /** Members. */
 export function MembersSection({ d }: { d: AdminData }) {
-  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, engine, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
+  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
   return (
     <>
       <Card pad={false}>
@@ -780,7 +778,7 @@ export function MembersSection({ d }: { d: AdminData }) {
 
 /** Consent audit. */
 export function ConsentsSection({ d }: { d: AdminData }) {
-  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, engine, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
+  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
   return (
     <>
       <Card pad={false}>
