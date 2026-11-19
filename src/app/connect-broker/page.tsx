@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { currentUserId } from "@/lib/session";
+import { currentUserId, inAdminView } from "@/lib/session";
 import { isReservedId } from "@/lib/auth";
 import { homeFor } from "@/lib/access";
 import { hasConsented } from "@/lib/consent";
@@ -17,7 +17,8 @@ export const dynamic = "force-dynamic";
 
 export default async function ConnectBrokerPage({ searchParams }: { searchParams: Promise<{ reconnect?: string }> }) {
   const uid = await currentUserId();
-  if (!uid) redirect("/login");
+  // A client deleted while the admin is inside it: the desk layout keeps "Back to admin".
+  if (!uid) redirect((await inAdminView()) ? MEMBER_HOME : "/login");
   // The owner uses the env house account and never connects here.
   if (isReservedId(uid)) redirect(homeFor(uid));
   // Must accept the agreement before connecting a broker.

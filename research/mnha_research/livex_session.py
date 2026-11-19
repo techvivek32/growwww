@@ -99,6 +99,7 @@ def session() -> dict:
     decide_fails = 0
     flipped = False
     next_flip = 0.0
+    flip_fails = 0
     last_mark = 0.0
     squared = False
     summary: dict = {"day": date.isoformat()}
@@ -109,8 +110,9 @@ def session() -> dict:
             break
         try:
             if not decided and minute >= 9 * 60 + 20 + 2 / 60 and now >= next_decide:
-                # A decision that raises backs off (15 s, 30 s, ... 10 min) instead of re-fetching all day.
-                next_decide = now + min(DECIDE_RETRY_S * 2 ** decide_fails, 600)
+                # A decision that raises backs off instead of re-fetching all day: gaps of at most a minute
+                # while a timely decision is still possible (to 09:35), then up to 10 minutes.
+                next_decide = now + min(DECIDE_RETRY_S * 2 ** decide_fails, 60 if minute < 9 * 60 + 35 else 600)
                 decide_fails += 1
                 if ctx is None:
                     ctx = livex.prepare_ctx(day)  # built once and kept for every retry
@@ -129,20 +131,33 @@ def session() -> dict:
                     if row and not row[0] and row[1]:
                         _open_leg(con, day, "short", row[1], -1, float(row[2]), now)
             if decided and not flipped and minute >= 10 * 60 + 15 + 0.5 and now >= next_flip:
-                next_flip = now + DECIDE_RETRY_S  # a flip that raises (bars not in yet) is retried shortly
-                if "flip" not in summary:
-                    summary["flip"] = livex.flip()
-                # Book B follows the RECORDED 10:15 decision (this run's or another's): cover the short at the
-                # live price (if its stop has not already closed it) and buy the top gainer, like book A, but
-                # never on a regime-skip day, when book A takes nothing. Done only once it all succeeds.
-                rec = con.execute("SELECT skip, flip, flip_symbol, flip_px FROM livex_days WHERE day=?", (day,)).fetchone()
-                if rec and rec[1] is not None:
-                    if rec[1] and rec[2] and not rec[0]:
-                        legs = [l for l in _open_legs(con, day) if l[0] == "short"]
-                        if legs:
-                            _close_leg(con, day, "short", _quote(legs), now, "flip cover")
-                        _open_leg(con, day, "flip_long", rec[2], 1, float(rec[3]), now)
-                    flipped = True
+                # Its own try: a flip that is not done yet never holds up book B's stop checks, the square-off
+                # or the settle below, and it backs off instead of re-fetching back to back.
+                try:
+                    if minute >= 10 * 60 + 45:
+                        # Too late for book B to follow a flip at its 10:15 price: it keeps its position, and
+                        # settle() decides and stores book A's flip from the bars if none was recorded.
+                        log("the 10:15 flip was not done by 10:45: book B keeps its position")
+                        flipped = True
+                    else:
+                        if "flip" not in summary:
+                            summary["flip"] = livex.flip()
+                        # Book B follows the RECORDED 10:15 decision (this run's or another's): cover the short
+                        # at the live price (if its stop has not already closed it) and buy the top gainer, like
+                        # book A, but never on a regime-skip day, when book A takes nothing. Done once it all works.
+                        rec = con.execute("SELECT skip, flip, flip_symbol, flip_px FROM livex_days WHERE day=?", (day,)).fetchone()
+                        if rec and rec[1] is not None:
+                            if rec[1] and rec[2] and not rec[0]:
+                                legs = [l for l in _open_legs(con, day) if l[0] == "short"]
+                                if legs:
+                                    _close_leg(con, day, "short", _quote(legs), now, "flip cover")
+                                _open_leg(con, day, "flip_long", rec[2], 1, float(rec[3]), now)
+                            flipped = True
+                    flip_fails = 0
+                except Exception as e:  # noqa: BLE001
+                    flip_fails += 1
+                    log(f"flip not done yet: {e}")
+                next_flip = time.time() + min(DECIDE_RETRY_S * 2 ** flip_fails, 120)
             if decided and not squared:
                 legs = _open_legs(con, day)
                 if legs:

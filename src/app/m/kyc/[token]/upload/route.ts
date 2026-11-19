@@ -1,4 +1,4 @@
-import { handoffUser, spendHandoff } from "@/lib/kycHandoff";
+import { handoffHeld, isErasing, spendHandoff } from "@/lib/kycHandoff";
 import { currentConsent, hasSignedCurrent } from "@/lib/consent";
 import { keepSignedMedia, parseLiveness, saveMedia, type MediaKind } from "@/lib/consentMedia";
 
@@ -29,7 +29,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const buf = Buffer.from(await file.arrayBuffer());
   // The body can take seconds from a phone; erasing the account (or signing) revokes
   // the link meanwhile, so it is checked again before anything is written.
-  if (handoffUser(token) !== uid) return new Response("This link has expired", { status: 410 });
+  if (isErasing(uid) || !handoffHeld(token, uid)) return new Response("This link has expired", { status: 410 });
   const prior = await currentConsent(uid);
   if (prior) await keepSignedMedia(uid, prior.agreementVersion);
   const meta = kind === "selfie" ? { liveness: parseLiveness(form.get("liveness")), at: Date.now() } : null;

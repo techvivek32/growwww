@@ -4,6 +4,14 @@
 #
 # The app runs as `npm start`, which is `next start -H 127.0.0.1` on port 3000: it is
 # reachable ONLY through this proxy on the same machine, never directly from outside.
+#
+# BEFORE deploying the -H change, check the live server (its setup is not in this repo):
+#   sudo nginx -T | grep -n proxy_pass   -> only 127.0.0.1:3000 (or localhost:3000);
+#                                           anything else returns 502 once the app binds loopback
+#   how the app is started (systemd unit, pm2, script) -> it must run `npm start`; one that
+#                                           runs `next start` itself still listens everywhere
+# and after the restart:
+#   ss -ltnp 'sport = :3000'             -> 127.0.0.1:3000 only
 
 server {
     listen 80;

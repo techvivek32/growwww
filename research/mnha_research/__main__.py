@@ -55,6 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--final", action="store_true", help="daytrade: evaluate the sealed holdout too")
     p.add_argument("--days", help="comma-separated YYYY-MM-DD (live-parity)")
     p.add_argument("--year", type=int, help="model year (live-train)")
+    p.add_argument("--if-missing", action="store_true", help="live-train / livex-train: keep a year already frozen")
     p.add_argument("--no-wait", action="store_true", help="live-decide: do not wait for 09:21")
     a = p.parse_args(argv)
     db.migrate()
@@ -129,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
         from . import live
 
         if cmd == "live-train":
-            out = live.train(a.year)
+            out = live.train(a.year, if_missing=a.if_missing)
         elif cmd == "live-prepare":
             out = live.prepare()
         elif cmd == "live-decide":
@@ -151,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         from . import livex
 
         if cmd == "livex-train":
-            out = livex.train(a.year)
+            out = livex.train(a.year, if_missing=a.if_missing)
         elif cmd == "livex-decide":
             out = livex.decide(wait=not a.no_wait)
         elif cmd == "livex-flip":

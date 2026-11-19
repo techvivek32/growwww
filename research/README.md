@@ -56,7 +56,7 @@ expires at 06:00 IST the next day.
 ### Live paper trading (no orders)
 
 ```sh
-sh deploy/live-setup.sh                  # once: NSE files, bars, lab panel, frozen models, the timers
+sh deploy/live-setup.sh                  # a new host: NSE files, bars, lab panel, this year's models if missing, the timers
 tail -f /opt/mnha-research/data/live.log
 .venv/bin/python -m mnha_research live-report
 .venv/bin/python -m mnha_research live-parity --days 2026-03-27,2026-04-15
@@ -67,7 +67,10 @@ The timers run Mon–Fri:
 - `live-decide` at 09:17; it fetches the 09:15 bars from 09:21, a minute after the livex session, so the two bursts do not hit Groww together; `live-settle` at 15:25;
 - `livex-session` from 09:12 to 15:30: it decides at 09:20 (retrying until 09:35 while the bars are slow), checks book B's stops every 5 seconds, flips at 10:15, squares off at 15:15 and settles at 15:17.
 
-The single-step `livex-decide`, `livex-flip`, `livex-settle` and `livex-mark` commands remain for manual use. Their timers stay off: they ran the same steps beside the session and overwrote its results.
+The single-step `livex-decide`, `livex-flip`, `livex-settle` and `livex-mark` commands remain for manual use. Their timers stay off: they ran the same steps beside the session and overwrote its results. On a host that already runs them, switch them off with one command (no need to re-run the setup):
+```sh
+systemctl disable --now mnha-livex-decide.timer mnha-livex-flip.timer mnha-livex-settle.timer mnha-livex-mark.timer
+```
 
 A holiday is recognised when no bars arrive by 09:35.
 

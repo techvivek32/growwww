@@ -57,3 +57,23 @@ export function spendHandoff(token: string): string | null {
 export function revokeHandoffs(userId: string): void {
   for (const [t, h] of store) if (h.userId === userId) store.delete(t);
 }
+
+/** Whether this link still belongs to this user: a revoked link (erasure, signing, a
+ *  newer QR code) is deleted, while expiry is not re-checked — an upload the link
+ *  accepted in time may finish after it. */
+export function handoffHeld(token: string, userId: string): boolean {
+  return store.get(token)?.userId === userId;
+}
+
+/* Accounts being erased right now, so an upload already under way writes nothing
+ * even before the account record (erased last) is gone. */
+const erasing = ((globalThis as { __mnhaErasing?: Set<string> }).__mnhaErasing ??= new Set<string>());
+export function markErasing(userId: string): void {
+  erasing.add(userId);
+}
+export function clearErasing(userId: string): void {
+  erasing.delete(userId);
+}
+export function isErasing(userId: string): boolean {
+  return erasing.has(userId);
+}

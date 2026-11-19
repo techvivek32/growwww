@@ -91,9 +91,12 @@ def fbv_features(L: lab.Lab) -> pd.DataFrame:
     return out.replace([np.inf, -np.inf], np.nan).astype(np.float32)
 
 
-def train(year: int | None = None) -> dict:
-    """Freeze the three ENS3 models for `year`, each fitted on every panel session before 1 January `year`."""
+def train(year: int | None = None, if_missing: bool = False) -> dict:
+    """Freeze the three ENS3 models for `year`, each fitted on every panel session before 1 January `year`.
+    `if_missing`: keep a year already frozen (the forward test must not change models mid-year)."""
     Y = year or day_to_date(live.today_ist()).year
+    if if_missing and model_path(Y).exists():
+        return {"year": Y, "status": "already frozen", "path": str(model_path(Y))}
     t0 = time.time()
     L = lab.load(final=True)
     y = lab.demean(L, lab.ret(L, 0, lab.NB - 1))
@@ -561,11 +564,11 @@ def report() -> dict:
     marks = [dict(x) for x in con.execute("SELECT minute, running_net, mkt_move, pick_ltp FROM livex_marks WHERE day=? ORDER BY minute", (live.today_ist(),))]
     return {"mark": dict(mk) if mk else None, "marks_today": marks,
             "sessions": {k: int(v) for k, v in D.status.value_counts().items()}, "skip_days": int(D.skip.fillna(0).sum()),
-            "flip_days": int(D.flip.fillna(0).sum()), "net_rs": round(float(daily.sum())), "pct_of_book": round(float(daily.sum() / BOOK * 100), 2),
+            "flip_days": int(D[D.skip.fillna(0) == 0].flip.fillna(0).sum()), "net_rs": round(float(daily.sum())), "pct_of_book": round(float(daily.sum() / BOOK * 100), 2),
             "per_month_pct": {str(k): round(float(v / BOOK * 100), 2) for k, v in mo.items()},
             "day_win_rate": round(float((daily > 0).mean()), 3) if len(daily) else None, "worst_day_rs": round(float(daily.min())) if len(daily) else None,
             "max_fall_rs": round(float((eq.cummax().clip(lower=0) - eq).max())) if len(daily) else None,
-            "days": [{"day": day_to_date(int(r.day)).isoformat(), "pick": r.pick, "skip": bool(r.skip), "flip": r.flip_symbol if r.flip else None,
+            "days": [{"day": day_to_date(int(r.day)).isoformat(), "pick": r.pick, "skip": bool(r.skip), "flip": r.flip_symbol if r.flip and not r.skip else None,
                       "net": round(float(daily.get(r.day, 0.0)))} for r in D.itertuples()][-15:]}
 
 

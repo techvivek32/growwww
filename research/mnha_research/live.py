@@ -114,10 +114,13 @@ def model_path(year: int):
     return config.MODELS / f"live_{year}.joblib"
 
 
-def train(year: int | None = None) -> dict:
+def train(year: int | None = None, if_missing: bool = False) -> dict:
     """Fit and freeze the two models used for `year`, both on every session before 1 January `year`.
-    Stage 2 needs the lab panel (lab.build), whose s1 column is daytrade's out-of-sample score."""
+    Stage 2 needs the lab panel (lab.build), whose s1 column is daytrade's out-of-sample score.
+    `if_missing`: keep a year already frozen (the forward test must not change models mid-year)."""
     Y = year or day_to_date(today_ist()).year
+    if if_missing and model_path(Y).exists():
+        return {"year": Y, "status": "already frozen", "path": str(model_path(Y))}
     t0 = time.time()
     d = dtm.load()
     des = dtm.design(d)

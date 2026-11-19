@@ -15,8 +15,9 @@ set -a; . /etc/mnha-research.env; set +a
 .venv/bin/python -m mnha_research nse-update
 .venv/bin/python -m mnha_research ingest --intervals 1440,5 --ignore-market-hours
 .venv/bin/python -m mnha_research lab-build
-.venv/bin/python -m mnha_research live-train
-.venv/bin/python -m mnha_research livex-train
+# This year's models are fitted once (README): a re-run never re-fits them.
+.venv/bin/python -m mnha_research live-train --if-missing
+.venv/bin/python -m mnha_research livex-train --if-missing
 cp deploy/mnha-live-prepare.service deploy/mnha-live-prepare.timer \
    deploy/mnha-live-decide.service deploy/mnha-live-decide.timer \
    deploy/mnha-live-settle.service deploy/mnha-live-settle.timer \
@@ -26,4 +27,4 @@ cp deploy/mnha-live-prepare.service deploy/mnha-live-prepare.timer \
 systemctl daemon-reload
 systemctl enable --now mnha-live-prepare.timer mnha-live-decide.timer mnha-live-settle.timer mnha-livex-session.timer
 systemctl list-timers 'mnha-live*'
-echo "live paper trading scheduled (IST, Mon-Fri): prepare 08:10; live books decide 09:17, settle 15:25; livex session 09:12-15:30 (decide 09:20, flip 10:15, settle 15:17)"
+echo "live paper trading scheduled (IST, Mon-Fri): prepare 08:10; live books decide 09:17 (fetch from 09:21), settle 15:25; livex session 09:12-15:30 (decide 09:20, flip 10:15, settle 15:17)"

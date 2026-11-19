@@ -1,8 +1,9 @@
 import { currentUserId, inAdminView } from "@/lib/session";
+import { isErasing } from "@/lib/kycHandoff";
 import { ADMIN_ID, isReservedId } from "@/lib/auth";
 import { parseLiveness, saveMedia, mediaPath, keepSignedMedia, clearWorkingMedia, keptMediaPath, type MediaKind } from "@/lib/consentMedia";
-import { readFile } from "node:fs/promises";
-import { currentConsent, hasSignedCurrent } from "@/lib/consent";
+import { readFile, stat } from "node:fs/promises";
+import { currentConsent, hasSignedCurrent, listConsents } from "@/lib/consent";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
 
   const buf = Buffer.from(await file.arrayBuffer());
   // The upload can take a while; an account erased meanwhile gets nothing written.
-  if ((await currentUserId()) !== uid) return new Response("Unauthorized", { status: 401 });
+  if (isErasing(uid) || (await currentUserId()) !== uid) return new Response("Unauthorized", { status: 401 });
   // A member on an earlier, still-accepted version keeps that signing's evidence.
   const prior = await currentConsent(uid);
   if (prior) await keepSignedMedia(uid, prior.agreementVersion);
@@ -70,13 +71,16 @@ export async function GET(req: Request) {
   if (!KINDS.has(kind)) return new Response("Bad kind", { status: 400 });
   if (viewer !== ADMIN_ID && viewer !== user) return new Response("Forbidden", { status: 403 });
 
-  // An earlier signing's kept evidence, when asked for by version (the admin audit):
-  // the working capture stands in only while that signing is still the one in force.
+  // An earlier signing's kept evidence, when asked for by version (the admin audit). The
+  // working capture stands in for the user's LATEST signing (any version), and only while
+  // nothing has been retaken since that signing.
   const v = url.searchParams.get("v");
   let p: string | null;
   if (v && /^[0-9A-Za-z. ·-]{1,40}$/.test(v)) {
-    const inForce = (await currentConsent(user))?.agreementVersion === v;
-    p = (await keptMediaPath(user, v, kind)) ?? (inForce ? await mediaPath(user, kind) : null);
+    const latest = (await listConsents()).find((r) => r.userId === user); // newest first
+    const work = latest?.agreementVersion === v ? await mediaPath(user, kind) : null;
+    const takenAt = work ? await stat(work).then((s) => s.mtimeMs, () => Infinity) : Infinity;
+    p = (await keptMediaPath(user, v, kind)) ?? (latest && takenAt <= latest.consentedAt ? work : null);
   } else {
     p = await mediaPath(user, kind);
   }

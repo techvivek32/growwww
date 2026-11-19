@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { currentUserId } from "@/lib/session";
+import { currentUserId, inAdminView } from "@/lib/session";
 import { isReservedId } from "@/lib/auth";
 import { homeFor } from "@/lib/access";
 import { currentConsent, hasSignedCurrent, CONTRACT } from "@/lib/consent";
@@ -17,7 +17,8 @@ export const dynamic = "force-dynamic";
 
 export default async function ConsentPage() {
   const uid = await currentUserId();
-  if (!uid) redirect("/login");
+  // A client deleted while the admin is inside it: the desk layout keeps "Back to admin".
+  if (!uid) redirect((await inAdminView()) ? MEMBER_HOME : "/login");
   // The env logins have no agreement, KYC or membership — send them home.
   if (isReservedId(uid)) redirect(homeFor(uid));
   // Someone on an earlier, still-accepted version may come here to sign this one.

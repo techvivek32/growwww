@@ -7,7 +7,7 @@ import { deleteMembership } from "@/lib/membership";
 import { deleteOrders } from "@/lib/ledger";
 import { deleteNotifications } from "@/lib/notifications";
 import { scrubAdminAccessDetails } from "@/lib/adminAccess";
-import { revokeHandoffs } from "@/lib/kycHandoff";
+import { clearErasing, markErasing, revokeHandoffs } from "@/lib/kycHandoff";
 
 /**
  * Erase one account everywhere. Each store is attempted even if another fails
@@ -18,7 +18,10 @@ import { revokeHandoffs } from "@/lib/kycHandoff";
 export async function eraseAccount(userId: string): Promise<string[]> {
   const steps: [string, (id: string) => Promise<void>][] = [
     // First, so no phone link can upload photos while the rest is erased.
-    ["phone links", async (id) => revokeHandoffs(id)],
+    ["phone links", async (id) => {
+      markErasing(id); // uploads already under way write nothing from here on
+      revokeHandoffs(id);
+    }],
     ["verification", deleteKyc],
     ["agreement", deleteConsents],
     ["agreement media", deleteConsentMedia],
@@ -37,5 +40,6 @@ export async function eraseAccount(userId: string): Promise<string[]> {
       console.error(`[erase] ${name} failed for ${userId}:`, e instanceof Error ? e.message : e);
     }
   }
+  if (failed.includes("account")) clearErasing(userId); // the account is still there: it may upload again
   return failed;
 }
