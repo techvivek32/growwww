@@ -104,7 +104,7 @@ async function verify(form: FormData): Promise<FormState> {
     kind: "account",
     tone: "up",
     title: "Welcome to MNHA Financials",
-    body: "Your email is verified. Connect your Groww account to see it here, read-only. MNHA places no orders on your account.",
+    body: "Your email is verified. Connect your Groww account to see it here. MNHA AI places no orders on your account.",
     key: "welcome",
   });
   await setSession(created.user.id);

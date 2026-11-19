@@ -1,6 +1,6 @@
-import { spendHandoff } from "@/lib/kycHandoff";
-import { hasConsented } from "@/lib/consent";
-import { parseLiveness, saveMedia, type MediaKind } from "@/lib/consentMedia";
+import { handoffUser, spendHandoff } from "@/lib/kycHandoff";
+import { currentConsent, hasSignedCurrent } from "@/lib/consent";
+import { keepSignedMedia, parseLiveness, saveMedia, type MediaKind } from "@/lib/consentMedia";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   const uid = spendHandoff(token);
   if (!uid) return new Response("This link has expired", { status: 410 });
-  if (await hasConsented(uid)) return new Response("Already signed", { status: 409 });
+  if (await hasSignedCurrent(uid)) return new Response("Already signed", { status: 409 });
 
   const form = await req.formData();
   const kind = String(form.get("kind") ?? "") as MediaKind;
@@ -26,7 +26,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   if (file.size > MAX) return new Response("Too large", { status: 413 });
   if (!file.type.startsWith("image/")) return new Response("Images only", { status: 415 });
 
+  const buf = Buffer.from(await file.arrayBuffer());
+  // The body can take seconds from a phone; erasing the account (or signing) revokes
+  // the link meanwhile, so it is checked again before anything is written.
+  if (handoffUser(token) !== uid) return new Response("This link has expired", { status: 410 });
+  const prior = await currentConsent(uid);
+  if (prior) await keepSignedMedia(uid, prior.agreementVersion);
   const meta = kind === "selfie" ? { liveness: parseLiveness(form.get("liveness")), at: Date.now() } : null;
-  await saveMedia(uid, kind, Buffer.from(await file.arrayBuffer()), file.name || `${kind}.jpg`, file.type, meta);
+  await saveMedia(uid, kind, buf, file.name || `${kind}.jpg`, file.type, meta);
   return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }

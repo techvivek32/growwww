@@ -19,7 +19,8 @@ const NOTE = (
   </div>
 );
 
-export default function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ erased?: string }> }) {
+  const { erased } = await searchParams;
   return (
     <AuthShell
       aside={NOTE}
@@ -33,6 +34,12 @@ export default function LoginPage() {
         Welcome <em>back.</em>
       </h1>
       <p className="mt-4 text-[16px] leading-relaxed text-pub-muted">Sign in to your desk.</p>
+      {erased === "partial" && (
+        <p role="status" className="mt-4 border border-pub-hair px-3.5 py-3 text-[13.5px] leading-snug text-pub-cream">
+          Your account was deleted, but some of its data could not be erased yet. Write to support@mnhafinancials.com
+          and we will finish it.
+        </p>
+      )}
 
       <LoginForm />
 

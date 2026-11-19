@@ -16,7 +16,8 @@ export default async function AdminViewBanner() {
         <p className="text-[13px] leading-snug">
           <span className="font-semibold">Admin view</span> — you are inside{" "}
           <span className="font-semibold">{user?.email ?? uid}</span>&apos;s account, seeing exactly what they see.{" "}
-          <span className="text-ink2">Signing, consents, identity photos, the Groww key, password, membership and deletion stay with the client.</span>
+          <span className="font-semibold">Orders you place here are real:</span>{" "}
+          <span className="text-ink2">they are logged as yours and the client is notified. Connecting Groww for the client is logged too. Signing, consents, identity photos, the password, membership and deletion stay with the client.</span>
         </p>
         <form action={exitAdminView}>
           <button type="submit" className="h-8 shrink-0 bg-ink px-3.5 text-[12.5px] font-semibold text-bg transition-opacity hover:opacity-85">

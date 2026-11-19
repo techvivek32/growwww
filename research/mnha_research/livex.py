@@ -299,8 +299,16 @@ def decide(wait: bool = True, ctx: dict | None = None) -> dict:
             break
         time.sleep(5)
     if ready_at is None:
-        con.execute("INSERT OR REPLACE INTO livex_days(day, status, info) VALUES(?,?,?)", (day, "no_session", json.dumps({"bars": len(bars)})))
-        con.commit()
+        if not wait and live.minute_ist() <= 9 * 60 + 35:
+            # The session loop calls again shortly: a slow feed at 09:20 must not write the whole
+            # day off while there is still time to decide (a holiday is recognised at 09:35).
+            return {"day": date.isoformat(), "status": "waiting for bars", "bars": len(bars)}
+        with con:
+            if not con.in_transaction:
+                con.execute("BEGIN IMMEDIATE")  # the check and the write under one lock
+            if con.execute("SELECT 1 FROM livex_days WHERE day=? AND status IN ('decided','flipped','settled')", (day,)).fetchone():
+                return {"day": date.isoformat(), "status": "already decided"}
+            con.execute("INSERT OR REPLACE INTO livex_days(day, status, info) VALUES(?,?,?)", (day, "no_session", json.dumps({"bars": len(bars)})))
         return {"day": date.isoformat(), "status": "no session (holiday?)"}
     bench = bars.pop(config.BENCHMARK, None)
     nf = nifty_first(day, bars.pop("NIFTY", None))
@@ -316,6 +324,11 @@ def decide(wait: bool = True, ctx: dict | None = None) -> dict:
         except Exception as e:  # noqa: BLE001
             log(f"ltp failed: {e}")
     with con:
+        # The first decision of the day stands: never overwrite one another run made meanwhile.
+        if not con.in_transaction:
+            con.execute("BEGIN IMMEDIATE")  # the check and the writes under one lock
+        if con.execute("SELECT 1 FROM livex_days WHERE day=? AND status IN ('decided','flipped','settled')", (day,)).fetchone():
+            return {"day": date.isoformat(), "status": "already decided"}
         con.execute("DELETE FROM livex_rows WHERE day=?", (day,))
         con.executemany("INSERT INTO livex_rows VALUES(?,?,?,?,?,?,?)",
                         [(day, r.symbol, float(r.score), float(r.z_base), float(r.z_ext), float(r.z_fbv), float(r.px_0920)) for r in df.itertuples()])
@@ -351,6 +364,8 @@ def _partial_paths(day: int, symbols: list[str], upto_bar: int) -> dict[str, np.
         b = (ist_minute(t[sel]) - config.SESSION_OPEN) // 5
         if not ((b >= 0) & (b <= upto_bar)).sum() >= upto_bar - 1:
             continue
+        if not (b == upto_bar).any():
+            continue  # the decision bar itself has not arrived: never decide on a carried-forward close
         arr = np.full((5, upto_bar + 1), np.nan)
         k = (b >= 0) & (b <= upto_bar)
         for i, col in enumerate(("open", "high", "low", "close", "volume")):
@@ -386,10 +401,18 @@ def flip() -> dict:
     while live.minute_ist() < 10 * 60 + 15 + 0.5:
         time.sleep(2)
     P = _partial_paths(day, rows, FLIP_BAR)
+    if len(P) < max(live.MIN_ROWS, 0.8 * len(rows)):
+        # Record nothing on thin data: the session retries a flip() that raises.
+        raise RuntimeError(f"only {len(P)} of {len(rows)} names have the 10:10-10:15 bar")
     do, top, med = flip_decision(P)
     px = float(P[top][3, FLIP_BAR]) if do and top else None
     with con:
-        con.execute("UPDATE livex_days SET status='flipped', flip_at=?, flip=?, flip_symbol=?, flip_px=? WHERE day=?", (time.time(), int(do), top, px, day))
+        # The first flip decision stands: another run never overwrites it.
+        cur = con.execute("UPDATE livex_days SET status='flipped', flip_at=?, flip=?, flip_symbol=?, flip_px=? WHERE day=? AND status='decided'",
+                          (time.time(), int(do), top, px, day))
+    if cur.rowcount == 0:
+        rec = con.execute("SELECT flip FROM livex_days WHERE day=?", (day,)).fetchone()
+        return {"day": day_to_date(day).isoformat(), "status": "already flipped", "flip": bool(rec and rec[0])}
     out = {"day": day_to_date(day).isoformat(), "median_since_open": round(med, 5), "flip": do,
            "action": (f"COVER the short, BUY {top} @ {px:.2f} (full book) till 15:15" if do and not r[1] else ("regime skip day" if r[1] else "no flip: hold the short"))}
     log(json.dumps(out))
@@ -440,9 +463,21 @@ def settle(day: int | None = None) -> dict:
     P = _paths_today(day, rows)
     if len(P) < live.MIN_ROWS:
         raise RuntimeError(f"only {len(P)} full sessions of bars")
-    flip_rec = (bool(r[3]), r[4], np.nan) if r[0] == "flipped" else None
+    # The recorded 10:15 decision once flip() ran: also when re-settling a settled day, which
+    # must reproduce the result rather than work the flip out again. When flip() never ran
+    # (the session was down at 10:15) it is decided here from bars 0..FLIP_BAR, once, and
+    # stored, so re-settles, replay_b and the reports all see the same decision.
+    store_flip = None
+    if r[3] is not None:
+        flip_rec = (bool(r[3]), r[4], np.nan)
+    else:
+        do, top, _med = flip_decision(P)
+        flip_rec = (do, top, np.nan)
+        store_flip = (int(do), top, float(P[top][3, FLIP_BAR]) if do and top else None)
     legs = price_day(day, r[2], bool(r[1]), P, flip_rec)
     with con:
+        if store_flip is not None:
+            con.execute("UPDATE livex_days SET flip=?, flip_symbol=?, flip_px=? WHERE day=? AND flip IS NULL", (*store_flip, day))
         con.execute("DELETE FROM livex_trades WHERE day=?", (day,))
         con.executemany("INSERT INTO livex_trades VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         [(day, L_["leg"], L_["symbol"], L_["side"], L_["qty"], L_["entry"], L_["exit"], L_["entry_bar"], L_["exit_bar"], L_["why"],

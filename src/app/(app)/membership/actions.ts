@@ -17,8 +17,9 @@ export async function enrollAction(_prev: MemberState, _form: FormData): Promise
   const uid = await currentUserId();
   if (!uid || isReservedId(uid)) return { error: "Sign in as a user account first." };
   if (await inAdminView()) return { error: ADMIN_VIEW_REFUSAL };
-  // Not offered while member accounts are read-only (MNHA trades nothing for them).
-  if (uid) return { error: "Membership is not offered while your account is read-only." };
+  // Not offered: members make their own trades, so a performance fee would be
+  // charged on gains MNHA had no part in.
+  if (uid) return { error: "Membership is not offered at present." };
 
   // The starting mark anchors every future fee, so it must be a complete reading.
   const nav = await getNavStrict();

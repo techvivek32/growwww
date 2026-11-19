@@ -12,9 +12,9 @@ import RiskCalculator from "@/components/public/RiskCalculator";
 import { Arrow, Button, Container, Display, Eyebrow, Mono, TextLink } from "@/components/public/ui";
 
 export const metadata: Metadata = {
-  title: "MNHA Financials — your Groww account, read-only, with MNHA AI",
+  title: "MNHA Financials — your Groww account on one calm desk, with MNHA AI",
   description:
-    "Connect your own Groww account read-only: holdings, positions, orders and live option chains on one calm desk, while MNHA AI studies the NSE on our server. Your money never leaves Groww and nothing is traded from your account.",
+    "Connect your own Groww account: holdings, positions, orders and live option chains on one calm desk, while MNHA AI studies the NSE on our server. Your money never leaves Groww, and MNHA AI never trades for you.",
   robots: { index: true, follow: true },
   alternates: { canonical: "/" },
 };
@@ -76,11 +76,11 @@ const PATH: { n: string; title: string; body: string; rows: [string, string, str
   {
     n: "01.",
     title: "Your account",
-    body: "An email and a password, then the user agreement — in English, हिन्दी or ગુજરાતી, with a read-aloud option — and a short spoken acknowledgement on video.",
+    body: "An email and a password, then the user agreement — in English, हिन्दी or ગુજરાતી, with a read-aloud option — and a selfie and a photo of your PAN or Aadhaar, taken on your phone.",
     rows: [
       ["1.1", "Create your MNHA login", "1 min"],
       ["1.2", "Read or listen to the agreement", "5 min"],
-      ["1.3", "Selfie, photo ID and a spoken acknowledgement", "3 min"],
+      ["1.3", "Selfie and PAN or Aadhaar photo", "3 min"],
     ],
   },
   {
@@ -96,7 +96,7 @@ const PATH: { n: string; title: string; body: string; rows: [string, string, str
   {
     n: "03.",
     title: "The desk",
-    body: "Your desk opens on your own account, read-only. MNHA shows it plainly and never places an order on it — trading stays in your Groww app.",
+    body: "Your desk opens on your own account. MNHA shows it plainly, and once your Groww key has the static IP we give you, you can place orders from it — each one only after you confirm it.",
     rows: [
       ["3.1", "Balance, holdings and positions, live", "live"],
       ["3.2", "Option chains, indices and quotes", "live"],
@@ -108,7 +108,7 @@ const PATH: { n: string; title: string; body: string; rows: [string, string, str
 const FAQ: [string, string][] = [
   [
     "Is MNHA a broker? Where does my money sit?",
-    "No. MNHA is software that connects to your own Groww account through Groww's official trading API. Your cash and shares never leave Groww, we hold no money, and an API key cannot withdraw funds. MNHA reads your account; it places no orders on it.",
+    "No. MNHA is software that connects to your own Groww account through Groww's official trading API. Your cash and shares never leave Groww, we hold no money, and an API key cannot withdraw funds. MNHA reads your account, and sends an order to Groww only when you confirm it — or when you ask MNHA's admin to place it for you.",
   ],
   [
     "Do you ever see my Groww password?",
@@ -116,7 +116,7 @@ const FAQ: [string, string][] = [
   ],
   [
     "Do I need to add an IP address on my Groww key?",
-    "Yes, and we give you the exact one during setup. Exchange rules require orders sent through the API to arrive from a registered static IP, so we reserve an address for your account alone and show it in the connect step — you paste it onto your Groww key. One address serves one Groww account, so yours is never shared with another client.",
+    "Only to place orders from MNHA, and we give you the exact one during setup. Exchange rules require orders sent through the API to arrive from a registered static IP, so we reserve an address for your account alone and show it in the connect step — you paste it onto your Groww key. One address serves one Groww account, so yours is never shared with another client.",
   ],
   [
     "What do I need before I start?",
@@ -124,15 +124,15 @@ const FAQ: [string, string][] = [
   ],
   [
     "What returns should I expect?",
-    "Nobody can honestly promise a return, and we don't. Most active traders lose money after costs — SEBI's own studies found roughly 9 in 10 individual F&O traders lost money. MNHA promises no return, gives no tips and does not trade your account.",
+    "Nobody can honestly promise a return, and we don't. Most active traders lose money after costs — SEBI's own studies found roughly 9 in 10 individual F&O traders lost money. MNHA promises no return, gives no tips and never trades your account on its own judgment.",
   ],
   [
     "Is this investment advice?",
-    "No. MNHA shows your own account and live market data. It gives no tips, recommends nothing to buy or sell, and places no trades — any trading you do happens in your Groww app, as your own decision.",
+    "No. MNHA shows your own account and live market data. It gives no tips and recommends nothing to buy or sell. Every order on your account is your own decision, whether you confirm it on MNHA's order ticket, place it in your Groww app, or ask MNHA's admin to place it.",
   ],
   [
     "What does it cost?",
-    "There is no fee for the read-only desk at present. Groww's own API subscription, brokerage and statutory charges apply as usual to anything you do in Groww.",
+    "There is no fee for the desk at present. Groww's own API subscription, brokerage and statutory charges apply as usual to every order, including those sent from MNHA.",
   ],
   [
     "Can I leave and delete everything?",
@@ -153,13 +153,13 @@ export default async function Landing() {
     ["T/04", "Option chains", "NIFTY, BANK NIFTY, FIN NIFTY, SENSEX and BANKEX — real strikes, premiums and open interest."],
     ["T/05", "Indices & quotes", "Any NSE stock or index with its day change, volume and 52-week range."],
     ["T/06", "Analysis", "Round-trips matched from your real fills — gross, before charges, nothing estimated."],
-    ["T/07", "Notifications", "Account and broker notices, in one inbox."],
+    ["T/07", "Notifications", "Account, order and broker notices, in one inbox."],
   ];
 
   const STATS: [string, string][] = [
     [String(setups), "Strategies studied"],
     ["5", "Option chains"],
-    ["0", "Orders placed for you"],
+    ["0", "Automatic orders"],
     ["₹0", "Held by us"],
   ];
 
@@ -176,7 +176,7 @@ export default async function Landing() {
           <Container className="relative">
             <div className="pt-16 pb-14 sm:pt-20 lg:w-[52%] lg:pt-24 lg:pb-24">
               <p className="text-[12.5px] font-semibold tracking-[0.12em] text-pub-cream uppercase">
-                A read-only desk for your own Groww account
+                A calm desk for your own Groww account
               </p>
               <Display as="h1" className="mt-7 text-[clamp(3.4rem,7.4vw,6.6rem)] leading-[0.95] text-pub-cream">
                 <span className="block whitespace-nowrap">Your Groww,</span>
@@ -186,9 +186,9 @@ export default async function Landing() {
                 </span>
               </Display>
               <p className="mt-8 max-w-[34rem] text-[18px] leading-[1.6] text-pub-muted">
-                Connect your Groww account read-only: balance, holdings, positions and live option chains on one calm
-                desk — while MNHA AI studies the NSE on our server. Your money never leaves Groww, and nothing is traded
-                from your account. No tips, no hype.
+                Connect your Groww account: balance, holdings, positions and live option chains on one calm
+                desk — while MNHA AI studies the NSE on our server. Your money never leaves Groww, and MNHA AI never
+                trades for you. No tips, no hype.
               </p>
               <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-5">
                 <Button href="/signup">Create your account</Button>
@@ -233,7 +233,7 @@ export default async function Landing() {
               Most trading apps are built to make you trade more. This one is built to help you <em>see.</em>
             </Display>
             <p className="mt-9 font-plex text-[11px] tracking-[0.12em] text-pub-muted uppercase">
-              No guaranteed returns · No tips · No trades from your account
+              No guaranteed returns · No tips · No auto-trading
             </p>
           </Container>
         </section>
@@ -300,7 +300,7 @@ export default async function Landing() {
                 Your whole account, on one <em>screen.</em>
               </Display>
               <p className="text-[16px] leading-[1.6] text-pub-muted lg:col-span-5">
-                Built on Groww&apos;s official API, read-only — so it is your real account and your real positions.
+                Built on Groww&apos;s official API — so it is your real account and your real positions.
                 Nothing on the desk invents a number; if a value is missing, you see a dash.
               </p>
             </div>
@@ -337,7 +337,7 @@ export default async function Landing() {
                   [G.vault, "Your money stays put", "Cash and shares never leave your Groww account. We take no custody and an API key cannot withdraw a rupee.", "/#faq", "Where money sits"],
                   [G.bars, "Honest numbers", "Every figure is read live from Groww or the exchange feed. A value we can't read shows as a dash — never a guess.", "/#desk", "See the desk"],
                   [G.key, "Keys, not passwords", "You paste a Groww API key, never your password. Keys are verified live and stored AES-256 encrypted.", "/legal/privacy", "Read the privacy policy"],
-                  [G.scale, "Nothing promised", "No guaranteed returns, no tips, and no trades placed from your account.", "/legal/risk-disclosure", "Read the risk disclosure"],
+                  [G.scale, "Nothing promised", "No guaranteed returns, no tips, and no automatic trading on your account.", "/legal/risk-disclosure", "Read the risk disclosure"],
                 ] as const
               ).map(([icon, title, body, href, link]) => (
                 <div key={title}>
@@ -374,7 +374,7 @@ export default async function Landing() {
                     ["01", G.bars, "Studies the market", `${setups} rule-based strategies, long and short, run on real NSE candles during market hours.`],
                     ["02", G.peak, "Scores itself", "Each strategy is re-scored on its live outcomes; one that stops working is retired on its own."],
                     ["03", G.shield, "Shows its status", "Running or idle, last scan, market session — read live, on your home screen."],
-                    ["04", G.bank, "Places no orders", "Your Groww account is read-only to MNHA. Nothing is bought or sold for you."],
+                    ["04", G.bank, "Places no orders", "MNHA AI never buys or sells anything for you. It studies the market; every trade is yours to decide."],
                   ] as const
                 ).map(([n, icon, title, body]) => (
                   <li key={n} className="grid grid-cols-[2rem_1.75rem_1fr] items-start gap-4 border-b border-pub-hair py-5">
@@ -389,7 +389,7 @@ export default async function Landing() {
               </ul>
               <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
                 <Button href="/signup">Create your account</Button>
-                <Mono className="text-pub-muted">Read-only · no tips · no trades for you</Mono>
+                <Mono className="text-pub-muted">No tips · no hype · no auto-trading</Mono>
               </div>
             </div>
           </Container>
@@ -436,8 +436,8 @@ export default async function Landing() {
                 Fifteen minutes from now, your Groww account gets a calmer <em>desk.</em>
               </Display>
               <p className="mt-5 text-[16px] leading-[1.6] text-pub-ink/75">
-                Create your login, sign the agreement, and connect Groww with the guided wizard. MNHA reads your account;
-                it never trades it.
+                Create your login, sign the agreement, and connect Groww with the guided wizard. MNHA shows your account and sends the orders
+                you confirm; it never trades on its own judgment.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-x-7 gap-y-4">
                 <Button href="/signup" variant="ink">

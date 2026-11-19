@@ -3,14 +3,14 @@ import type { ReactNode } from "react";
 import { OWNER_ID } from "@/lib/auth";
 import { listUsers } from "@/lib/users";
 import { listKyc } from "@/lib/kyc";
-import { listConsents, AGREEMENT_VERSION, type ConsentRecord } from "@/lib/consent";
+import { listConsents, AGREEMENT_VERSION, isAcceptedVersion, type ConsentRecord } from "@/lib/consent";
 import { listMembers, listInvoices, accrual, type Membership, type InvoiceStatus } from "@/lib/membership";
 import { listOrders, orderStatsByUser, type LedgerStatus } from "@/lib/ledger";
 import { registeredIp } from "@/lib/api/groww";
 import { engineStatus } from "@/lib/signals/engine";
 import { Card, CardHead, Pill } from "@/components/ui";
 import { adminOpenAccount, adminDisconnectBroker, adminDeleteUser, adminKycDecision, adminScheduleKycCall, adminMarkInvoice, adminAddEgress, adminRemoveEgress } from "./actions";
-import { recentAdminAccess } from "@/lib/adminAccess";
+import { recentAdminAccess, type AdminAccess } from "@/lib/adminAccess";
 import SettleForm from "./SettleForm";
 import { listEgress } from "@/lib/egressStore";
 import { houseIp } from "@/lib/api/egress";
@@ -54,6 +54,16 @@ const shortId = (id: string) => (id.length > 14 ? `${id.slice(0, 6)}…${id.slic
 const pctOf = (n: number, total: number) => (total > 0 ? Math.round((n / total) * 100) : null);
 
 const LOG_TONE: Record<LedgerStatus, "up" | "down" | "neutral"> = { placed: "up", rejected: "down", cancelled: "neutral", unknown: "neutral" };
+/** The consent-media link suffix that shows an earlier signing's kept evidence. */
+const vq = (c: ConsentRecord) => (c.agreementVersion === AGREEMENT_VERSION ? "" : `&v=${encodeURIComponent(c.agreementVersion)}`);
+/** Admin access log events. Acts done for the client stand out in warn. */
+const ACCESS_EVENT: Record<AdminAccess["kind"], { label: string; cls: string }> = {
+  open: { label: "Opened", cls: "text-ink" },
+  close: { label: "Back to admin", cls: "text-ink2" },
+  "connect-broker": { label: "Connected Groww for the client", cls: "text-warn" },
+  order: { label: "Sent an order for the client", cls: "text-warn" },
+  cancel: { label: "Sent a cancellation for the client", cls: "text-warn" },
+};
 const INV_TONE: Record<InvoiceStatus, "warn" | "up" | "neutral"> = { due: "warn", paid: "up", waived: "neutral" };
 const KYC_TONE = { approved: "up", rejected: "down", submitted: "warn", none: "neutral" } as const;
 
@@ -139,7 +149,7 @@ export async function loadAdmin() {
   // A true funnel: each step counts only users who also passed every earlier
   // step, so the numbers can never rise from one step to the next.
   const serverIp = registeredIp();
-  const fSigned = users.filter((u) => signedNow.has(u.id) || signedOld.has(u.id));
+  const fSigned = users.filter((u) => signedNow.has(u.id) || isAcceptedVersion(signedOld.get(u.id)?.agreementVersion ?? ""));
   const fConnected = fSigned.filter((u) => u.hasBroker);
   const fOrdered = fConnected.filter((u) => (orderStats.get(u.id)?.placed ?? 0) > 0);
   const fMembers = fOrdered.filter((u) => memberFor.get(u.id)?.status === "active");
@@ -307,6 +317,8 @@ export function AccountsSection({ d }: { d: AdminData }) {
                       <td className="px-4 py-3 text-[12px]">
                         {now ? (
                           <span className="tnum text-up">✓ {fmtDayYr(now.consentedAt)}</span>
+                        ) : old && isAcceptedVersion(old.agreementVersion) ? (
+                          <span className="tnum text-ink2" title={`Signed v${old.agreementVersion}, still accepted`}>✓ v{old.agreementVersion.split(" ")[0]} · {fmtDayYr(old.consentedAt)}</span>
                         ) : old ? (
                           <span className="text-warn" title={`Signed v${old.agreementVersion}`}>Old version · {fmtDayYr(old.consentedAt)}</span>
                         ) : (
@@ -430,7 +442,7 @@ export function AccessSection({ d }: { d: AdminData }) {
         <CardTitle
           title="Admin access to client accounts"
           count={String(access.length)}
-          sub="Every time the admin opens or leaves a client's account through “Open account”. A view lasts one hour at most. Client passwords are stored only as a one-way hash, so they are never shown — and never needed to open an account."
+          sub="Every time the admin opens a client's account through “Open account” or leaves it with “Back to admin”, and every act inside it: connecting Groww, or sending an order or a cancellation. A view lasts one hour at most; one that runs out has no leave line. Client passwords are stored only as a one-way hash, so they are never shown — and never needed to open an account."
         />
         {access.length === 0 ? (
           <p className="px-5 py-6 text-center text-[13px] text-ink3">No client account has been opened from the console yet.</p>
@@ -450,7 +462,10 @@ export function AccessSection({ d }: { d: AdminData }) {
                   <tr key={`${e.at}-${i}`} className="border-b border-line last:border-0">
                     <td className="tnum px-5 py-2.5 text-[12px] text-ink2">{LOG_TIME.format(new Date(e.at))}</td>
                     <td className="px-5 py-2.5 text-[12.5px] text-ink">{emailFor.get(e.userId) ?? <span className="text-ink3">deleted account</span>}</td>
-                    <td className="px-5 py-2.5 text-[12px]">{e.kind === "open" ? <span className="text-ink">Opened</span> : e.kind === "connect-broker" ? <span className="text-warn">Connected Groww for the client</span> : <span className="text-ink2">Back to admin</span>}</td>
+                    <td className="px-5 py-2.5 text-[12px]">
+                      <span className={(ACCESS_EVENT[e.kind] ?? ACCESS_EVENT.close).cls}>{ACCESS_EVENT[e.kind]?.label ?? e.kind}</span>
+                      {e.detail && <span className="tnum mt-0.5 block text-[11.5px] text-ink3">{e.detail}</span>}
+                    </td>
                     <td className="tnum px-5 py-2.5 text-[12px] text-ink3">{e.ip}</td>
                   </tr>
                 ))}
@@ -591,7 +606,7 @@ export function OrdersSection({ d }: { d: AdminData }) {
         <CardTitle
           title="Order log"
           count={`latest ${orderLog.length} of ${orders.length}`}
-          sub="Every order sent through MNHA, recorded server-side when the order action ran. Fills and money live at Groww."
+          sub="Every order sent through MNHA, recorded server-side when the order action ran. “By admin” marks one the admin sent from inside the client's account (marked from this release on). Fills and money live at Groww."
         />
         {orderLog.length === 0 ? (
           <p className="px-5 py-8 text-center text-[13.5px] text-ink3">No orders recorded yet.</p>
@@ -616,11 +631,15 @@ export function OrdersSection({ d }: { d: AdminData }) {
                   const price = o.price != null
                     ? `₹${o.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
                     : o.type === "MARKET" || o.type === "SL_M" ? "MKT" : "—";
+                  const trg = o.trigger != null ? ` · trigger ₹${o.trigger.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "";
                   return (
                     <tr key={o.id} className="border-b border-line last:border-0">
                       <td className="tnum px-4 py-2.5 text-[12px] whitespace-nowrap text-ink2">{LOG_TIME.format(new Date(o.at))}</td>
                       <td className="max-w-[180px] truncate px-4 py-2.5 text-[12px] text-ink" title={who(o.userId)}>{who(o.userId)}</td>
-                      <td className="px-4 py-2.5"><Pill tone={LOG_TONE[o.status]}>{o.status}</Pill></td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <Pill tone={LOG_TONE[o.status]}>{o.status}</Pill>
+                        {o.by === "admin" && <span className="ml-1.5 text-[11px] font-semibold text-warn">by admin</span>}
+                      </td>
                       <td className="tnum px-4 py-2.5 text-[12.5px] whitespace-nowrap">
                         {o.status === "cancelled" ? (
                           <span className="text-ink2">Cancel</span>
@@ -633,7 +652,7 @@ export function OrdersSection({ d }: { d: AdminData }) {
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-[11.5px] whitespace-nowrap text-ink2">{kind || "—"}</td>
-                      <td className="tnum px-4 py-2.5 text-right text-[12px] text-ink2">{price}</td>
+                      <td className="tnum px-4 py-2.5 text-right text-[12px] text-ink2">{price}{trg}</td>
                       <td className="px-4 py-2.5 font-mono text-[11px] text-ink2" title={o.orderId ?? undefined}>{o.orderId ? shortId(o.orderId) : "—"}</td>
                       <td className="max-w-[240px] truncate px-4 py-2.5 text-[11.5px] text-ink3" title={o.message ?? undefined}>{o.message || "—"}</td>
                     </tr>
@@ -809,14 +828,14 @@ export function ConsentsSection({ d }: { d: AdminData }) {
                     </td>
                     <td className="px-5 py-3 text-[11.5px]">
                       <span className="flex flex-wrap gap-1.5">
-                        {c.media?.selfie && <a href={`/api/consent/media?user=${c.userId}&kind=selfie`} target="_blank" rel="noopener noreferrer" className="inline-flex h-7 items-center whitespace-nowrap border border-line2 px-2 font-medium text-brandtext hover:bg-surfaceh">Selfie</a>}
+                        {c.media?.selfie && <a href={`/api/consent/media?user=${c.userId}&kind=selfie${vq(c)}`} target="_blank" rel="noopener noreferrer" className="inline-flex h-7 items-center whitespace-nowrap border border-line2 px-2 font-medium text-brandtext hover:bg-surfaceh">Selfie</a>}
                         {c.media?.selfie && (
                           <span className={`inline-flex h-7 items-center whitespace-nowrap px-1.5 text-[11px] ${c.media.liveness ? "text-up" : "text-ink3"}`} title={c.media.liveness ? "Taken through the on-phone blink check" : "Taken without the blink check (older version, no camera, or skipped)"}>
                             {c.media.liveness ? "✓ blink" : "no blink check"}
                           </span>
                         )}
-                        {c.media?.idPhoto && <a href={`/api/consent/media?user=${c.userId}&kind=id`} target="_blank" rel="noopener noreferrer" className="inline-flex h-7 items-center whitespace-nowrap border border-line2 px-2 font-medium text-brandtext hover:bg-surfaceh">PAN / Aadhaar</a>}
-                        {c.media?.video && <a href={`/api/consent/media?user=${c.userId}&kind=video`} target="_blank" rel="noopener noreferrer" className="inline-flex h-7 items-center whitespace-nowrap border border-line2 px-2 font-medium text-brandtext hover:bg-surfaceh">Video</a>}
+                        {c.media?.idPhoto && <a href={`/api/consent/media?user=${c.userId}&kind=id${vq(c)}`} target="_blank" rel="noopener noreferrer" className="inline-flex h-7 items-center whitespace-nowrap border border-line2 px-2 font-medium text-brandtext hover:bg-surfaceh">PAN / Aadhaar</a>}
+                        {c.media?.video && <a href={`/api/consent/media?user=${c.userId}&kind=video${vq(c)}`} target="_blank" rel="noopener noreferrer" className="inline-flex h-7 items-center whitespace-nowrap border border-line2 px-2 font-medium text-brandtext hover:bg-surfaceh">Video</a>}
                       </span>
                     </td>
                     <td className="tnum px-5 py-3 text-[11.5px] text-ink3">{c.ip}</td>

@@ -1,8 +1,8 @@
 import { currentUserId, inAdminView } from "@/lib/session";
 import { ADMIN_ID, isReservedId } from "@/lib/auth";
-import { parseLiveness, saveMedia, mediaPath, deleteConsentMedia, type MediaKind } from "@/lib/consentMedia";
+import { parseLiveness, saveMedia, mediaPath, keepSignedMedia, clearWorkingMedia, keptMediaPath, type MediaKind } from "@/lib/consentMedia";
 import { readFile } from "node:fs/promises";
-import { hasConsented } from "@/lib/consent";
+import { currentConsent, hasSignedCurrent } from "@/lib/consent";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   if (!uid || isReservedId(uid)) return new Response("Unauthorized", { status: 401 });
   if (await inAdminView()) return new Response("Admin view: the client uploads their own photos", { status: 403 });
   // Once this version is signed, its evidence is fixed — no replacing it.
-  if (await hasConsented(uid)) return new Response("Already signed", { status: 409 });
+  if (await hasSignedCurrent(uid)) return new Response("Already signed", { status: 409 });
 
   const form = await req.formData();
   const kind = String(form.get("kind") ?? "") as MediaKind;
@@ -28,8 +28,14 @@ export async function POST(req: Request) {
   const okType = kind === "video" ? file.type.startsWith("video/") : file.type.startsWith("image/");
   if (!okType) return new Response("Bad type", { status: 415 });
 
+  const buf = Buffer.from(await file.arrayBuffer());
+  // The upload can take a while; an account erased meanwhile gets nothing written.
+  if ((await currentUserId()) !== uid) return new Response("Unauthorized", { status: 401 });
+  // A member on an earlier, still-accepted version keeps that signing's evidence.
+  const prior = await currentConsent(uid);
+  if (prior) await keepSignedMedia(uid, prior.agreementVersion);
   const meta = kind === "selfie" ? { liveness: parseLiveness(form.get("liveness")), at: Date.now() } : null;
-  await saveMedia(uid, kind, Buffer.from(await file.arrayBuffer()), file.name, file.type, meta);
+  await saveMedia(uid, kind, buf, file.name, file.type, meta);
   return Response.json({ ok: true });
 }
 
@@ -46,8 +52,10 @@ export async function DELETE() {
   const uid = await currentUserId();
   if (!uid || isReservedId(uid)) return new Response("Unauthorized", { status: 401 });
   if (await inAdminView()) return new Response("Admin view: the client captures their own photos", { status: 403 });
-  if (await hasConsented(uid)) return new Response("Already signed", { status: 409 });
-  await deleteConsentMedia(uid);
+  if (await hasSignedCurrent(uid)) return new Response("Already signed", { status: 409 });
+  const prior = await currentConsent(uid);
+  if (prior) await keepSignedMedia(uid, prior.agreementVersion);
+  await clearWorkingMedia(uid);
   return Response.json({ ok: true });
 }
 
@@ -57,11 +65,21 @@ export async function GET(req: Request) {
   if (!viewer) return new Response("Unauthorized", { status: 401 });
   const url = new URL(req.url);
   const user = url.searchParams.get("user") ?? "";
+  if (!/^u-[a-z0-9]+-[0-9a-f]{8}$/.test(user)) return new Response("Bad user", { status: 400 });
   const kind = String(url.searchParams.get("kind") ?? "") as MediaKind;
   if (!KINDS.has(kind)) return new Response("Bad kind", { status: 400 });
   if (viewer !== ADMIN_ID && viewer !== user) return new Response("Forbidden", { status: 403 });
 
-  const p = await mediaPath(user, kind);
+  // An earlier signing's kept evidence, when asked for by version (the admin audit):
+  // the working capture stands in only while that signing is still the one in force.
+  const v = url.searchParams.get("v");
+  let p: string | null;
+  if (v && /^[0-9A-Za-z. ·-]{1,40}$/.test(v)) {
+    const inForce = (await currentConsent(user))?.agreementVersion === v;
+    p = (await keptMediaPath(user, v, kind)) ?? (inForce ? await mediaPath(user, kind) : null);
+  } else {
+    p = await mediaPath(user, kind);
+  }
   if (!p) return new Response("Not found", { status: 404 });
   try {
     const buf = await readFile(p);

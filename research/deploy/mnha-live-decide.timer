@@ -1,5 +1,5 @@
 [Unit]
-Description=MNHA live paper trading: decide (09:17 IST (waits for 09:20), Mon-Fri)
+Description=MNHA live paper trading: decide (09:17 IST, fetches the 09:15 bars from 09:21), Mon-Fri
 
 [Timer]
 OnCalendar=Mon..Fri *-*-* 03:47:00 UTC

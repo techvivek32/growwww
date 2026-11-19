@@ -79,6 +79,10 @@ export async function logout() {
 /** Leave the client's account the admin opened, back to the admin console. */
 export async function exitAdminView() {
   const viewed = await adminViewUserId();
-  if (viewed) await logAdminAccess({ kind: "close", userId: viewed, ip: clientIp(await headers()) });
+  if (viewed) {
+    // Leaving is never blocked by the log.
+    await logAdminAccess({ kind: "close", userId: viewed, ip: clientIp(await headers()) })
+      .catch((e) => console.error("[admin-access] close not logged:", e instanceof Error ? e.message : e));
+  }
   redirect((await endAdminView()) ? ADMIN_HOME : "/login");
 }

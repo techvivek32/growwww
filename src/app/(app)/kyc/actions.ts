@@ -6,6 +6,7 @@ import { isReservedId } from "@/lib/auth";
 import { replaceKycPhotos, submitKyc } from "@/lib/kyc";
 import { notify } from "@/lib/notifications";
 import { rateLimit } from "@/lib/ratelimit";
+import { hasConsented, SIGN_FIRST } from "@/lib/consent";
 
 export interface KycState {
   error?: string;
@@ -36,6 +37,7 @@ export async function submitKycAction(_prev: KycState, form: FormData): Promise<
   if (!uid) return { error: "Your session expired. Sign in again." };
   if (isReservedId(uid)) return { error: "This account does not need identity verification." };
   if (await inAdminView()) return { error: ADMIN_VIEW_REFUSAL };
+  if (!(await hasConsented(uid))) return { error: SIGN_FIRST };
   if (!rateLimit(`kyc:${uid}`, 5, 60 * 60_000).ok) return { error: "Too many attempts. Try again later." };
 
   if (form.get("consent") !== "on") {
@@ -81,6 +83,7 @@ export async function retakeKycPhotosAction(_prev: KycState, form: FormData): Pr
   if (!uid) return { error: "Your session expired. Sign in again." };
   if (isReservedId(uid)) return { error: "This account does not need identity verification." };
   if (await inAdminView()) return { error: ADMIN_VIEW_REFUSAL };
+  if (!(await hasConsented(uid))) return { error: SIGN_FIRST };
   if (!rateLimit(`kyc-retake:${uid}`, 6, 60 * 60_000).ok) {
     return { error: "Too many photo changes in a row. Try again a little later." };
   }

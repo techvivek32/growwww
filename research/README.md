@@ -24,8 +24,8 @@ It runs on its own box (Hostinger KVM 1: 1 vCPU, 4 GB) at `/opt/mnha-research`.
 | daytrade | Intraday ranking model, cash equity MIS, ₹5 lakh book. Stage 1 ranks the liquid F&O stocks at the open (gap, recent days, NSE delivery share, stock-futures open interest as information, market state), walk-forward from 2010. Stage 2 decides at 09:20 from the stage-1 score and the first 5-minute bar, trained on the tradeable 09:20 → 15:15 move (5-minute data from 2020-07). Sessions from 2024 on were sealed until one `--final` run (run 20) | run summary (`daytrade_dev`, `daytrade_final`), `data/daytrade_pred*.npy` |
 | paper | Forward test. A book freezes one alpha model. Every Friday after the close it stores that week's ranked list with a timestamp, and marks the book at the next session's close. No orders | `paper_books`, `paper_picks`, `paper_marks` |
 | lab | Intraday research panel (`lab-build`): one row per (session, eligible stock) from 2020-07, with every feature known at 09:20 and the day's 72 five-minute bars. Walk-forward models, walk-forward variant selection (`lab.select`), tick-aware slippage, Groww intraday costs, an exposure check and a leak test. Sessions from 2026-05-01 are sealed (`lab.load(final=True)` only) | `data/lab/panel.parquet`, `data/lab/paths.npz` |
-| live | Live PAPER trading of the 09:20 short rule on real Groww data — no orders, ever. `live-prepare` (08:10 IST) brings bars, NSE files and this year's frozen models up to date; `live-decide` (09:20) scores the first 5-minute bar with exactly the backtest's features and stores each book's picks plus the live price at decision time; `live-settle` (15:25) prices the books from the day's bars with the backtest's fills and costs. Books: `k1` (whole book in the lowest score, to 15:15), `k1_stops` (same pick, 3% stop + 0.5% market stop), `k3` (three shorts). `live-parity` replays past sessions through the live code and compares picks with the backtest | `live_days`, `live_rows`, `live_picks`, `live_trades`; `live-report` |
-| livex | Live PAPER trading of the strategy chosen for 2026 by the 1-lakh variant search (no auction, no overnight): the ENS3 score (session z-score average of three walk-forward models: F_STAGE2, +F_EXTRA, +first-bar volume), one short with the whole book at 09:20, a regime skip (2 of: NIFTY gap top 20%, first-bar breadth top 20%, Monday), a 0.5% market stop, a 10:15 flip (cover and buy the top gainer when the median stock is up 0.25% since the open), square-off 15:15. `livex-decide` 09:20, `livex-flip` 10:15, `livex-settle` 15:27. `livex-replay --days` reproduces the backtest engine's picks and ₹ on past sessions (14 of 15 checked exact; one borderline market-stop day) | `livex_days`, `livex_rows`, `livex_trades`; `livex-report` |
+| live | Live PAPER trading of the 09:20 short rule on real Groww data — no orders, ever. `live-prepare` (08:10 IST) brings bars, NSE files and this year's frozen models up to date; `live-decide` (09:21, a minute after the livex session) scores the first 5-minute bar with exactly the backtest's features and stores each book's picks plus the live price at decision time; `live-settle` (15:25) prices the books from the day's bars with the backtest's fills and costs. Books: `k1` (whole book in the lowest score, to 15:15), `k1_stops` (same pick, 3% stop + 0.5% market stop), `k3` (three shorts). `live-parity` replays past sessions through the live code and compares picks with the backtest | `live_days`, `live_rows`, `live_picks`, `live_trades`; `live-report` |
+| livex | Live PAPER trading of the strategy chosen for 2026 by the 1-lakh variant search (no auction, no overnight): the ENS3 score (session z-score average of three walk-forward models: F_STAGE2, +F_EXTRA, +first-bar volume), one short with the whole book at 09:20, a regime skip (2 of: NIFTY gap top 20%, first-bar breadth top 20%, Monday), a 0.5% market stop, a 10:15 flip (cover and buy the top gainer when the median stock is up 0.25% since the open), square-off 15:15. Run by `livex-session` (decide 09:20, flip 10:15, settle 15:17); the single-step commands remain for manual use. `livex-replay --days` reproduces the backtest engine's picks and ₹ on past sessions (14 of 15 checked exact; one borderline market-stop day) | `livex_days`, `livex_rows`, `livex_trades`; `livex-report` |
 | nse-update | NSE delivery share (MTO) and stock F&O open interest for every session since the last stored one | `data/nse/delivery.parquet`, `data/nse/fo_oi.parquet` |
 | nse-history | On a new host: NSE symbol changes, the F&O membership of every month since 2003, and delivery share and open interest since 2010 (resumable) | `data/nse/symbolchange.csv`, `data/nse/fo_membership.json`, the two files above |
 
@@ -56,7 +56,7 @@ expires at 06:00 IST the next day.
 ### Live paper trading (no orders)
 
 ```sh
-sh deploy/live-setup.sh                  # once: NSE files, bars, lab panel, frozen models, three timers
+sh deploy/live-setup.sh                  # once: NSE files, bars, lab panel, frozen models, the timers
 tail -f /opt/mnha-research/data/live.log
 .venv/bin/python -m mnha_research live-report
 .venv/bin/python -m mnha_research live-parity --days 2026-03-27,2026-04-15
@@ -64,9 +64,10 @@ tail -f /opt/mnha-research/data/live.log
 
 The timers run Mon–Fri:
 - `live-prepare` at 08:10 IST (bars, NSE files, the lab panel up to the previous session, models);
-- `live-decide` at 09:17 and `livex-decide` at 09:16, both waiting for the 09:15 bar to complete at 09:20;
-- `livex-flip` at 10:13, waiting for the 10:15 bar;
-- `live-settle` at 15:25 and `livex-settle` at 15:27.
+- `live-decide` at 09:17; it fetches the 09:15 bars from 09:21, a minute after the livex session, so the two bursts do not hit Groww together; `live-settle` at 15:25;
+- `livex-session` from 09:12 to 15:30: it decides at 09:20 (retrying until 09:35 while the bars are slow), checks book B's stops every 5 seconds, flips at 10:15, squares off at 15:15 and settles at 15:17.
+
+The single-step `livex-decide`, `livex-flip`, `livex-settle` and `livex-mark` commands remain for manual use. Their timers stay off: they ran the same steps beside the session and overwrote its results.
 
 A holiday is recognised when no bars arrive by 09:35.
 

@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
 import { isReservedId } from "@/lib/auth";
 import { homeFor } from "@/lib/access";
-import { hasConsented, CONTRACT } from "@/lib/consent";
+import { currentConsent, hasSignedCurrent, CONTRACT } from "@/lib/consent";
 import { hasBroker } from "@/lib/users";
 import { logout } from "@/app/login/actions";
 import AuthShell from "@/components/public/AuthShell";
@@ -19,7 +20,11 @@ export default async function ConsentPage() {
   if (!uid) redirect("/login");
   // The env logins have no agreement, KYC or membership — send them home.
   if (isReservedId(uid)) redirect(homeFor(uid));
-  if (await hasConsented(uid)) redirect((await hasBroker(uid)) ? MEMBER_HOME : "/connect-broker");
+  // Someone on an earlier, still-accepted version may come here to sign this one.
+  if (await hasSignedCurrent(uid)) redirect((await hasBroker(uid)) ? MEMBER_HOME : "/connect-broker");
+
+  // Anyone here with a record in force signed an earlier version that still counts.
+  const earlier = await currentConsent(uid);
 
   return (
     <>
@@ -28,13 +33,26 @@ export default async function ConsentPage() {
       step={2}
       wide
       headerRight={
-        <form action={logout}>
-          <button type="submit" className="text-[14px] font-medium text-pub-muted hover:text-pub-cream">
-            Sign out
-          </button>
-        </form>
+        <span className="flex items-center gap-5">
+          {earlier && (
+            <Link href={MEMBER_HOME} className="text-[14px] font-medium text-pub-muted hover:text-pub-cream">
+              Back to your desk
+            </Link>
+          )}
+          <form action={logout}>
+            <button type="submit" className="text-[14px] font-medium text-pub-muted hover:text-pub-cream">
+              Sign out
+            </button>
+          </form>
+        </span>
       }
     >
+      {earlier && (
+        <p className="mb-6 border border-pub-hair px-4 py-3 text-[14px] leading-snug text-pub-cream">
+          You signed version {earlier.agreementVersion.split(" ")[0]}, which still applies. Signing this version is optional — your
+          access stays the same either way. Signing needs a new selfie and ID photo.
+        </p>
+      )}
       <ConsentFlow contract={CONTRACT} />
     </AuthShell>
     </>

@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import {
   ADMIN_BACK_COOKIE,
@@ -11,6 +12,11 @@ import {
   sessionInfo,
   sessionUserId,
 } from "./auth";
+import { findById } from "./users";
+
+/** Whether a member record still exists: read once per server render (React
+ *  cache; actions and route handlers read it each time). */
+const userExists = cache(async (id: string): Promise<boolean> => (await findById(id)) !== null);
 
 const cookieOpts = (maxAge: number) => ({
   httpOnly: true,
@@ -27,10 +33,14 @@ export async function setSession(userId: string): Promise<void> {
   jar.delete(ADMIN_BACK_COOKIE); // a fresh sign-in ends any earlier admin view
 }
 
-/** The signed-in user id for this request, or null. */
+/** The signed-in user id for this request, or null. A member account that no
+ *  longer exists (deleted) counts as signed out at once, on every device, even
+ *  while its cookie has not expired — so nothing can be added back to it. */
 export async function currentUserId(): Promise<string | null> {
   const jar = await cookies();
-  return sessionUserId(jar.get(SESSION_COOKIE)?.value);
+  const uid = await sessionUserId(jar.get(SESSION_COOKIE)?.value);
+  if (!uid || isReservedId(uid)) return uid;
+  return (await userExists(uid)) ? uid : null;
 }
 
 export async function clearSession(): Promise<void> {
@@ -78,8 +88,10 @@ export async function endAdminView(): Promise<boolean> {
 
 /**
  * Steps that are the client's own act — signing or changing a consent,
- * identity photos, the Groww key, password, membership, deleting the account —
- * are refused while the admin is viewing their account.
+ * identity photos, disconnecting Groww, password, membership, deleting the
+ * account — are refused while the admin is viewing their account. Connecting
+ * Groww and orders are allowed, but logged as the admin's act (see
+ * connect-broker/actions.ts and logAdminAct in trade/actions.ts).
  */
 export const ADMIN_VIEW_REFUSAL = "Admin view: only the client can do this, from their own sign-in.";
 

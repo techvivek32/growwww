@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getAccount } from "@/lib/api/broker";
-import { currentUserId } from "@/lib/session";
+import { currentUserId, inAdminView } from "@/lib/session";
 import { hasBroker } from "@/lib/users";
 import { hasConsented } from "@/lib/consent";
 import { unreadCount } from "@/lib/notifications";
@@ -14,6 +14,7 @@ import { AutoTradeProvider } from "@/components/AutoTrade";
 import { LiveTicksProvider } from "@/components/LiveTicks";
 import { ViewerProvider } from "@/components/Viewer";
 import AdminViewBanner from "@/components/AdminViewBanner";
+import AgreementUpdateNotice from "@/components/AgreementUpdateNotice";
 
 // The nav shows live account state.
 export const dynamic = "force-dynamic";
@@ -29,7 +30,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // A registered user with no broker connected has an empty terminal — send
   // them to connect one first. (The owner uses the env house account.)
   const uid = await currentUserId();
-  if (!uid) redirect("/login");
+  if (!uid) {
+    // The client deleted their account while the admin was inside it: keep the way back.
+    if (await inAdminView()) return <AdminViewBanner />;
+    redirect("/login");
+  }
   // The admin login has no terminal — only its console (the proxy sends it there too).
   if (uid === ADMIN_ID) redirect(ADMIN_HOME);
   // Gate order: accept the agreement, then connect a broker, then the terminal.
@@ -43,10 +48,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const [account, unread, canTrade] = await Promise.all([getAccount(), unreadCount(uid), mayTrade(uid)]);
   const isOwner = uid === OWNER_ID;
+  const adminView = await inAdminView();
 
   return (
     <ViewerProvider isOwner={isOwner} canTrade={canTrade}>
     <AdminViewBanner />
+    {uid !== OWNER_ID && !adminView && <AgreementUpdateNotice userId={uid} />}
     <AutoTradeProvider>
       <LiveTicksProvider>
       <TopNav account={account} connected={account.balance !== null} isOwner={isOwner} unread={unread} />
@@ -55,7 +62,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <footer className="mx-auto max-w-[1360px] px-4 pb-10 lg:px-6">
         <p className="border-t border-line pt-5 text-[11.5px] leading-relaxed text-ink3">
           {canTrade
-            ? "MNHA Financials is a decision-support terminal, not investment advice. Setups are generated from price and volume data and can be wrong. Orders you confirm here are placed on your own Groww account — you place them, you own them."
+            ? "MNHA Financials is a decision-support terminal, not investment advice. Setups are generated from price and volume data and can be wrong. Orders you confirm here, or ask MNHA's admin to place, go to your own Groww account — they are yours."
             : "MNHA Financials shows your own Groww account, read-only. Nothing here is investment advice, and no order is placed from this page. Your money and positions stay with Groww."}
         </p>
       </footer>

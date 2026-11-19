@@ -13,7 +13,7 @@ function H({ children }: { children: React.ReactNode }) {
 export default function TermsPage() {
   return (
     <PublicShell>
-      <LegalArticle title="Terms of Service" updated="October 2026">
+      <LegalArticle title="Terms of Service" updated="November 2026">
         <p>
           These terms govern your use of MNHA Financials (&ldquo;the Service&rdquo;), a decision-support trading
           terminal that connects to your own brokerage account. By creating an account or using the Service, you
@@ -43,8 +43,11 @@ export default function TermsPage() {
         <div className="space-y-2">
           <H>3. Trading decisions are yours</H>
           <p>
-            MNHA connects to your brokerage account read-only and places no orders on it. Any trading you do happens
-            in your broker&apos;s own app, as your own decision — what to trade, in what size, and when — and you are
+            MNHA connects to your brokerage account to show it to you and, once you set it up, to send the orders you
+            confirm on its order ticket. MNHA&apos;s admin may also place or cancel an order in your account on your
+            instruction, as the User Agreement describes; each one is recorded and you are notified. MNHA never trades
+            your account on its own judgment. Every trading decision is your own — what to trade, in what size, and
+            when — and you are
             solely responsible for it and its outcomes. The Service may fail, be delayed, or display stale data; you
             must verify anything material with your broker before acting on it.
           </p>
@@ -81,8 +84,8 @@ export default function TermsPage() {
         <div className="space-y-2">
           <H>7. Changes and termination</H>
           <p>
-            We may update these terms or the Service, and may discontinue features. A material change to the user
-            agreement asks you to accept it again before you continue; other changes apply from the date shown. You
+            We may update these terms or the Service, and may discontinue features. When the user agreement changes materially,
+            we tell you in MNHA and ask you to review and sign the new version; other changes apply from the date shown. You
             may stop using the Service, and delete your account from Settings, at any time.
           </p>
         </div>

@@ -2,7 +2,7 @@ import "server-only";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import * as groww from "@/lib/api/groww";
-import { marketState } from "@/lib/market";
+import { inOpeningBurst, marketState } from "@/lib/market";
 import { STRATEGIES, computeIndicators, strategyByName } from "./strategies";
 import { collectTrades, summarize, type BacktestResult } from "./backtest";
 import {
@@ -322,6 +322,8 @@ export function startEngine(): void {
 
   const tick = async () => {
     try {
+      // Every bulk read here sits out the 09:20 burst, when the research books fetch on the same key.
+      if (inOpeningBurst()) return;
       if (marketState().isLive) await runScan();
       if (!state.lastBacktest || Date.now() - state.lastBacktest > BACKTEST_EVERY_MS) {
         await refreshBacktests();

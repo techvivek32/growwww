@@ -12,9 +12,10 @@ import { classify, extractAll, type Classified } from "./parse";
  * anything is saved. What cannot be — signing in to Groww, creating the key —
  * happens on Groww's own site, by the user. We never ask for the Groww password.
  *
- * No static IP: member accounts are read-only, and exchange rules tie one
- * static IP to one client (or one family) — Groww refuses our server's IP on
- * a second account. A static IP matters only for placing orders.
+ * Static IP: exchange rules tie one static IP to one client (or one family),
+ * and Groww refuses an address already registered on another account, so a
+ * member is offered an address from our pool that no other account uses. It
+ * matters only for placing orders; without it the desk is view-only.
  */
 
 const GROWW_TRADE_API = "https://groww.in/trade-api";
@@ -268,7 +269,7 @@ export default function ConnectWizard({ assignedIp }: { assignedIp: string | nul
                 Call +91 83206 93440
               </a>
               <p className="mt-2 text-[13px] text-pub-muted">
-                You can still finish this step — your desk works, and orders switch on the moment an address is allotted.
+                You can finish this step as soon as an address is allotted — then your desk works, and orders work once that address is on your key.
               </p>
             </div>
           )}

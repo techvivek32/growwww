@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { clientIp } from "@/lib/clientIp";
 import { currentUserId, ADMIN_VIEW_REFUSAL, inAdminView } from "@/lib/session";
 import { isReservedId } from "@/lib/auth";
-import { recordConsent, CONSENT_KEYS, CONTRACT, type ConsentKey, type Lang } from "@/lib/consent";
+import { recordConsent, agreementHash, CONSENT_KEYS, CONTRACT, type ConsentKey, type Lang } from "@/lib/consent";
 import { mediaStatus, readMediaMeta } from "@/lib/consentMedia";
 import { revokeHandoffs } from "@/lib/kycHandoff";
 import { hasBroker } from "@/lib/users";
@@ -60,13 +60,16 @@ export async function acceptConsent(_prev: ConsentState, form: FormData): Promis
     languagesViewed,
   });
   revokeHandoffs(uid); // the phone link has done its job
+  const connected = await hasBroker(uid);
   await notify(uid, {
     kind: "account",
     tone: "up",
     title: "Agreement accepted",
-    body: "Thanks — your consents and identity photos are recorded. Connect your broker to get started.",
-    key: "consent-accepted",
+    body: connected
+      ? "Thanks — your consents and identity photos are recorded for this version."
+      : "Thanks — your consents and identity photos are recorded. Connect your broker to get started.",
+    key: `consent-accepted-${agreementHash().slice(0, 12)}`, // one per agreement text
   });
 
-  redirect((await hasBroker(uid)) ? MEMBER_HOME : "/connect-broker");
+  redirect(connected ? MEMBER_HOME : "/connect-broker");
 }

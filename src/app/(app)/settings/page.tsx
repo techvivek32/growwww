@@ -130,18 +130,25 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           ) : (
             <>
               <p className={body}>
-                Your Groww API key is stored encrypted and used only to read your own account. Disconnecting removes the
-                stored credentials; you can reconnect any time.
+                Your Groww API key is stored encrypted and used only for your own account: to read it, and to send the
+                orders you confirm here or ask MNHA&apos;s admin to place. Disconnecting removes the stored credentials; you
+                can reconnect any time.
                 {keyOnFile && !status.live && " Groww did not answer just now — if that keeps happening, re-connect."}
               </p>
 
               <dl className="mt-5 border-y border-line">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3">
                   <dt className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">Static IP</dt>
-                  <dd className="text-[14px] text-ink">Not needed</dd>
+                  <dd className="tnum text-[14px] text-ink">{status.orderIp ?? "Not set"}</dd>
                 </div>
               </dl>
-              <p className="mt-2 text-[12.5px] leading-relaxed text-ink3">This address is reserved for your account and is the one registered on your Groww key. The exchange requires every order to arrive from it, so your orders are always sent from here. One address serves one Groww account, so it is never shared.</p>
+              <p className="mt-2 text-[12.5px] leading-relaxed text-ink3">
+                {status.orderIp
+                  ? "This address is reserved for your account. Groww accepts API orders only from the static IP registered on your key, so register this one on it to place orders from MNHA — your orders are always sent from here. One address serves one Groww account, so it is never shared."
+                  : keyOnFile
+                    ? "No order address is reserved for your account yet. Your desk works without one; to place orders from MNHA, reconnect Groww and register the address the connect step gives you on your key."
+                    : "Connect Groww to get the address reserved for your account; you register it on your Groww key to place orders from MNHA."}
+              </p>
 
               <div className="mt-5 flex flex-wrap gap-2">
                 {keyOnFile && (
@@ -174,7 +181,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
         {/* Privacy & consents — users only */}
         {!isOwner && (
-          <Section n="04" title="Privacy & consents" sub={`Agreement version ${AGREEMENT_VERSION}`}>
+          <Section n="04" title="Privacy & consents" sub={`Agreement version ${consent?.agreementVersion ?? AGREEMENT_VERSION}`}>
             {consent ? (
               <>
                 <p className={`mb-4 ${body}`}>
@@ -202,7 +209,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                   })}
                 </ul>
                 <p className="mt-4 text-[13px] leading-relaxed text-ink3">
-                  Disconnecting Groww (above) withdraws the read-only Groww consent and is recorded here; deleting your
+                  Disconnecting Groww (above) withdraws the Groww consent, and the withdrawal is added to your consent record; deleting your
                   account (below) withdraws all of them. Questions or data requests: support@mnhafinancials.com.
                 </p>
               </>

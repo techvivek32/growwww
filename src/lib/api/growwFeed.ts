@@ -4,6 +4,7 @@ import { connect, jwtAuthenticator, type NatsConnection, type Subscription } fro
 import { createUser } from "nkeys.js";
 import protobuf from "protobufjs";
 import { getAccessToken, hasCredentials } from "./groww";
+import { runWithCreds, runWithEgress } from "./credctx";
 import { feedTokensFor } from "../instruments";
 
 /**
@@ -156,8 +157,10 @@ async function establish(): Promise<void> {
 }
 
 function ensureConnection(): void {
-  if (!enabled() || state.nc || state.connecting) return;
-  state.connecting = establish()
+  // The one shared feed always runs on the house key and address: never on the key
+  // of the member whose request happened to start it (their key serves only them).
+  if (!runWithCreds(undefined, enabled) || state.nc || state.connecting) return;
+  state.connecting = runWithCreds(undefined, () => runWithEgress(undefined, establish))
     .catch((err) => {
       state.failures = (state.failures ?? 0) + 1;
       // Log the first few; after that it is the same failure (market closed, holiday) every time.

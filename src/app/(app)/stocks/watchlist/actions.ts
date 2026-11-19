@@ -15,8 +15,8 @@ import { INDEX_TICKERS } from "@/lib/api/yahoo";
 
 const SYMBOL_RE = /^[A-Z0-9&-]{1,30}$/;
 
-/** The watchlists are one shared store, so only the owner's account edits them;
- *  member accounts view them read-only. */
+/** The watchlists are one shared store and the owner's own: only the owner's
+ *  account sees or edits them. */
 async function signedIn(): Promise<boolean> {
   return isOwnerSession();
 }

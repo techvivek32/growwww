@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { subscribe } from "@/lib/tickhub";
+import { currentUserId } from "@/lib/session";
 
 /**
  * Server-sent tick stream. The browser holds this open and the tick hub
@@ -14,6 +15,8 @@ export const dynamic = "force-dynamic";
 const MAX_SYMBOLS = 60;
 
 export async function GET(req: NextRequest) {
+  // The proxy checks only the cookie's signature; a deleted account is signed out here too.
+  if (!(await currentUserId())) return new Response("Unauthorized", { status: 401 });
   const raw = req.nextUrl.searchParams.get("symbols") ?? "";
   const symbols = [
     ...new Set(

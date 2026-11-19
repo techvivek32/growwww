@@ -6,6 +6,8 @@ import { deleteConsentMedia } from "@/lib/consentMedia";
 import { deleteMembership } from "@/lib/membership";
 import { deleteOrders } from "@/lib/ledger";
 import { deleteNotifications } from "@/lib/notifications";
+import { scrubAdminAccessDetails } from "@/lib/adminAccess";
+import { revokeHandoffs } from "@/lib/kycHandoff";
 
 /**
  * Erase one account everywhere. Each store is attempted even if another fails
@@ -15,12 +17,15 @@ import { deleteNotifications } from "@/lib/notifications";
  */
 export async function eraseAccount(userId: string): Promise<string[]> {
   const steps: [string, (id: string) => Promise<void>][] = [
+    // First, so no phone link can upload photos while the rest is erased.
+    ["phone links", async (id) => revokeHandoffs(id)],
     ["verification", deleteKyc],
     ["agreement", deleteConsents],
     ["agreement media", deleteConsentMedia],
     ["membership", deleteMembership],
     ["order log", deleteOrders],
     ["notifications", deleteNotifications],
+    ["admin log details", scrubAdminAccessDetails],
     ["account", deleteUser],
   ];
   const failed: string[] = [];

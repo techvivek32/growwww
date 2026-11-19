@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { SESSION_COOKIE, verifyToken } from "@/lib/auth";
 import { runScan, refreshBacktests } from "@/lib/signals/engine";
 import { isOwnerSession } from "@/lib/access";
+import { inOpeningBurst } from "@/lib/market";
 
 /**
  * Force a scan + backtest now, rather than waiting for the loop. Handy off
@@ -16,6 +17,8 @@ export async function refreshSignalsAction(): Promise<void> {
   const jar = await cookies();
   if (!(await verifyToken(jar.get(SESSION_COOKIE)?.value))) return;
 
+  // Not during the 09:20 burst, when the research books fetch on the same Groww key.
+  if (inOpeningBurst()) return;
   await Promise.allSettled([runScan(), refreshBacktests()]);
   revalidatePath("/stocks/alerts");
 }

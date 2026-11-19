@@ -3,7 +3,9 @@ import "server-only";
 /**
  * The visitor's IP address as nginx saw it.
  *
- * The app listens on 127.0.0.1 only, so every request comes through nginx,
+ * The app listens on 127.0.0.1 only (`npm start` binds it there; the nginx
+ * settings it relies on are in deploy/nginx-mnha.conf.example), so every
+ * request comes through nginx,
  * which sets X-Real-IP (and X-Forwarded-For) to the connecting address and
  * overwrites whatever the client sent. Never trust the FIRST X-Forwarded-For
  * entry: a client can put anything there, which would let it dodge the

@@ -43,7 +43,7 @@ export default function SiteFooter() {
               Your Groww account, in plain <em>sight.</em>
             </p>
             <p className="mt-5 font-plex text-[10.5px] tracking-[0.12em] text-[#6d685d] uppercase">
-              Read-only · No tips · No guaranteed returns
+              No tips · No auto-trading · No guaranteed returns
             </p>
           </div>
           <div className="grid grid-cols-2 gap-10 sm:grid-cols-3 lg:col-span-7">

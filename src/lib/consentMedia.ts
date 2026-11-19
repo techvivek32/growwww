@@ -1,5 +1,6 @@
 import "server-only";
-import { mkdir, writeFile, readdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, writeFile, readdir, readFile, rm, stat, copyFile, rename } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 
 /**
@@ -95,6 +96,71 @@ export async function hasAllMedia(userId: string): Promise<{ selfie: boolean; id
 export async function deleteConsentMedia(userId: string): Promise<void> {
   // `force` already ignores a missing folder; any other failure must surface.
   await rm(path.join(DIR, userId), { recursive: true, force: true });
+}
+
+/** The working capture: the selfie, ID photo and video, and their meta files. */
+const WORKING = /^(selfie|id|video)\.|^meta-/;
+/** Keyed by the full version label (number and date), so a re-dated label never shares a folder. */
+const keptDir = (userId: string, version: string) => path.join(DIR, userId, `signed-${version.replace(/[^0-9A-Za-z.-]+/g, "_")}`);
+
+/** True only when the path exists; any error other than "missing" is raised. */
+async function exists(p: string): Promise<boolean> {
+  try {
+    await stat(p);
+    return true;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw e;
+  }
+}
+
+/**
+ * Keep the evidence of an earlier signing that still counts. Media is stored
+ * once per user, so before a member on an earlier, still-accepted version
+ * retakes photos to sign the current one, that signing's files are copied to
+ * `signed-<version>/`: once, atomically, and never touched again (only erasing
+ * the account removes them).
+ */
+export async function keepSignedMedia(userId: string, version: string): Promise<void> {
+  const keep = keptDir(userId, version);
+  if (await exists(keep)) return;
+  const dir = path.join(DIR, userId);
+  const files = (
+    await readdir(dir).catch((e: NodeJS.ErrnoException) => {
+      if (e.code === "ENOENT") return [] as string[]; // nothing captured yet
+      throw e;
+    })
+  ).filter((f) => WORKING.test(f));
+  if (!files.length) return;
+  const tmp = `${keep}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
+  await mkdir(tmp, { recursive: true });
+  try {
+    for (const f of files) await copyFile(path.join(dir, f), path.join(tmp, f));
+    await rename(tmp, keep);
+  } catch (e) {
+    await rm(tmp, { recursive: true, force: true });
+    // Only "another upload kept it first" lets the replacement go ahead.
+    if (!(await exists(keep))) throw e;
+  }
+}
+
+/** Clear the working capture for a retake, never a kept signing's evidence. */
+export async function clearWorkingMedia(userId: string): Promise<void> {
+  const dir = path.join(DIR, userId);
+  for (const f of await readdir(dir).catch(() => [] as string[])) {
+    if (WORKING.test(f)) await rm(path.join(dir, f), { force: true });
+  }
+}
+
+/** A kept signing's file of this kind, when that signing's evidence was kept. */
+export async function keptMediaPath(userId: string, version: string, kind: MediaKind): Promise<string | null> {
+  try {
+    const dir = keptDir(userId, version);
+    const f = (await readdir(dir)).find((x) => x.startsWith(`${kind}.`));
+    return f ? path.join(dir, f) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Which identity photos exist AND were uploaded within `maxAgeMs` — media for

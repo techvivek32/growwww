@@ -68,15 +68,15 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
   }
   const acc = active && membership && navInfo ? accrual(membership, navInfo.nav) : null;
   const bills = await listInvoices(uid);
-  // MNHA places no trades on a member's behalf — they place their own, so a
-  // performance fee would be charged on gains MNHA had no part in.
-  const readOnly = true;
+  // MNHA does not trade for members on its own judgment — they make their own
+  // trades, so a performance fee would be charged on gains MNHA had no part in.
+  const notOffered = true;
 
   return (
     <div className="mx-auto max-w-2xl">
       <PageHead
         title="Membership"
-        sub="A performance-fee plan. Not offered while your account is read-only."
+        sub="A performance-fee plan. Not offered at present."
         right={active ? <Pill tone="up">Active</Pill> : <Pill tone="neutral">Not enrolled</Pill>}
       />
 
@@ -168,10 +168,10 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
               </li>
             ))}
           </ol>
-          {readOnly ? (
+          {notOffered ? (
             <p className="text-[13px] leading-relaxed text-ink3">
-              Membership is not offered while your account is read-only. MNHA places no trades for you, so there is
-              nothing to charge a fee on.
+              Membership is not offered at present. You make your own trades, so there is nothing for MNHA to
+              charge a fee on.
             </p>
           ) : navInfo ? (
             <>

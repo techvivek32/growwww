@@ -48,7 +48,12 @@ export async function deleteAccountAction(): Promise<void> {
   const failed = await eraseAccount(uid);
   if (failed.length) {
     console.error(`[erase] account ${uid} partly erased; failed: ${failed.join(", ")}`);
-    // Never pretend: keep the session and say what could not be erased.
+    // Never pretend: say what could not be erased. Once the account record
+    // itself is gone this sign-in no longer works, so the word goes to /login.
+    if (!failed.includes("account")) {
+      await clearSession();
+      redirect("/login?erased=partial");
+    }
     redirect(`/settings?delete=partial&failed=${encodeURIComponent(failed.join(","))}`);
   }
   await clearSession();

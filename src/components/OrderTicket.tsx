@@ -216,7 +216,18 @@ function OrderTicketInner({
                 </button>
               </div>
             ) : (
-              <form action={action} className="px-5 py-4">
+              <form
+                action={action}
+                onSubmit={(e) => {
+                  // Enter in a box must never skip the review: before it, Enter only
+                  // opens the review, exactly as the "Review order" button does.
+                  if (!review) {
+                    e.preventDefault();
+                    if (ready) setReview(true);
+                  }
+                }}
+                className="px-5 py-4"
+              >
                 <input type="hidden" name="symbol" value={symbol} />
                 <input type="hidden" name="side" value={side} />
                 <input type="hidden" name="type" value={type} />

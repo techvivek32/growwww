@@ -12,7 +12,7 @@ import { egressFor } from "@/lib/api/egress";
 import { assignableIp, mayClaimIp } from "@/lib/trading";
 import { rateLimit } from "@/lib/ratelimit";
 import { notify } from "@/lib/notifications";
-import { recordConsentChange } from "@/lib/consent";
+import { currentConsent, hasConsented, recordConsentChange, SIGN_FIRST } from "@/lib/consent";
 import { probeConnection, type ProbeStage } from "@/lib/api/groww";
 import { classify } from "./parse";
 import { MEMBER_HOME } from "@/lib/routes";
@@ -45,12 +45,22 @@ const HINT: Record<ProbeStage, (status: number | null) => string> = {
 export async function connectBroker(_prev: FormState, formData: FormData): Promise<FormState> {
   const userId = await currentUserId();
   if (!userId || isReservedId(userId)) return { error: "You are not signed in as a user account." };
+  // The Groww consent is part of the agreement, so no key is stored before it
+  // is signed. Pages enforce this order too, but an action can be called directly.
+  if (!(await hasConsented(userId))) return { error: SIGN_FIRST };
   // Onboarding often happens with the admin and the client together, so the
   // admin may connect from inside the client's account. It is not pretended to
-  // be the client's own act: it goes on the admin access log, and the Groww
-  // consent below is recorded against the client either way — which is why the
-  // log line matters.
+  // be the client's own act: it goes on the admin access log, and it never
+  // changes the client's Groww consent (only the client's own reconnect does).
   const byAdmin = await inAdminView();
+  // A Groww consent the client withdrew (by disconnecting) is theirs alone to
+  // give again; the admin may connect only for a client who has not withdrawn it.
+  if (byAdmin) {
+    const signed = await currentConsent(userId);
+    if ((signed?.current ?? signed?.consents)?.groww === false) {
+      return { error: "The client withdrew their Groww consent. Only the client can give it again, by connecting Groww from their own sign-in." };
+    }
+  }
 
   // Each attempt mints a Groww token, and Groww caps those per key per day.
   if (!rateLimit(`connect:${userId}`, 10, 15 * 60_000).ok) {
@@ -118,9 +128,10 @@ export async function connectBroker(_prev: FormState, formData: FormData): Promi
   // this member leaves from it, and the trading gate reads it.
   const saved = await setBroker(userId, key.value, secret.value, { ucc: probe.ucc, staticIp: ip, ipConfirmed: true });
   if (!saved) return { error: "Could not save the connection. Try again." };
-  await recordConsentChange(userId, "groww", true); // a reconnect restores the Groww consent
+  if (!byAdmin) await recordConsentChange(userId, "groww", true); // only the client's own reconnect restores a withdrawn consent
   if (byAdmin) {
-    await logAdminAccess({ kind: "connect-broker", userId, ip: clientIp(await headers()) }).catch(() => undefined);
+    await logAdminAccess({ kind: "connect-broker", userId, ip: clientIp(await headers()) })
+      .catch((e) => console.error("[admin-access] connect-broker not logged:", e instanceof Error ? e.message : e));
   }
 
   await notify(userId, {

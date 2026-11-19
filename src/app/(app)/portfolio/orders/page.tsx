@@ -46,7 +46,7 @@ export default async function OrdersPage() {
           <div className="flex items-center gap-2">
             <Pill tone={working.length ? "brand" : "neutral"}>{working.length} working</Pill>
             {isOwner && (
-              <Button variant="outline" size="sm" disabled title="Order placement is not enabled — manage orders in Groww">
+              <Button variant="outline" size="sm" disabled title="Cancelling from MNHA is not available yet — cancel in Groww">
                 Cancel all
               </Button>
             )}

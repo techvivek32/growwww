@@ -24,13 +24,18 @@ async function credState(): Promise<CredState> {
 /**
  * A user's key is registered against ONE address, so the call must also LEAVE
  * from that address — resolved here, beside the credentials, and never guessed
- * elsewhere. The owner's house account keeps the default egress.
+ * elsewhere: the static IP registered on the member's own key, when this server
+ * can send from it (otherwise the default). The owner's house account keeps the
+ * default egress.
  */
-async function userEgress(): Promise<Egress | undefined> {
-  const uid = await currentUserId();
+async function egressOf(uid: string | null): Promise<Egress | undefined> {
   if (!uid || uid === OWNER_ID) return undefined;
   const meta = await getUserBrokerMeta(uid);
   return (await egressFor(meta?.staticIp)) ?? undefined;
+}
+
+async function userEgress(): Promise<Egress | undefined> {
+  return egressOf(await currentUserId());
 }
 
 async function withUserCreds<T>(fn: () => Promise<T>): Promise<T> {
@@ -171,7 +176,11 @@ export async function getNavStrict(): Promise<NavReading | null> {
  */
 export async function getNavFor(userId: string): Promise<NavReading | null> {
   if (!userId || isReservedId(userId)) return null;
-  return runWithCreds((await getBroker(userId)) ?? "none", () => navImpl(true));
+  // That member's own key AND their own address, like every other read of
+  // their account (as there, the default egress only when this server cannot
+  // send from the member's address).
+  const [creds, egress] = await Promise.all([getBroker(userId), egressOf(userId)]);
+  return runWithCreds(creds ?? "none", () => runWithEgress(egress, () => navImpl(true)));
 }
 
 /**
@@ -251,7 +260,6 @@ export async function getTrades(): Promise<Trade[]> {
       while (qty > 0 && book.lots.length > 0) {
         const lot = book.lots[0];
         const matched = Math.min(qty, lot.qty);
-        const long = book.side === "BUY";
         trades.push({
           id: `RT-${++seq}`,
           date: lot.date ?? f.date ?? "",
@@ -261,8 +269,10 @@ export async function getTrades(): Promise<Trade[]> {
           side: book.side,
           product: f.product,
           qty: matched,
-          entry: long ? lot.price : price,
-          exit: long ? price : lot.price,
+          // In time order for either side: the opening fill, then the closing
+          // one. The sign of the result comes from `side` (portfolio/analysis).
+          entry: lot.price,
+          exit: price,
           entryTime: lot.time,
           exitTime: f.time,
           charges: null,
@@ -406,14 +416,14 @@ async function placeOrderImpl(input: groww.PlaceOrderInput): Promise<PlacedOrder
 export async function cancelOrder(
   orderId: string,
   segment: "CASH" | "FNO" = "CASH",
-): Promise<{ ok: boolean; message: string | null }> {
+): Promise<{ ok: boolean; message: string | null; sent: boolean }> {
   return withUserCreds(async () => {
-    if (!canTrade()) return { ok: false, message: "Order placement is disabled, or no broker is connected." };
+    if (!canTrade()) return { ok: false, message: "Order placement is disabled, or no broker is connected.", sent: false };
     try {
-      return await groww.cancelOrder(orderId, segment);
+      return { ...(await groww.cancelOrder(orderId, segment)), sent: true };
     } catch (err) {
       console.error("[broker] cancelOrder failed:", err instanceof Error ? err.message : err);
-      return { ok: false, message: "The cancel request did not complete. Check Groww." };
+      return { ok: false, message: "The cancel request did not complete. Check Groww.", sent: true };
     }
   });
 }

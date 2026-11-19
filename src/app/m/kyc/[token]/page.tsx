@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { handoffUser } from "@/lib/kycHandoff";
 import { findById } from "@/lib/users";
-import { hasConsented, CONTRACT, type Lang } from "@/lib/consent";
+import { hasSignedCurrent, CONTRACT, type Lang } from "@/lib/consent";
 import { mediaStatus } from "@/lib/consentMedia";
 import { pubFonts } from "@/components/public/fonts";
 import { Wordmark } from "@/components/public/Brand";
@@ -37,7 +37,7 @@ export default async function PhoneKycPage({
   const t = CONTRACT[lang].ui;
   const uid = handoffUser(token);
   const user = uid ? await findById(uid) : null;
-  const usable = Boolean(uid && user && !(await hasConsented(uid)));
+  const usable = Boolean(uid && user && !(await hasSignedCurrent(uid)));
   // A reload after the selfie went up continues at the ID photo.
   const initial = usable && uid ? await mediaStatus(uid, 24 * 3600 * 1000) : { selfie: false, id: false };
 

@@ -29,8 +29,14 @@ export interface LedgerEntry {
   segment: string;
   exchange: string;
   price: number | null;
+  /** SL and SL_M: the trigger price sent with the order. Absent on older entries. */
+  trigger?: number | null;
   orderId: string | null;
   message: string | null;
+  /** Set when the admin sent this from inside the client's account ("Open
+   *  account"). Absent: the account holder sent it, or it was written before
+   *  admin orders were marked. */
+  by?: "admin";
 }
 
 interface Store { entries: LedgerEntry[] }

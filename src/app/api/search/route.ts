@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { searchEquities } from "@/lib/instruments";
 import { INDEX_TICKERS } from "@/lib/api/yahoo";
+import { currentUserId } from "@/lib/session";
 
 /**
  * Instrument search over the master list — every NSE equity plus the
@@ -16,6 +17,8 @@ export interface SearchHit {
 }
 
 export async function GET(req: NextRequest) {
+  // The proxy checks only the cookie's signature; a deleted account is signed out here too.
+  if (!(await currentUserId())) return new Response("Unauthorized", { status: 401 });
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim();
   if (q.length < 2) {
     return NextResponse.json({ hits: [] }, { headers: { "Cache-Control": "no-store" } });

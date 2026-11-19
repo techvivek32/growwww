@@ -388,7 +388,10 @@ def decide(wait: bool = True) -> dict:
     vhist = first_bar_volume_history(syms, day)
     log(f"decide {date}: {len(syms)} candidates, models {models['meta']['year']}; waiting for the 09:15 bar")
     # the 09:15 bar is complete at 09:20:00; poll until most names have it (holiday: nobody does by 09:35)
-    while wait and not late and minute_ist() < 9 * 60 + 20 + 2 / 60:
+    # Start at 09:21, a minute after the livex session fetches the same 09:15 bars on the same
+    # Groww key: one burst at a time stays inside Groww's limits. The bar is the same, so the
+    # bar-priced books do not change; the live-price fill is read at this later decision time.
+    while wait and not late and minute_ist() < 9 * 60 + 21:
         time.sleep(1)
     bars, ready_at = {}, None
     for _attempt in range(40):

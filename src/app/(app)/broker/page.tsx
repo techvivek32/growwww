@@ -74,7 +74,7 @@ function memberSteps(status: { credentials: boolean; live: boolean; orderIp: str
       on: Boolean(status.orderIp),
       label: status.orderIp ? `Orders sent from ${status.orderIp}` : "No order address yet",
       detail: status.orderIp
-        ? "This address is reserved for your account and is the one registered on your Groww key. The exchange requires orders to arrive from it, so every order you place here leaves from this address."
+        ? "This address is reserved for your account; register it on your Groww key. Groww accepts API orders only from the address registered on the key, so every order you place here leaves from this address."
         : "Your Groww key has no address reserved yet, so the exchange would refuse an order. Reconnect Groww from Settings — we will give you the address to register on the key.",
     },
   ];
@@ -116,7 +116,7 @@ export default async function BrokerPage() {
         sub={
           isOwner
             ? "How MNHA Financials connects to your Groww account."
-            : "Your Groww link, read-only. Your money and positions stay with Groww."
+            : "Your Groww link. Your money and positions stay with Groww."
         }
       />
 

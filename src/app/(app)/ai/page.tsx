@@ -86,8 +86,7 @@ export default async function AiPage() {
                   : "The engine is not running on our server right now. This page refreshes itself."}
             </p>
             <p className="mt-4 border-l-2 border-mark pl-3.5 text-[13.5px] leading-relaxed text-ink2">
-              MNHA AI places <strong className="text-ink">no orders</strong> on your account. Your Groww account is
-              shown here read-only.
+              MNHA AI places <strong className="text-ink">no orders</strong> on your account.
             </p>
           </div>
         </div>
@@ -125,7 +124,7 @@ export default async function AiPage() {
               value={orderIp ?? "Not assigned yet"}
               note={
                 orderIp
-                  ? "Reserved for your account and registered on your Groww key. The exchange requires orders to arrive from this address, so yours are always sent from it — and one address serves one account, so it is never shared."
+                  ? "Reserved for your account; register it on your Groww key. Groww accepts API orders only from the address registered on the key, so yours are always sent from it — and one address serves one account, so it is never shared."
                   : "No address is reserved for your account yet, so the exchange would refuse an order. Reconnect Groww from Settings and we will give you one."
               }
               tone={orderIp ? "up" : "warn"}
@@ -134,8 +133,8 @@ export default async function AiPage() {
           <Row
             n={isOwner ? "03" : "05"}
             label="Orders"
-            value="None placed by MNHA"
-            note="MNHA places no orders on your account. Anything you trade, you trade in your Groww app."
+            value="None placed by MNHA AI"
+            note="MNHA AI places no orders on your account. Every trade on it is your own decision."
             tone="muted"
           />
         </ul>

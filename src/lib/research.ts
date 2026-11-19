@@ -38,7 +38,7 @@ export interface LivexDay {
   flags?: string | null;
 }
 
-/** The open paper position marked at Groww's live prices, written every 5 minutes during the session. */
+/** The open paper position marked at Groww's live prices, written every 30 seconds by the session loop. */
 export interface LivexMark {
   day: number;
   at: number;

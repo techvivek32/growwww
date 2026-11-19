@@ -29,6 +29,7 @@ from .validation import day_to_date
 STOP = 0.005
 POLL_S = 5
 MARK_EVERY_S = 30
+DECIDE_RETRY_S = 15  # while the 09:15 bars are still arriving
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS livex_fast (
   day INTEGER NOT NULL, book TEXT NOT NULL, leg TEXT NOT NULL, symbol TEXT NOT NULL, side INTEGER NOT NULL, qty REAL NOT NULL,
@@ -54,9 +55,11 @@ def _open_leg(con, day: int, leg: str, symbol: str, side: int, raw_px: float, at
     e = raw_px * (1 + s * side)
     q = math.floor(livex.BOOK / e)
     with con:
-        con.execute("INSERT OR REPLACE INTO livex_fast(day, book, leg, symbol, side, qty, entry, entry_at) VALUES(?,?,?,?,?,?,?,?)",
-                    (day, "sl05", leg, symbol, side, q, e, at))
-    log(f"[B sl05] open {leg}: {'SHORT' if side < 0 else 'LONG'} {symbol} {q} @ {e:.2f}")
+        # Never over an existing leg: a restarted session must not reopen a closed one.
+        cur = con.execute("INSERT OR IGNORE INTO livex_fast(day, book, leg, symbol, side, qty, entry, entry_at) VALUES(?,?,?,?,?,?,?,?)",
+                          (day, "sl05", leg, symbol, side, q, e, at))
+    if cur.rowcount:
+        log(f"[B sl05] open {leg}: {'SHORT' if side < 0 else 'LONG'} {symbol} {q} @ {e:.2f}")
 
 
 def _close_leg(con, day: int, leg: str, raw_px: float, at: float, why: str) -> None:
@@ -92,7 +95,10 @@ def session() -> dict:
         log(f"context preparation failed: {e}")
     log(f"session {date}: waiting for 09:20")
     decided = False
+    next_decide = 0.0
+    decide_fails = 0
     flipped = False
+    next_flip = 0.0
     last_mark = 0.0
     squared = False
     summary: dict = {"day": date.isoformat()}
@@ -102,29 +108,41 @@ def session() -> dict:
         if minute >= 15 * 60 + 30:
             break
         try:
-            if not decided and minute >= 9 * 60 + 20 + 2 / 60:
+            if not decided and minute >= 9 * 60 + 20 + 2 / 60 and now >= next_decide:
+                # A decision that raises backs off (15 s, 30 s, ... 10 min) instead of re-fetching all day.
+                next_decide = now + min(DECIDE_RETRY_S * 2 ** decide_fails, 600)
+                decide_fails += 1
+                if ctx is None:
+                    ctx = livex.prepare_ctx(day)  # built once and kept for every retry
                 out = livex.decide(wait=False, ctx=ctx)
-                decided = out.get("status") not in (None, "weekend")
+                decide_fails = 0
+                next_decide = time.time() + DECIDE_RETRY_S  # 15 s between attempts, not between their starts
+                # "waiting for bars": the 09:15 bars are still arriving (a slow or throttled feed), so
+                # try again shortly; decide() itself calls the day off as a holiday after 09:35.
+                decided = out.get("status") not in (None, "weekend", "waiting for bars")
                 summary["decide"] = out
                 if out.get("status", "").startswith("no session"):
                     log("no session today (holiday)")
                     return summary
-                row = con.execute("SELECT skip, pick, pick_px FROM livex_days WHERE day=?", (day,)).fetchone()
-                if row and not row[0] and row[1]:
-                    _open_leg(con, day, "short", row[1], -1, float(row[2]), now)
-            if decided and not flipped and minute >= 10 * 60 + 15 + 0.5:
-                out = livex.flip()
-                flipped = True
-                summary["flip"] = out
-                if out.get("flip"):
-                    r = con.execute("SELECT flip_symbol, flip_px FROM livex_days WHERE day=?", (day,)).fetchone()
-                    if r and r[0]:
-                        # book B: cover the short at the live price (if its stop has not already closed it) and buy the
-                        # top gainer, like book A
-                        legs = _open_legs(con, day)
+                if decided:
+                    row = con.execute("SELECT skip, pick, pick_px FROM livex_days WHERE day=?", (day,)).fetchone()
+                    if row and not row[0] and row[1]:
+                        _open_leg(con, day, "short", row[1], -1, float(row[2]), now)
+            if decided and not flipped and minute >= 10 * 60 + 15 + 0.5 and now >= next_flip:
+                next_flip = now + DECIDE_RETRY_S  # a flip that raises (bars not in yet) is retried shortly
+                if "flip" not in summary:
+                    summary["flip"] = livex.flip()
+                # Book B follows the RECORDED 10:15 decision (this run's or another's): cover the short at the
+                # live price (if its stop has not already closed it) and buy the top gainer, like book A, but
+                # never on a regime-skip day, when book A takes nothing. Done only once it all succeeds.
+                rec = con.execute("SELECT skip, flip, flip_symbol, flip_px FROM livex_days WHERE day=?", (day,)).fetchone()
+                if rec and rec[1] is not None:
+                    if rec[1] and rec[2] and not rec[0]:
+                        legs = [l for l in _open_legs(con, day) if l[0] == "short"]
                         if legs:
                             _close_leg(con, day, "short", _quote(legs), now, "flip cover")
-                        _open_leg(con, day, "flip_long", r[0], 1, float(r[1]), now)
+                        _open_leg(con, day, "flip_long", rec[2], 1, float(rec[3]), now)
+                    flipped = True
             if decided and not squared:
                 legs = _open_legs(con, day)
                 if legs:
@@ -158,7 +176,7 @@ def session() -> dict:
 
 
 def _quote(legs) -> float:
-    """Live price of the open short (book B) for the flip cover; falls back to the latest mark."""
+    """Live price of the open short (book B) for the flip cover; raises when there is none (the loop retries)."""
     if legs:
         q = livex._ltp_many([legs[0][1]])
         if legs[0][1] in q:

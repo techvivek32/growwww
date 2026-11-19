@@ -187,7 +187,22 @@ function OrderPanelInner({
           </p>
         </div>
       ) : (
-        <form action={action} className="px-4 py-3.5">
+        <form
+          action={action}
+          onKeyDown={(e) => {
+            // A held Enter repeats: only a fresh press may confirm what the first one armed.
+            if (e.key === "Enter" && e.repeat) e.preventDefault();
+          }}
+          onSubmit={(e) => {
+            // Enter in a box must never skip the confirm step: before the first
+            // press it only arms the confirm, exactly as the Buy/Sell button does.
+            if (!confirming) {
+              e.preventDefault();
+              if (ready) setConfirming(true);
+            }
+          }}
+          className="px-4 py-3.5"
+        >
           <input type="hidden" name="symbol" value={instrument.symbol} />
           <input type="hidden" name="side" value={side} />
           <input type="hidden" name="type" value={type} />
@@ -202,12 +217,12 @@ function OrderPanelInner({
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setProduct(fno ? "NRML" : "CNC")}
+              onClick={() => { setProduct(fno ? "NRML" : "CNC"); setConfirming(false); }}
               className={pill(product !== "MIS")}
             >
               Delivery{fno && <span className="ml-1 text-[10px] opacity-70">NRML</span>}
             </button>
-            <button type="button" onClick={() => setProduct("MIS")} className={pill(product === "MIS")}>
+            <button type="button" onClick={() => { setProduct("MIS"); setConfirming(false); }} className={pill(product === "MIS")}>
               Intraday
             </button>
           </div>
@@ -223,7 +238,7 @@ function OrderPanelInner({
                 <button
                   type="button"
                   aria-label="One lot fewer"
-                  onClick={() => setLots((v) => String(Math.max(1, (Number(v) || 1) - 1)))}
+                  onClick={() => { setLots((v) => String(Math.max(1, (Number(v) || 1) - 1))); setConfirming(false); }}
                   className="grid h-9 w-9 place-items-center border border-line text-[16px] text-ink2 hover:bg-surfaceh"
                 >
                   −
@@ -231,14 +246,14 @@ function OrderPanelInner({
                 <input
                   inputMode="numeric"
                   value={lots}
-                  onChange={(e) => setLots(e.target.value.replace(/[^0-9]/g, ""))}
+                  onChange={(e) => { setLots(e.target.value.replace(/[^0-9]/g, "")); setConfirming(false); }}
                   aria-label="Lots"
                   className="tnum h-9 w-16 border border-line bg-surface text-center text-[14px] text-ink outline-none focus:border-brand"
                 />
                 <button
                   type="button"
                   aria-label="One lot more"
-                  onClick={() => setLots((v) => String((Number(v) || 0) + 1))}
+                  onClick={() => { setLots((v) => String((Number(v) || 0) + 1)); setConfirming(false); }}
                   className="grid h-9 w-9 place-items-center border border-line text-[16px] text-ink2 hover:bg-surfaceh"
                 >
                   +
@@ -249,7 +264,7 @@ function OrderPanelInner({
                 inputMode="numeric"
                 placeholder="0"
                 value={qty}
-                onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ""))}
+                onChange={(e) => { setQty(e.target.value.replace(/[^0-9]/g, "")); setConfirming(false); }}
                 aria-label="Quantity"
                 className="tnum h-9 w-28 border border-line bg-surface px-3 text-right text-[14px] text-ink outline-none focus:border-brand"
               />
@@ -284,7 +299,7 @@ function OrderPanelInner({
                 inputMode="decimal"
                 placeholder={instrument.ltp === null ? "0.00" : instrument.ltp.toFixed(2)}
                 value={price}
-                onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ""))}
+                onChange={(e) => { setPrice(e.target.value.replace(/[^0-9.]/g, "")); setConfirming(false); }}
                 aria-label="Limit price"
                 className="tnum h-9 w-28 border border-line bg-surface px-3 text-right text-[14px] text-ink outline-none focus:border-brand"
               />
@@ -301,7 +316,7 @@ function OrderPanelInner({
               <input
                 inputMode="decimal"
                 value={trigger}
-                onChange={(e) => setTrigger(e.target.value.replace(/[^0-9.]/g, ""))}
+                onChange={(e) => { setTrigger(e.target.value.replace(/[^0-9.]/g, "")); setConfirming(false); }}
                 aria-label="Trigger price"
                 className="tnum h-9 w-28 border border-line bg-surface px-3 text-right text-[14px] text-ink outline-none focus:border-brand"
               />

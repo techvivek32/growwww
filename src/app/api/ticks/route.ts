@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getTicks, hasCredentials } from "@/lib/api/groww";
+import { currentUserId } from "@/lib/session";
 
 /**
  * Live ticks for the screen, polled by the client.
@@ -16,6 +17,8 @@ export const dynamic = "force-dynamic";
 const MAX_SYMBOLS = 60;
 
 export async function GET(req: NextRequest) {
+  // The proxy checks only the cookie's signature; a deleted account is signed out here too.
+  if (!(await currentUserId())) return new Response("Unauthorized", { status: 401 });
   if (!hasCredentials()) {
     return NextResponse.json({ ticks: {} }, { headers: { "Cache-Control": "no-store" } });
   }

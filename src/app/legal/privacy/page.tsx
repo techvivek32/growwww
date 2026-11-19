@@ -12,21 +12,21 @@ function H({ children }: { children: React.ReactNode }) {
 }
 
 /** The data sections of the user agreement — one text, so the two never disagree. */
-const DATA_SECTIONS = new Set([1, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16]);
+const DATA_SECTIONS = new Set([1, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17]);
 
 export default function PrivacyPage() {
   const sections = CONTRACT.en.sections.filter((s) => DATA_SECTIONS.has(Number.parseInt(s.heading, 10)));
   return (
     <PublicShell>
-      <LegalArticle title="Privacy Policy" updated={`October 2026 · agreement ${AGREEMENT_VERSION}`}>
+      <LegalArticle title="Privacy Policy" updated={`November 2026 · agreement ${AGREEMENT_VERSION}`}>
         <p>
           This policy is the data part of the MNHA Financials user agreement, shown here word for word. Every user
-          reads it, and gives separate consents, before an account is used. It is also available in हिन्दी and
+          reads the user agreement, and gives separate consents, before an account is used. It is also available in हिन्दी and
           ગુજરાતી on the agreement page.
         </p>
         {sections.map((s) => (
           <div key={s.heading} className="space-y-2">
-            <H>{s.heading.replace(/^\d+\.\s*/, "")}</H>
+            <H>{s.heading}</H>
             <p>{s.body}</p>
           </div>
         ))}

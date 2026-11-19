@@ -11,7 +11,7 @@ export default async function Page() {
   const d = await loadAdmin();
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHead title="Admin access log" sub="Every time the admin opened or left a client's account." right={<Pill tone="violet">Admin</Pill>} />
+      <PageHead title="Admin access log" sub="Every time the admin opened or left a client's account, and every act inside it: connecting Groww, or sending an order or a cancellation." right={<Pill tone="violet">Admin</Pill>} />
       <AccessSection d={d} />
     </div>
   );

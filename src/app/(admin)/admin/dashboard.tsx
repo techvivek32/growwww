@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Card, CardHead, Pill, StatTile } from "@/components/ui";
-import { AGREEMENT_VERSION } from "@/lib/consent";
+import { AGREEMENT_VERSION, isAcceptedVersion } from "@/lib/consent";
+import { holidayListNotice } from "@/lib/market";
 import type { LiveSummary } from "@/lib/research";
 import type { AdminData } from "./sections";
 
@@ -100,19 +101,26 @@ export function KeyStats({ d }: { d: AdminData }) {
 export function Attention({ d }: { d: AdminData }) {
   const noAddress = d.users.filter((u) => u.hasBroker && !u.brokerStaticIp);
   const ended = d.activeMembers.filter((m) => isPast(m.periodEndsAt));
-  const oldAgreement = d.users.filter((u) => !d.signedNow.has(u.id) && d.signedOld.has(u.id));
+  const onOld = d.users.filter((u) => !d.signedNow.has(u.id) && d.signedOld.has(u.id));
+  // An earlier version that still counts (3.3) blocks nothing: those members are only invited to
+  // sign the new one. A version that no longer counts must be signed again before they get in.
+  const mustResign = onOld.filter((u) => !isAcceptedVersion(d.signedOld.get(u.id)?.agreementVersion ?? ""));
+  const invited = onOld.length - mustResign.length;
+  const holidayNote = holidayListNotice();
   const all: { n: number; text: string; href: string; tone: Tone }[] = [
     { n: d.pendingKyc, text: "identity verification waiting for review", href: "/admin/kyc", tone: "warn" },
     { n: d.countInv("due"), text: `fee invoice${d.countInv("due") === 1 ? "" : "s"} due, ${inr2(d.sumFee("due"))}`, href: "/admin/fees", tone: "down" },
     { n: ended.length, text: "member period ended, not settled yet", href: "/admin/fees", tone: "warn" },
     { n: noAddress.length, text: "connected account without an order address", href: "/admin/accounts", tone: "down" },
-    { n: oldAgreement.length, text: `signed an older agreement than v${AGREEMENT_VERSION}`, href: "/admin/consents", tone: "neutral" },
+    { n: mustResign.length, text: "signed an agreement version that no longer counts, so must sign again", href: "/admin/consents", tone: "warn" },
+    { n: invited, text: `on an earlier agreement that still counts, invited to sign v${AGREEMENT_VERSION}`, href: "/admin/consents", tone: "neutral" },
     { n: d.countStatus(d.ordersToday, "rejected"), text: "order rejected today", href: "/admin/orders", tone: "down" },
   ];
   const items = all.filter((x) => x.n > 0);
   return (
     <Card>
-      <CardHead title="Needs attention" sub={items.length ? "Things a person has to act on." : "Nothing waiting on you right now."} />
+      <CardHead title="Needs attention" sub={items.length || holidayNote ? "Things a person has to act on." : "Nothing waiting on you right now."} />
+      {holidayNote && <p role="status" className="mb-2 rounded-md bg-warnsoft px-3 py-2 text-[12.5px] leading-snug text-ink">{holidayNote}</p>}
       {items.length > 0 && (
         <ul className="divide-y divide-line">
           {items.map((it) => (
@@ -270,7 +278,10 @@ export function RecentOrders({ d }: { d: AdminData }) {
             {rows.map((o) => (
               <tr key={o.id} className="border-b border-line last:border-0">
                 <td className="tnum px-4 py-2 text-[11.5px] whitespace-nowrap text-ink3 sm:px-5">{LOG_TIME.format(new Date(o.at))}</td>
-                <td className="px-2 py-2"><Pill tone={tone[o.status]}>{o.status}</Pill></td>
+                <td className="px-2 py-2 whitespace-nowrap">
+                  <Pill tone={tone[o.status]}>{o.status}</Pill>
+                  {o.by === "admin" && <span className="ml-1.5 text-[11px] font-semibold text-warn">by admin</span>}
+                </td>
                 <td className="tnum px-2 py-2 text-[12.5px] whitespace-nowrap">
                   {o.status === "cancelled" ? <span className="text-ink2">Cancel</span> : (
                     <>
@@ -294,7 +305,7 @@ export function RecentAccess({ d }: { d: AdminData }) {
   return (
     <Card pad={false}>
       <div className="px-4 pt-4 sm:px-5 sm:pt-5">
-        <CardHead title="Admin access" sub="Client accounts opened from this console." right={<More href="/admin/access">Full log</More>} />
+        <CardHead title="Admin access" sub="Client accounts opened from this console, and what the admin did inside them." right={<More href="/admin/access">Full log</More>} />
       </div>
       {rows.length === 0 ? (
         <p className="px-5 pb-6 text-[13px] text-ink3">No client account opened yet.</p>
@@ -303,7 +314,11 @@ export function RecentAccess({ d }: { d: AdminData }) {
           {rows.map((e, i) => (
             <li key={`${e.at}-${i}`} className="flex items-center justify-between gap-3 px-4 py-2.5 text-[12.5px] sm:px-5">
               <span className="min-w-0 truncate text-ink">{d.emailFor.get(e.userId) ?? <span className="text-ink3">deleted account</span>}</span>
-              <span className="shrink-0 text-ink2">{e.kind === "open" ? "opened" : e.kind === "connect-broker" ? <span className="text-warn">connected Groww</span> : "closed"}</span>
+              <span className="shrink-0 text-ink2">
+                {e.kind === "open" ? "opened" : e.kind === "close" ? "closed" : (
+                  <span className="text-warn">{e.kind === "connect-broker" ? "connected Groww" : e.kind === "order" ? "sent an order" : "sent a cancellation"}</span>
+                )}
+              </span>
               <span className="tnum shrink-0 text-[11.5px] text-ink3">{LOG_TIME.format(new Date(e.at))}</span>
             </li>
           ))}

@@ -1,15 +1,19 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { placeOrder, cancelOrder, canTrade } from "@/lib/api/broker";
 import { lotSizeOf } from "@/lib/instruments";
-import { currentUserId } from "@/lib/session";
+import { currentUserId, inAdminView } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
 import { hasBroker } from "@/lib/users";
 import { DENIAL_MESSAGE, tradePermission } from "@/lib/trading";
 import { rateLimit } from "@/lib/ratelimit";
 import { notify } from "@/lib/notifications";
 import { appendOrder } from "@/lib/ledger";
+import { hasConsented, SIGN_FIRST } from "@/lib/consent";
+import { logAdminAccess } from "@/lib/adminAccess";
+import { clientIp } from "@/lib/clientIp";
 import type { OrderType, Product, Side } from "@/lib/types";
 
 /** The ledger is our bookkeeping, not the order path: a failed write must
@@ -21,6 +25,37 @@ async function record(e: Parameters<typeof appendOrder>[0]): Promise<void> {
     console.error("[ledger] append failed:", err instanceof Error ? err.message : err);
   }
 }
+
+/** The same for the notice that tells the account holder what happened: the
+ *  order already went to Groww, so a failed write must not turn it into an
+ *  error on screen — that invites a retry, and a second real order. */
+async function tell(userId: string, n: Parameters<typeof notify>[1]): Promise<void> {
+  try {
+    await notify(userId, n);
+  } catch (err) {
+    console.error("[notify] order notice failed:", err instanceof Error ? err.message : err);
+  }
+}
+
+/**
+ * The admin may place and cancel orders from inside a client's account ("Open
+ * account"), but it is never passed off as the client's own act: the ledger
+ * entry is marked `by: "admin"`, the admin access log gets a line saying what
+ * was sent and how it ended, and the client's notification says who sent it.
+ * A line is written whenever a ledger entry is, and also for an admin
+ * cancellation Groww did not confirm (which has no ledger entry). Like the
+ * ledger, the log is bookkeeping, so a failed write is reported here and never raised.
+ */
+async function logAdminAct(kind: "order" | "cancel", userId: string, detail: string): Promise<void> {
+  try {
+    await logAdminAccess({ kind, userId, ip: clientIp(await headers()), detail });
+  } catch (err) {
+    console.error("[admin-access] log failed:", err instanceof Error ? err.message : err);
+  }
+}
+
+/** Added to the client's notification when the admin sent the order. */
+const SENT_BY_ADMIN = " · sent by the MNHA admin from inside your account";
 
 /**
  * Order placement, server-side.
@@ -59,6 +94,13 @@ function fail(message: string): OrderState {
 export async function submitOrder(_prev: OrderState, form: FormData): Promise<OrderState> {
   const userId = await currentUserId();
   if (!userId) return fail("Your session expired. Sign in again.");
+  // The admin inside this client's account may send it, recorded as the
+  // admin's act (see logAdminAct).
+  const byAdmin = await inAdminView();
+  const note = byAdmin ? SENT_BY_ADMIN : "";
+  // Pages send a member who has not signed to /consent, but an order can come
+  // from a page opened earlier, or from no page at all — so check here too.
+  if (userId !== OWNER_ID && !(await hasConsented(userId))) return fail(SIGN_FIRST);
   // A member may trade once the static IP registered on their OWN Groww key is
   // the address this server sends orders from. Without that match Groww refuses
   // the order at the gate, so refusing it here is both honest and faster.
@@ -132,17 +174,23 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
   const label = `${side} ${qty} ${symbol}`;
   // The platform's own append-only record of this order ("hisab") — only for
   // requests that actually went to Groww; a local refusal is not an order.
-  if (result.outcome !== "refused") await record({
-    userId, status: result.outcome, symbol, side, qty, type, product, segment, exchange,
-    price, orderId: result.orderId ?? null, message: result.outcome === "placed" ? (result.status ?? null) : (result.message ?? result.status ?? null),
-  });
+  if (result.outcome !== "refused") {
+    await record({
+      userId, status: result.outcome, symbol, side, qty, type, product, segment, exchange,
+      price, trigger: triggerPrice, orderId: result.orderId ?? null, message: result.outcome === "placed" ? (result.status ?? null) : (result.message ?? result.status ?? null),
+      ...(byAdmin ? { by: "admin" as const } : {}),
+    });
+    if (byAdmin) {
+      await logAdminAct("order", userId, `${label} ${exchange} ${segment} ${type} ${product}${price != null ? ` @ ${price}` : ""}${triggerPrice != null ? ` trigger ${triggerPrice}` : ""} · ${result.outcome}${result.orderId ? ` · ${result.orderId}` : ""}`);
+    }
+  }
   if (result.outcome === "refused") return fail(result.message ?? "Nothing was sent to Groww.");
   if (result.outcome === "unknown") {
-    await notify(userId, {
+    await tell(userId, {
       kind: "order",
       tone: "warn",
-      title: "Order status unknown",
-      body: `${label} — ${result.message ?? "Check the order book in Groww before retrying."}`,
+      title: byAdmin ? "Admin's order: status unknown" : "Order status unknown",
+      body: `${label} — ${result.message ?? "Check the order book in Groww before retrying."}${note}`,
       key: result.referenceId ? `unk-${result.referenceId}` : undefined,
     });
     return fail(result.message ?? "Order status unknown — check the order book in Groww before retrying.");
@@ -150,21 +198,21 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
   if (result.outcome !== "placed") {
     // Includes an order Groww accepted but the exchange then rejected.
     const why = result.message ?? (result.status ? `Status: ${result.status}` : "Groww rejected the order.");
-    await notify(userId, {
+    await tell(userId, {
       kind: "order",
       tone: "down",
-      title: "Order rejected",
-      body: `${label} — ${why}`,
+      title: byAdmin ? "Admin's order rejected" : "Order rejected",
+      body: `${label} — ${why}${note}`,
       key: result.referenceId ? `rej-${result.referenceId}` : undefined,
     });
     return fail(why);
   }
 
-  await notify(userId, {
+  await tell(userId, {
     kind: "order",
     tone: "up",
-    title: "Order placed",
-    body: `${label} · status ${result.status ?? "sent"}${result.orderId ? ` · ${result.orderId}` : ""}`,
+    title: byAdmin ? "Order placed by admin" : "Order placed",
+    body: `${label} · status ${result.status ?? "sent"}${result.orderId ? ` · ${result.orderId}` : ""}${note}`,
     key: result.orderId ? `ord-${result.orderId}` : undefined,
   });
 
@@ -180,6 +228,8 @@ export async function submitOrder(_prev: OrderState, form: FormData): Promise<Or
 export async function cancelOrderAction(_prev: OrderState, form: FormData): Promise<OrderState> {
   const userId = await currentUserId();
   if (!userId) return fail("Your session expired. Sign in again.");
+  const byAdmin = await inAdminView(); // recorded as the admin's act, as in submitOrder
+  // No agreement check here: a cancellation only reduces exposure, so it is never blocked.
   // Cancelling is part of the same desk: whoever may place may also cancel.
   const permission = await tradePermission(userId);
   if (!permission.allowed) return fail(DENIAL_MESSAGE[permission.reason ?? "no-broker"]);
@@ -199,9 +249,22 @@ export async function cancelOrderAction(_prev: OrderState, form: FormData): Prom
     await record({
       userId, status: "cancelled", symbol: "", side: "", qty: 0, type: "", product: "", segment, exchange: "",
       price: null, orderId, message: "Cancellation sent",
+      ...(byAdmin ? { by: "admin" as const } : {}),
     });
-    await notify(userId, { kind: "order", tone: "neutral", title: "Cancellation sent", body: `Order ${orderId}` });
+    if (byAdmin) await logAdminAct("cancel", userId, `Order ${orderId} · cancellation sent`);
+    await tell(userId, {
+      kind: "order",
+      tone: "neutral",
+      title: byAdmin ? "Cancellation sent by admin" : "Cancellation sent",
+      body: `Order ${orderId}${byAdmin ? SENT_BY_ADMIN : ""}`,
+    });
     return { status: "ok", message: "Cancellation sent." };
+  }
+  if (byAdmin && res.sent) {
+    // Not confirmed is not "nothing happened": Groww may still have cancelled it.
+    const why = res.message ?? "Groww refused the cancellation.";
+    await logAdminAct("cancel", userId, `Order ${orderId} · cancellation not confirmed: ${why}`);
+    await tell(userId, { kind: "order", tone: "warn", title: "Admin's cancellation not confirmed", body: `Order ${orderId} — ${why}${SENT_BY_ADMIN}` });
   }
   return fail(res.message ?? "Groww refused the cancellation.");
 }

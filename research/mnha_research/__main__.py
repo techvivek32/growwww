@@ -22,7 +22,7 @@
               F&O membership since 2003, delivery share and open interest since 2010 (resumable)
   live-train  freeze this year's intraday models (needs lab-build) for live paper trading
   live-prepare  before the open: bars, NSE files, models (live paper trading; no orders)
-  live-decide   09:20: score today's first 5-minute bar, store the paper picks
+  live-decide   09:21: score today's first 5-minute bar, store the paper picks
   live-settle   after 15:15: price today's paper books from the day's bars
   live-report   paper results per book so far
   live-parity   replay past sessions through the live code and compare with the backtest (--days)
@@ -55,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--final", action="store_true", help="daytrade: evaluate the sealed holdout too")
     p.add_argument("--days", help="comma-separated YYYY-MM-DD (live-parity)")
     p.add_argument("--year", type=int, help="model year (live-train)")
-    p.add_argument("--no-wait", action="store_true", help="live-decide: do not wait for 09:20")
+    p.add_argument("--no-wait", action="store_true", help="live-decide: do not wait for 09:21")
     a = p.parse_args(argv)
     db.migrate()
 

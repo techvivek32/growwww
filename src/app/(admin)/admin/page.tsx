@@ -7,11 +7,18 @@ import { Attention, Engine, Funnel, Hero, KeyStats, Money, PaperSnapshot, Recent
 export const metadata: Metadata = { title: "Admin · MNHA Financials" };
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ open?: string }> }) {
   await requireAdminPage();
+  const { open } = await searchParams;
   const [d, live] = await Promise.all([loadAdmin(), liveSummary()]);
   return (
     <div className="mx-auto max-w-6xl">
+      {open === "unlogged" && (
+        <p role="alert" className="mb-4 border border-down/30 bg-downsoft px-4 py-3 text-[13px] leading-snug text-down">
+          The admin access log could not be written, so the client&apos;s account was not opened. Check the server&apos;s
+          data folder, then try again.
+        </p>
+      )}
       <Hero d={d} />
       <KeyStats d={d} />
       <div className="grid gap-4 lg:grid-cols-3">

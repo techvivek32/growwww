@@ -1,9 +1,10 @@
 import "server-only";
 import { sendMail } from "@/lib/mailer";
+import { siteUrl } from "@/lib/siteUrl";
 
 /** The two emails the sign-up flow sends. Plain, branded, no tracking. */
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://mnhafinancials.com";
+const SITE = siteUrl();
 
 function frame(title: string, bodyHtml: string): string {
   return `<!doctype html><html><body style="margin:0;background:#f3efe6;padding:32px 12px;font-family:Arial,Helvetica,sans-serif;color:#15140f">

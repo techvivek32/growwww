@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { currentUserId } from "@/lib/session";
+import { currentUserId, inAdminView } from "@/lib/session";
 import { OWNER_ID } from "@/lib/auth";
 import { listForUser } from "@/lib/notifications";
 import { PageHead, Card } from "@/components/ui";
@@ -30,6 +30,8 @@ export default async function NotificationsPage() {
   const isOwner = uid === OWNER_ID;
   const items = await listForUser(uid);
   const anyUnread = items.some((i) => !i.read);
+  // The client's unread marks are theirs; the admin cannot clear them.
+  const adminView = await inAdminView();
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -38,10 +40,10 @@ export default async function NotificationsPage() {
         sub={
           isOwner
             ? "Your account and order events. Only your own — never anyone else's."
-            : "Your account events — Groww link, verification and membership. Only your own."
+            : "Your account and order events — Groww link, orders sent from MNHA (including any the MNHA admin places for you), verification and membership. Only your own."
         }
         right={
-          anyUnread ? (
+          anyUnread && !adminView ? (
             <form action={markAllReadAction}>
               <button type="submit" className="inline-flex h-9 items-center border border-line2 px-3.5 text-[12.5px] font-semibold text-ink2 transition-colors hover:bg-surfaceh hover:text-ink">
                 Mark all read
@@ -59,7 +61,7 @@ export default async function NotificationsPage() {
           <p className="mx-auto mt-2 max-w-sm text-[13.5px] leading-relaxed text-ink3">
             {isOwner
               ? "Order confirmations, broker connection status and account events will show up here."
-              : "Changes to your Groww link, your verification and your membership will show up here."}
+              : "Orders sent from MNHA, changes to your Groww link, your verification and your membership will show up here."}
           </p>
         </div>
       ) : (

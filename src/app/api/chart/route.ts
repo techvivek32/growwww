@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getChartSeries, type ChartRange } from "@/lib/api/yahoo";
+import { currentUserId } from "@/lib/session";
 
 /**
  * Chart series for the detail page's range tabs. Session-gated by proxy.ts
@@ -11,6 +12,8 @@ export const dynamic = "force-dynamic";
 const RANGES = new Set<ChartRange>(["1D", "1W", "1M", "3M", "6M", "1Y", "5Y"]);
 
 export async function GET(req: NextRequest) {
+  // The proxy checks only the cookie's signature; a deleted account is signed out here too.
+  if (!(await currentUserId())) return new Response("Unauthorized", { status: 401 });
   const symbol = (req.nextUrl.searchParams.get("symbol") ?? "").trim().toUpperCase();
   const range = (req.nextUrl.searchParams.get("range") ?? "1D") as ChartRange;
 

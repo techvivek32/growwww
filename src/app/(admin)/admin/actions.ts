@@ -3,10 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { currentUserId, startAdminView } from "@/lib/session";
+import { currentUserId, endAdminView, startAdminView } from "@/lib/session";
 import { clientIp } from "@/lib/clientIp";
 import { logAdminAccess } from "@/lib/adminAccess";
-import { MEMBER_HOME } from "@/lib/routes";
+import { ADMIN_HOME, MEMBER_HOME } from "@/lib/routes";
 import { ADMIN_ID, isReservedId } from "@/lib/auth";
 import { clearBroker, findById } from "@/lib/users";
 import { setKycDecision, scheduleKycCall } from "@/lib/kyc";
@@ -33,7 +33,14 @@ export async function adminOpenAccount(formData: FormData): Promise<void> {
   const userId = String(formData.get("userId") ?? "");
   if (!userId || isReservedId(userId) || !(await findById(userId))) return;
   if (!(await startAdminView(userId))) return;
-  await logAdminAccess({ kind: "open", userId, ip: clientIp(await headers()) });
+  try {
+    await logAdminAccess({ kind: "open", userId, ip: clientIp(await headers()) });
+  } catch (e) {
+    // An opening that cannot be logged does not happen.
+    console.error("[admin-access] open not logged:", e instanceof Error ? e.message : e);
+    await endAdminView();
+    redirect(`${ADMIN_HOME}?open=unlogged`);
+  }
   redirect(MEMBER_HOME); // the usual gates then send it where the client would land
 }
 
