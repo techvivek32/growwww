@@ -165,73 +165,6 @@ export async function loadAdmin() {
 export type AdminData = Awaited<ReturnType<typeof loadAdmin>>;
 const D = "const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, engine, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;";
 
-/** Headline figures, the onboarding funnel, fees and order counts. */
-export function OverviewSection({ d }: { d: AdminData }) {
-  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, engine, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
-  return (
-    <>
-      <Figs cols="mb-10 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-        <Stat label="Users" value={String(users.length)} />
-        <Stat label="Brokers connected" value={String(connected)} sub={`${users.length - connected} pending`} />
-        <Stat label="KYC in review" value={String(pendingKyc)} sub={`${kyc.length} submitted`} />
-        <Stat label="Active members" value={String(activeMembers.length)} sub="performance-fee" />
-        <Stat label="New (7 days)" value={String(last7)} />
-        <Stat label="Signal engine" value={engine.running ? "Running" : "Idle"} sub={`scan ${ago(engine.lastScan)}`} />
-      </Figs>
-
-      {/* ============================================================ Hisab */}
-      <div className="mb-5 border-t border-line pt-6">
-        <h2 className="pub-display text-[32px] leading-tight text-ink">
-          The <em>hisab</em>
-        </h2>
-        <p className="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-ink3">
-          The platform&apos;s own books — onboarding, fees billed and orders sent through MNHA. Groww stays the source of
-          truth for fills and money; every number here is read from MNHA&apos;s stores, and a dash means not recorded.
-        </p>
-      </div>
-
-      {/* onboarding funnel */}
-      <Card className="mb-4">
-        <CardHead title="Onboarding funnel" sub="Each step as a share of all sign-ups" />
-        <div className="grid grid-cols-2 gap-x-6 gap-y-5 border-t border-line pt-5 sm:grid-cols-3 lg:grid-cols-5">
-          {funnel.map((f) => {
-            const p = pctOf(f.n, users.length);
-            return (
-              <div key={f.label} className="min-w-0">
-                <p className={eyebrow}>{f.label}</p>
-                <p className="tnum mt-2 text-[22px] leading-none font-semibold text-ink">
-                  {f.n}
-                  <span className="ml-1.5 font-mono text-[11.5px] font-normal text-ink3">{p === null ? "—" : `${p}%`}</span>
-                </p>
-                <div className="mt-2.5 h-1 bg-surface2" aria-hidden="true">
-                  <div className="h-full bg-mark" style={{ width: `${p ?? 0}%` }} />
-                </div>
-                {f.hint && <p className="mt-1.5 truncate text-[11px] text-ink3" title={f.hint}>{f.hint}</p>}
-              </div>
-            );
-          })}
-        </div>
-      </Card>
-
-      {/* money + orders */}
-      <Figs cols="mb-4 grid-cols-2 sm:grid-cols-4">
-        <Stat label="Fees billed" value={inr2(sumFee())} sub={`${invoices.length} settled period${invoices.length === 1 ? "" : "s"}`} />
-        <Stat label="Collected" value={inr2(sumFee("paid"))} sub={`${countInv("paid")} paid`} />
-        <Stat label="Outstanding" value={inr2(sumFee("due"))} sub={`${countInv("due")} due`} />
-        <Stat label="Waived" value={inr2(sumFee("waived"))} sub={`${countInv("waived")} waived / no fee`} />
-      </Figs>
-      <Figs cols="mb-6 grid-cols-1 sm:grid-cols-3">
-        <Stat label="Orders placed today" value={String(countStatus(ordersToday, "placed"))} sub="IST calendar day" />
-        <Stat label="Rejected today" value={String(countStatus(ordersToday, "rejected"))} sub={`${countStatus(ordersToday, "cancelled")} cancellations today`} />
-        <Stat
-          label="Orders all-time"
-          value={String(orders.length)}
-          sub={`${countStatus(orders, "placed")} placed · ${countStatus(orders, "rejected")} rejected · ${countStatus(orders, "unknown")} unknown · ${countStatus(orders, "cancelled")} cancel sent`}
-        />
-      </Figs>
-    </>
-  );
-}
 
 /** Order addresses: the pool of registered egress addresses. */
 export function AddressesSection({ d }: { d: AdminData }) {
@@ -715,23 +648,6 @@ export function OrdersSection({ d }: { d: AdminData }) {
   );
 }
 
-/** Signal engine status. */
-export function SignalsSection({ d }: { d: AdminData }) {
-  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, engine, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
-  return (
-    <>
-      <Card className="scroll-mt-24">
-        <CardHead title="Signal engine" sub="Shared research runs on the house account" />
-        <dl className="grid grid-cols-2 gap-4 border-t border-line pt-4 text-[13.5px] sm:grid-cols-4">
-          <div><dt className={eyebrow}>Status</dt><dd className="mt-1.5 font-semibold text-ink">{engine.running ? "Running" : "Idle"}</dd></div>
-          <div><dt className={eyebrow}>Scanning now</dt><dd className="mt-1.5 font-semibold text-ink">{engine.scanning ? "Yes" : "No"}</dd></div>
-          <div><dt className={eyebrow}>Last scan</dt><dd className="tnum mt-1.5 font-semibold text-ink">{ago(engine.lastScan)}</dd></div>
-          <div><dt className={eyebrow}>Edge recomputed</dt><dd className="tnum mt-1.5 font-semibold text-ink">{ago(engine.lastBacktest)}</dd></div>
-        </dl>
-      </Card>
-    </>
-  );
-}
 
 /** Identity verification review. */
 export function KycSection({ d }: { d: AdminData }) {
