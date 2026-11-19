@@ -30,6 +30,15 @@
   --c-brand-text:    #b23a1c;
   --c-on-brand:      #fbf9f4;
   --c-mark:          #d9471f;
+  /* the admin sidebar: an ink panel in both themes */
+  --c-side-bg:       #1d1b16;
+  --c-side-bg-2:     #15140f;
+  --c-side-text:     #eee9dd;
+  --c-side-muted:    #8f8a7c;
+  --c-side-hover:    #28251e;
+  --c-side-active:   #2f2b23;
+  --c-side-line:     #33302a;
+  --c-side-accent:   #d9471f;
 
   --c-violet:        #6a4f7a;
   --c-violet-soft:   #ece5ee;
@@ -70,6 +79,14 @@
   --c-brand-text:    #f08a63;
   --c-on-brand:      #15140f;
   --c-mark:          #d9471f;
+  --c-side-bg:       #0f0e0a;
+  --c-side-bg-2:     #0a0906;
+  --c-side-text:     #eee9dd;
+  --c-side-muted:    #8a8577;
+  --c-side-hover:    #1b1914;
+  --c-side-active:   #24211a;
+  --c-side-line:     #2a2721;
+  --c-side-accent:   #f08a63;
 
   --c-violet:        #c2adc4;
   --c-violet-soft:   rgba(181, 154, 184, 0.14);
@@ -93,6 +110,14 @@
   --color-surface:       var(--c-surface);
   --color-surface2:      var(--c-surface-2);
   --color-surfaceh:      var(--c-surface-hover);
+  --color-side:          var(--c-side-bg);
+  --color-side2:         var(--c-side-bg-2);
+  --color-sidetext:      var(--c-side-text);
+  --color-sidemuted:     var(--c-side-muted);
+  --color-sidehover:     var(--c-side-hover);
+  --color-sideactive:    var(--c-side-active);
+  --color-sideline:      var(--c-side-line);
+  --color-sideaccent:    var(--c-side-accent);
 
   --color-line:          var(--c-border);
   --color-line2:         var(--c-border-strong);
