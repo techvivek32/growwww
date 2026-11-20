@@ -564,6 +564,35 @@ test("shadow mode records as filled and never calls Groww", async () => {
   assert.equal(world.notes.length, 0);
 });
 
+test("a stalled proxy tunnel fails every call within its CONNECT limit — none queue forever", async () => {
+  const net = require("net");
+  const https = require("https");
+  const egress = load("src/lib/api/egress.ts", { "server-only": {}, "https-proxy-agent": require("https-proxy-agent"), "../egressStore": { listEgress: async () => [] } });
+  const hole = net.createServer((sock) => sock.on("error", () => {})); // accepts, never answers
+  await new Promise((r) => hole.listen(0, "127.0.0.1", r));
+  try {
+    const agent = egress.agentFor({ kind: "proxy", url: `http://127.0.0.1:${hole.address().port}`, ip: "203.0.113.9" });
+    const t0 = realNowFn();
+    const results = await Promise.race([
+      Promise.all(
+        Array.from({ length: 12 }, () =>
+          new Promise((resolve) => {
+            const req = https.request({ host: "api.groww.in", path: "/", agent, timeout: 15_000 }, () => resolve("answered"));
+            req.on("error", (e) => resolve(e.message));
+            req.end();
+          }),
+        ),
+      ),
+      new Promise((resolve) => setTimeout(() => resolve(null), 20_000)),
+    ]);
+    assert.ok(results, "some call never settled");
+    assert.ok(results.every((m) => /CONNECT/.test(m)), JSON.stringify(results));
+    assert.ok(realNowFn() - t0 < 15_000);
+  } finally {
+    hole.close();
+  }
+});
+
 test("IST clock matches the research engine's", () => {
   const t = Date.UTC(2026, 10, 20, 3, 50, 30); // 09:20:30 IST
   const n = util.istNow(t);

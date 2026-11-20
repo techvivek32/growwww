@@ -6,7 +6,7 @@ import { currentConsent } from "@/lib/consent";
 import { fundsAs, houseConfigured } from "@/lib/api/broker";
 import type { Funds } from "@/lib/api/groww";
 import type { LiveSettings } from "./store";
-import { inr, pool } from "./util";
+import { inr, pool, sleep } from "./util";
 
 /**
  * Which accounts live trading may use, and why not.
@@ -65,6 +65,8 @@ export async function accountLabels(): Promise<Map<string, string>> {
 
 interface Reading {
   at: number;
+  /** A stand-in while the first reading is still on its way (pages only). */
+  pending?: boolean;
   canSend: boolean;
   denial: TradeDenial | null;
   signed: boolean;
@@ -74,9 +76,25 @@ interface Reading {
 
 // Recent readings, so the admin page does not read every account's cash from
 // Groww on each render. The executor always asks for fresh ones.
-const g = globalThis as { __mnhaLiveReadings?: Map<string, Reading> };
+const g = globalThis as { __mnhaLiveReadings?: Map<string, Reading>; __mnhaLiveReading?: Map<string, Promise<Reading>> };
 g.__mnhaLiveReadings ??= new Map();
+g.__mnhaLiveReading ??= new Map();
 const readings = g.__mnhaLiveReadings;
+/** Reads under way, one per account: callers share it instead of piling up calls on a slow broker. */
+const reading = g.__mnhaLiveReading;
+
+function readOnce(a: TradingAccount): Promise<Reading> {
+  const running = reading.get(a.id);
+  if (running) return running;
+  const p = read(a)
+    .then((r) => {
+      readings.set(a.id, r);
+      return r;
+    })
+    .finally(() => reading.delete(a.id));
+  reading.set(a.id, p);
+  return p;
+}
 
 async function read(a: TradingAccount): Promise<Reading> {
   const [perm, consent, funds] = await Promise.all([
@@ -101,6 +119,9 @@ function classify(a: TradingAccount, r: Reading, settings: LiveSettings): Accoun
   if (excluded) {
     group = "excluded";
     reason = "Kept out of the automatic strategy by the admin.";
+  } else if (r.pending) {
+    group = "blocked";
+    reason = "Still being read from Groww — refresh in a moment.";
   } else if (!r.canSend) {
     group = "blocked";
     reason = WHY_NOT[r.denial ?? "no-broker"];
@@ -129,20 +150,27 @@ function classify(a: TradingAccount, r: Reading, settings: LiveSettings): Accoun
 
 /**
  * Check every account against the settings. `maxAgeMs`: reuse a reading that
- * young (0, the default, reads every account fresh from Groww).
+ * young (0, the default, reads every account fresh from Groww). `budgetMs`
+ * (pages): wait at most that long for a fresh reading — past it the last
+ * reading stands in (or "not read yet"), and the read finishes in the background.
  */
-export async function checkAccounts(settings: LiveSettings, opts: { maxAgeMs?: number; only?: string[] } = {}): Promise<AccountCheck[]> {
+export async function checkAccounts(
+  settings: LiveSettings,
+  opts: { maxAgeMs?: number; only?: string[]; budgetMs?: number } = {},
+): Promise<AccountCheck[]> {
   const maxAge = opts.maxAgeMs ?? 0;
   let accounts = await tradingAccounts();
   if (opts.only) accounts = accounts.filter((a) => opts.only!.includes(a.id));
   // Forget readings of accounts that are gone (disconnected or erased).
   const ids = new Set(accounts.map((a) => a.id));
   if (!opts.only) for (const k of [...readings.keys()]) if (!ids.has(k)) readings.delete(k);
-  return pool(accounts, 4, async (a) => {
+  return pool(accounts, opts.budgetMs ? 16 : 4, async (a) => {
     const hit = readings.get(a.id);
-    const r = hit && maxAge > 0 && Date.now() - hit.at < maxAge ? hit : await read(a);
-    readings.set(a.id, r);
-    return classify(a, r, settings);
+    if (hit && maxAge > 0 && Date.now() - hit.at < maxAge) return classify(a, hit, settings);
+    const fresh = readOnce(a);
+    if (!opts.budgetMs) return classify(a, await fresh, settings);
+    const r = await Promise.race([fresh, sleep(opts.budgetMs).then(() => null)]);
+    return classify(a, r ?? hit ?? { at: Date.now(), pending: true, canSend: false, denial: null, signed: false, agreement: null, funds: null }, settings);
   });
 }
 

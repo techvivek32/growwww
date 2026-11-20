@@ -118,7 +118,14 @@ function request<T>(
     );
     req.on("timeout", () => req.destroy(new Error(`groww ${path}: timed out`)));
     req.on("error", fail);
-    deadline.timer = setTimeout(() => req.destroy(new Error(`groww ${path}: no answer within ${DEADLINE_MS / 1000} s`)), DEADLINE_MS);
+    // Settle the call itself — destroying a request that has no socket yet (a proxy tunnel still
+    // in its CONNECT) emits nothing, so waiting for its error could wait forever. A request
+    // destroyed before it has a socket is never written, so an order can never go out late.
+    deadline.timer = setTimeout(() => {
+      const err = new Error(`groww ${path}: no answer within ${DEADLINE_MS / 1000} s`);
+      fail(err);
+      req.destroy(err);
+    }, DEADLINE_MS);
     if (payload) req.write(payload);
     req.end();
   });

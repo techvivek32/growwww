@@ -62,7 +62,8 @@ export default async function LiveTradingPage({ searchParams }: { searchParams: 
     ordersOfDay(now.day),
     recentChanges(25),
     liveToday(),
-    checkAccounts(settings, { maxAgeMs: 60_000 }).catch(() => [] as AccountCheck[]),
+    // A page never waits long on Groww: past 4 s the last reading stands in (see checkAccounts).
+    checkAccounts(settings, { maxAgeMs: 60_000, budgetMs: 4_000 }).catch(() => [] as AccountCheck[]),
     listUsers(),
     searchParams,
   ]);

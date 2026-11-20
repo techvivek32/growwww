@@ -1,5 +1,7 @@
 import "server-only";
 import https from "node:https";
+import type * as http from "node:http";
+import type * as net from "node:net";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { listEgress } from "../egressStore";
 
@@ -65,16 +67,49 @@ export async function sendableIps(): Promise<string[]> {
 
 /* ------------------------------------------------------------------ agents */
 
+/** A tunnel's CONNECT that has not answered in this long is given up. */
+const CONNECT_LIMIT_MS = 10_000;
+
+/**
+ * HttpsProxyAgent with a time limit on the tunnel's CONNECT. Without one, a
+ * tunnel host that accepts the connection but never answers holds the call —
+ * and one of the agent's connection slots — for good; after a few, every call
+ * through that tunnel would queue forever, even once the host recovered.
+ */
+class BoundedProxyAgent extends HttpsProxyAgent<string> {
+  async connect(req: http.ClientRequest, opts: Parameters<HttpsProxyAgent<string>["connect"]>[1]): Promise<net.Socket> {
+    const pending = super.connect(req, opts);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        pending,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`proxy CONNECT did not answer within ${CONNECT_LIMIT_MS / 1000} s`)), CONNECT_LIMIT_MS);
+        }),
+      ]);
+    } catch (err) {
+      pending.then((sock) => sock.destroy(), () => undefined); // a late tunnel is closed, never used
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
 // One agent per egress, kept alive. Building one per request would hand the
 // broker a fresh TCP + TLS handshake on every call.
 const agents = new Map<string, https.Agent>();
 
 const BASE = { family: 4 as const, autoSelectFamily: false, keepAlive: true, maxSockets: 8 };
+/** A tunnel agent never caps its sockets: agent-base does not hand a freed slot to a request
+ *  Node queued behind the cap after a CONNECT fails, so a queued call would wait forever
+ *  (checked against https-proxy-agent 9.1 / agent-base 9.0). Callers bound their own concurrency. */
+const PROXY = { ...BASE, maxSockets: Infinity };
 
 /** The default agent: the house address (bound here, or tunnelled to the host
  *  that owns it) when configured, otherwise the OS default. */
 export const defaultAgent: https.Agent = houseProxy()
-  ? (new HttpsProxyAgent(houseProxy() as string, BASE) as unknown as https.Agent)
+  ? (new BoundedProxyAgent(houseProxy() as string, PROXY) as unknown as https.Agent)
   : new https.Agent({
       ...BASE,
       ...(houseIp() ? { localAddress: houseIp() as string } : {}),
@@ -89,7 +124,7 @@ export function agentFor(egress: Egress | undefined | null): https.Agent {
   const agent =
     egress.kind === "local"
       ? new https.Agent({ ...BASE, localAddress: egress.ip })
-      : (new HttpsProxyAgent(egress.url, BASE) as unknown as https.Agent);
+      : (new BoundedProxyAgent(egress.url, PROXY) as unknown as https.Agent);
 
   agents.set(key, agent);
   return agent;
