@@ -10,7 +10,6 @@ import { mayTrade } from "@/lib/trading";
 import { ADMIN_HOME } from "@/lib/routes";
 import TopNav from "@/components/TopNav";
 import IndexStrip from "@/components/IndexStrip";
-import { AutoTradeProvider } from "@/components/AutoTrade";
 import { LiveTicksProvider } from "@/components/LiveTicks";
 import { ViewerProvider } from "@/components/Viewer";
 import AdminViewBanner from "@/components/AdminViewBanner";
@@ -54,7 +53,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <ViewerProvider isOwner={isOwner} canTrade={canTrade}>
     <AdminViewBanner />
     {uid !== OWNER_ID && !adminView && <AgreementUpdateNotice userId={uid} />}
-    <AutoTradeProvider>
       <LiveTicksProvider>
       <TopNav account={account} connected={account.balance !== null} isOwner={isOwner} unread={unread} />
       <IndexStrip />
@@ -67,7 +65,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </p>
       </footer>
       </LiveTicksProvider>
-    </AutoTradeProvider>
     </ViewerProvider>
   );
 }

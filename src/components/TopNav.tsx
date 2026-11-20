@@ -6,7 +6,6 @@ import { NAV_ITEMS } from "@/lib/nav";
 import type { Account } from "@/lib/types";
 import ThemeToggle from "./ThemeToggle";
 import MarketClock from "./MarketClock";
-import { AutoTradeToggle } from "./AutoTrade";
 import ProfileMenu from "./ProfileMenu";
 import SearchBox from "./SearchBox";
 import { LogoMark, Wordmark } from "./public/Brand";
@@ -95,7 +94,6 @@ export default function TopNav({
           <span className="hidden lg:block">
             <MarketClock />
           </span>
-          {isOwner && <AutoTradeToggle />}
           <BellLink unread={unread} active={pathname === "/notifications"} />
           <ThemeToggle />
           <ProfileMenu account={account} />
