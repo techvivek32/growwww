@@ -47,3 +47,15 @@ walk-forward); the live book trades the tested rule, not yesterday's hindsight.
 - 10:15 flip: long MARUTI 37 × ₹13,303.99 → ₹13,549.93 at 15:15, +₹8,877. The day's winner. Lesson 4.
 - Duplicate decision: a second decide() picked POLICYBZR for Book B; stopped out 09:40, −₹3,624. Lesson 1. Fixed.
 - Running: Book A +₹30,700 (+6.14%), 4/4 days positive; Book B +₹16,054 (+3.21%).
+
+### Fri 20 Nov · Book A +₹18,388 (+3.68%) · Book B −₹5,826 — first fully clean live day
+- Pick at 09:20:42 (the data-lag fix held), one decider. NIFTY +1.6% (25,368 → 25,785), BANKNIFTY +3.2%: a bank-led
+  rally day; the average stock +1.0% from 09:20 by the close.
+- Short TATASTEEL 2,860 × ₹174.81. It drifted up; the market stop was not reached by 10:15 (+0.3%), the flip fired
+  (median +0.30% since the open) and covered at ₹175.90: −₹3,356.
+- Flip long INDUSINDBK 523 × ₹955.69 → ₹997.70 at 15:15 (+4.4%): +₹21,744. The day's winner, second day running
+  that the flip leg carried the book on a trending morning.
+- Book B: both legs stopped by 0.5% wiggles (TATASTEEL 10:11, INDUSINDBK 10:17, both before the real moves): −₹5,826.
+  Lesson 5 again: the tight stop exits exactly where the trend is about to start.
+- Week 1: Book A +₹49,088 (+9.8%), 5/5 days; Book B +₹10,228 (+2.0%). Far above the backtest's average week; do not
+  extrapolate (lesson 7).
