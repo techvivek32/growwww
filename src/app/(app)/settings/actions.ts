@@ -8,6 +8,8 @@ import { changePassword, clearBroker } from "@/lib/users";
 import { getMembership, hasDueInvoice } from "@/lib/membership";
 import { eraseAccount } from "@/lib/erase";
 import { liveExposure } from "@/lib/liveTrading/orders";
+import { withAccountLock } from "@/lib/liveTrading/util";
+import { clearErasing, markErasing } from "@/lib/kycHandoff";
 import { setOptionalConsent, recordConsentChange, OPTIONAL_CONSENTS, type ConsentKey } from "@/lib/consent";
 
 export interface PwState {
@@ -46,9 +48,21 @@ export async function deleteAccountAction(): Promise<void> {
   // live reading), and an unpaid invoice settled — deletion skips neither.
   if ((await getMembership(uid))?.status === "active") redirect("/settings?delete=active");
   if (await hasDueInvoice(uid)) redirect("/settings?delete=due");
-  // Not while MNHA has something live in the account today: nobody would watch it after.
-  const exposure = await liveExposure(uid);
-  if (exposure) redirect(`/settings?delete=${exposure === "open" ? "live" : "unconfirmed"}`);
+  // Not while MNHA has something live in the account today: nobody would watch it after. Sends to
+  // the account stop first (erasing marked) and the check runs under its lock, so no strategy order
+  // can start between the check and the erasure.
+  markErasing(uid);
+  let exposure: Awaited<ReturnType<typeof liveExposure>>;
+  try {
+    exposure = await withAccountLock(uid, () => liveExposure(uid));
+  } catch (err) {
+    clearErasing(uid); // sends must not stay stopped for an account that is not being deleted
+    throw err;
+  }
+  if (exposure) {
+    clearErasing(uid);
+    redirect(`/settings?delete=${exposure === "open" ? "live" : "unconfirmed"}`);
+  }
   const failed = await eraseAccount(uid);
   if (failed.length) {
     console.error(`[erase] account ${uid} partly erased; failed: ${failed.join(", ")}`);

@@ -178,7 +178,7 @@ async function finish(now: IstNow, step: Step, tone: "info" | "warn" | "error", 
  * A day that began in shadow stays simulated; a day that began live is never
  * "closed" on paper only.
  */
-function modesFor(settings: LiveSettings, day: DayState): { open: "live" | "shadow" | null; close: "live" | "shadow" | null } {
+export function modesFor(settings: LiveSettings, day: DayState): { open: "live" | "shadow" | null; close: "live" | "shadow" | null } {
   if (day.mode === null) {
     const m = settings.mode === "off" ? null : settings.mode;
     return { open: m, close: m };
@@ -506,12 +506,13 @@ async function closeAll(now: IstNow, day: DayState, action: OrderAction, leg: Le
     } else {
       E.held.since.delete(k);
     }
+    if (results[i] === "offline") await noteOnce(now, `offline|${accounts[i]}`, "error", `${label(accounts[i])}: Groww is disconnected (or its key no longer works), so MNHA cannot close its ${plan.symbol} — Groww squares intraday positions off itself near 15:20.`);
     if (results[i] === "gave-up") await noteOnce(now, `gave-up|${action}|${accounts[i]}`, "error", `${label(accounts[i])}: ${plan.symbol} could not be closed after several tries — close it from Exit below or in Groww.`);
     if (results[i] === "unclear") await noteOnce(now, `unclear|${action}|${accounts[i]}`, "error", `${label(accounts[i])}: Groww's figures for ${plan.symbol} disagree about the direction, so nothing was sent — check it in Groww.`);
   }
   return {
-    converged: results.every((r) => r === "done" || r === "gave-up" || r === "unclear"),
-    failed: results.filter((r) => r === "gave-up" || r === "unclear").length,
+    converged: results.every((r) => r === "done" || r === "gave-up" || r === "unclear" || r === "offline"),
+    failed: results.filter((r) => r === "gave-up" || r === "unclear" || r === "offline").length,
     accounts: accounts.length,
   };
 }

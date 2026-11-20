@@ -50,6 +50,7 @@ const world = {
   cancels: [], // [accountId, orderId]
   erasing: new Set(),
   disconnected: new Set(),
+  usersBroken: false,
 };
 const broker = {
   placeOrderAs: async (accountId, input) => {
@@ -76,7 +77,12 @@ const orders = load("src/lib/liveTrading/orders.ts", {
   "@/lib/ledger": { appendOrder: async (e) => void world.ledger.push(e) },
   "@/lib/notifications": { notify: async (u, n) => void world.notes.push([u, n]) },
   "@/lib/api/broker": broker,
-  "@/lib/users": { hasBroker: async (id) => !world.disconnected.has(id) },
+  "@/lib/users": {
+    getBroker: async (id) => {
+      if (world.usersBroken) throw new Error("EIO");
+      return world.disconnected.has(id) ? null : { apiKey: "k", totpSecret: "s" };
+    },
+  },
   "@/lib/auth": { OWNER_ID: "owner" },
   "@/lib/kycHandoff": { isErasing: (id) => world.erasing.has(id) },
   "@/lib/api/groww": { FINAL_ORDER_STATES: groww.FINAL_ORDER_STATES },
@@ -107,6 +113,7 @@ const reset = async () => {
   world.cancels = [];
   world.erasing = new Set();
   world.disconnected = new Set();
+  world.usersBroken = false;
 };
 const pos = (symbol, net, product = "MIS", segment = "CASH", exchange = "NSE") => ({ symbol, segment, exchange, product, net, avg: 100 });
 let dayN = 21000;
@@ -421,7 +428,7 @@ test("an admin's resting limit order on the strategy position is cancelled befor
   await filledEntry(day, "l1", "TCS", 100);
   // the admin's take-profit: BUY 100 TCS MIS LIMIT, resting
   world.placeQueue.push({ ok: true, outcome: "placed", orderId: "TP1", status: "OPEN", filled: 0, message: null, httpStatus: 200 });
-  const tp = await orders.adminOrderIn({ batch: "bTP000001", day, accountId: "l1", symbol: "TCS", side: "BUY", qty: 100, product: "MIS", type: "LIMIT", price: 2900 });
+  const tp = (await orders.adminOrderIn({ batch: "bTP000001", day, accountId: "l1", symbol: "TCS", side: "BUY", qty: 100, product: "MIS", type: "LIMIT", price: 2900, since: Date.now() - orders.DUPLICATE_MS })).order;
   advance(16_000);
   world.positions.l1 = { CASH: [pos("TCS", -100)], FNO: [] };
   assert.equal(await orders.closeLegIn({ day, action: "stop-cover", leg: "short", accountId: "l1", mode: "live" }), "wait");
@@ -436,31 +443,80 @@ test("an admin's resting limit order on the strategy position is cancelled befor
   assert.equal(`${last.side} ${last.qty} ${last.type}`, "BUY 100 MARKET");
 });
 
-test("a retried bulk order is held back even when re-sized, and two overlapping batches never both send", async () => {
+test("bulk orders: a retry is held back even re-sized; 'again' overrides only what the preview showed", async () => {
   await reset();
   const day = util.istNow().day;
+  const since = () => Date.now() - orders.DUPLICATE_MS;
+  const send = (batch, extra = {}) =>
+    orders.adminOrderIn({ batch, day, accountId: "q1", symbol: "IDEA", side: "BUY", qty: 3323, product: "MIS", type: "MARKET", price: null, since: since(), ...extra });
   world.placeQueue.push({ ok: true, outcome: "placed", orderId: "B1", status: "OPEN", filled: 0, message: null, httpStatus: 200 });
-  const a = await orders.adminOrderIn({ batch: "bRETRY0001", day, accountId: "q1", symbol: "IDEA", side: "BUY", qty: 3323, product: "MIS", type: "MARKET", price: null });
-  assert.equal(a.state, "placed");
+  const a = await send("bRETRY0001");
+  assert.equal(a.order.state, "placed");
   // the retry, re-sized from the amount at a new price: held back
-  const b = await orders.adminOrderIn({ batch: "bRETRY0002", day, accountId: "q1", symbol: "IDEA", side: "BUY", qty: 3322, product: "MIS", type: "MARKET", price: null });
-  assert.equal(b, null);
+  const b = await send("bRETRY0002", { qty: 3322 });
+  assert.equal(b.held, "duplicate");
+  assert.equal(b.dup.id, a.order.id);
   assert.equal(world.places.length, 1);
-  // unless the admin asks for it again
+  // "again" overrides exactly the order the admin was shown...
   world.placeQueue.push({ ok: true, outcome: "placed", orderId: "B2", status: "OPEN", filled: 0, message: null, httpStatus: 200 });
-  const c = await orders.adminOrderIn({ batch: "bRETRY0003", day, accountId: "q1", symbol: "IDEA", side: "BUY", qty: 3322, product: "MIS", type: "MARKET", price: null, again: true });
-  assert.equal(c.state, "placed");
-  // a different order (the other side) is not a duplicate
+  const c = await send("bRETRY0003", { qty: 3322, ignore: [a.order.id] });
+  assert.equal(c.order.state, "placed");
+  // ...but not one recorded since (another batch): that still holds the send back
+  const d = await send("bRETRY0004", { ignore: [a.order.id] });
+  assert.equal(d.held, "duplicate");
+  assert.equal(d.dup.id, c.order.id);
+  // the other side is not a duplicate
   world.placeQueue.push({ ok: true, outcome: "placed", orderId: "B3", status: "OPEN", filled: 0, message: null, httpStatus: 200 });
-  const d = await orders.adminOrderIn({ batch: "bRETRY0004", day, accountId: "q1", symbol: "IDEA", side: "SELL", qty: 10, product: "MIS", type: "MARKET", price: null });
-  assert.equal(d.state, "placed");
+  const e = await send("bRETRY0005", { side: "SELL", qty: 10 });
+  assert.equal(e.order.state, "placed");
+  // a flag the admin saw cannot age out before the click: the window starts 15 minutes before the PREVIEW
+  const previewAt = Date.now();
+  advance(14 * 60_000);
+  const f = await send("bRETRY0006", { since: Math.min(previewAt, Date.now()) - orders.DUPLICATE_MS, side: "SELL", qty: 10 });
+  assert.equal(f.held, "duplicate");
+  // an order that ended with nothing done (cancelled, nothing filled) is not a duplicate
+  await store.patchOrder(e.order.id, { final: true, status: "CANCELLED", filled: 0 });
+  await store.patchOrder(f.dup?.id ?? e.order.id, { final: true, status: "CANCELLED", filled: 0 });
+  world.placeQueue.push({ ok: true, outcome: "placed", orderId: "B4", status: "OPEN", filled: 0, message: null, httpStatus: 200 });
+  const g = await send("bRETRY0007", { side: "SELL", qty: 10 });
+  assert.equal(g.order.state, "placed");
+  // an account being deleted is skipped, and said so
+  world.erasing.add("q1");
+  const h = await send("bRETRY0008", { symbol: "ITC" });
+  assert.equal(h.held, "erasing");
+});
+
+test("a disconnected account: its close is reported once (offline), not polled; follow-up resumes on reconnect", async () => {
+  await reset();
+  const day = util.istNow().day;
+  await filledEntry(day, "off1", "TCS", 100);
+  world.positions.off1 = { CASH: [pos("TCS", -100)], FNO: [] };
+  world.disconnected.add("off1");
+  assert.equal(await orders.closeLegIn({ day, action: "close-short", leg: "short", accountId: "off1", mode: "live" }), "offline");
+  // a users-file error is never taken as disconnected
+  world.disconnected.delete("off1");
+  world.usersBroken = true;
+  assert.equal(await orders.closeLegIn({ day, action: "close-short", leg: "short", accountId: "off1", mode: "live" }), "wait");
+  world.usersBroken = false;
+  // a working order of a disconnected account is not polled; it is followed again as soon as it reconnects
+  world.placeQueue.push({ ok: true, outcome: "placed", orderId: "OF1", status: "OPEN", filled: 0, message: null, httpStatus: 200 });
+  assert.equal(await orders.closeLegIn({ day, action: "close-short", leg: "short", accountId: "off1", mode: "live" }), "sent");
+  const cov = (await store.ordersOfDay(day)).filter((o) => o.accountId === "off1").at(-1);
+  world.books.off1 = { orders: [{ orderId: "OF1", referenceId: cov.ref, symbol: "TCS", status: "EXECUTED", qty: 100, filled: 100, avg: 1, remark: null }], complete: true };
+  world.disconnected.add("off1");
+  advance(30_000);
+  await orders.followOrders();
+  assert.equal((await store.getOrder(cov.id)).final, false);
+  world.disconnected.delete("off1");
+  await orders.followOrders();
+  assert.equal((await store.getOrder(cov.id)).final, true);
 });
 
 test("the admin can cancel a working MNHA order", async () => {
   await reset();
   const day = freshDay();
   world.placeQueue.push({ ok: true, outcome: "placed", orderId: "LIM9", status: "OPEN", filled: 0, message: null, httpStatus: 200 });
-  const o = await orders.adminOrderIn({ batch: "bLIM00009", day, accountId: "k1", symbol: "INFY", side: "BUY", qty: 5, product: "CNC", type: "LIMIT", price: 1 });
+  const o = (await orders.adminOrderIn({ batch: "bLIM00009", day, accountId: "k1", symbol: "INFY", side: "BUY", qty: 5, product: "CNC", type: "LIMIT", price: 1, since: Date.now() - orders.DUPLICATE_MS })).order;
   const after = await orders.cancelByAdmin(o.id);
   assert.deepEqual(world.cancels, [["k1", "LIM9"]]);
   assert.ok(after.cancelAt);
@@ -561,6 +617,9 @@ test("deletion is held only while MNHA can still see something open — never af
     world.positions.del1 = { CASH: [], FNO: [] }; // closed in the Groww app
     assert.equal(await orders.liveExposure("del1"), null);
     world.positions.del1 = { CASH: [pos("TCS", -10)], FNO: [] };
+    world.usersBroken = true; // the users file cannot be read: never waved through
+    assert.equal(await orders.liveExposure("del1"), "unconfirmed");
+    world.usersBroken = false;
     world.disconnected.add("del1"); // MNHA can no longer watch or close it: nothing to hold for
     assert.equal(await orders.liveExposure("del1"), null);
   } else {
@@ -595,7 +654,11 @@ test("a stalled proxy tunnel fails every call within its CONNECT limit — none 
   const net = require("net");
   const https = require("https");
   const egress = load("src/lib/api/egress.ts", { "server-only": {}, "https-proxy-agent": require("https-proxy-agent"), "../egressStore": { listEgress: async () => [] } });
-  const hole = net.createServer((sock) => sock.on("error", () => {})); // accepts, never answers
+  // accepts, reads and discards, never answers (reading lets it see a client close the connection)
+  const hole = net.createServer((sock) => {
+    sock.on("error", () => {});
+    sock.resume();
+  });
   await new Promise((r) => hole.listen(0, "127.0.0.1", r));
   try {
     const agent = egress.agentFor({ kind: "proxy", url: `http://127.0.0.1:${hole.address().port}`, ip: "203.0.113.9" });
@@ -615,6 +678,10 @@ test("a stalled proxy tunnel fails every call within its CONNECT limit — none 
     assert.ok(results, "some call never settled");
     assert.ok(results.every((m) => /CONNECT/.test(m)), JSON.stringify(results));
     assert.ok(realNowFn() - t0 < 15_000);
+    // and the stalled tunnels were closed, not left open on the proxy
+    await new Promise((r) => setTimeout(r, 200));
+    const open = await new Promise((r) => hole.getConnections((_e, n) => r(n)));
+    assert.equal(open, 0);
   } finally {
     hole.close();
   }

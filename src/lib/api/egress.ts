@@ -78,13 +78,27 @@ const CONNECT_LIMIT_MS = 10_000;
  */
 class BoundedProxyAgent extends HttpsProxyAgent<string> {
   async connect(req: http.ClientRequest, opts: Parameters<HttpsProxyAgent<string>["connect"]>[1]): Promise<net.Socket> {
-    const pending = super.connect(req, opts);
+    // The proxy socket is opened synchronously inside super.connect (https-proxy-agent 9.1), so a
+    // per-call abort signal set on connectOpts just around that call reaches exactly this socket:
+    // a CONNECT that never answers is then really closed, not left waiting on the proxy.
+    const abort = new AbortController();
+    const base = this.connectOpts;
+    this.connectOpts = { ...base, signal: abort.signal } as typeof base;
+    let pending: Promise<net.Socket>;
+    try {
+      pending = super.connect(req, opts);
+    } finally {
+      this.connectOpts = base;
+    }
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
         pending,
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`proxy CONNECT did not answer within ${CONNECT_LIMIT_MS / 1000} s`)), CONNECT_LIMIT_MS);
+          timer = setTimeout(() => {
+            abort.abort();
+            reject(new Error(`proxy CONNECT did not answer within ${CONNECT_LIMIT_MS / 1000} s`));
+          }, CONNECT_LIMIT_MS);
         }),
       ]);
     } catch (err) {

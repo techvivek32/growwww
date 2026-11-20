@@ -50,6 +50,7 @@ const GROUPS: { key: AccountCheck["group"]; title: string; sub: string }[] = [
   { key: "eligible", title: "Eligible", sub: "Take every automatic strategy order." },
   { key: "low", title: "Low balance", sub: "Free money below the base value: no automatic orders until it is topped up." },
   { key: "blocked", title: "Cannot trade", sub: "Something is missing; the reason is shown." },
+  { key: "reading", title: "Being read", sub: "Groww has not answered for these yet; they appear in their group on the next refresh." },
   { key: "excluded", title: "Kept out", sub: "Kept out of the automatic strategy by you. Manual orders and exits still reach them." },
 ];
 

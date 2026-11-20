@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { appendOrder, type LedgerStatus } from "@/lib/ledger";
 import { notify, type NotifTone } from "@/lib/notifications";
 import { cancelOrderAs, houseConfigured, orderBookAs, orderByRefAs, placeOrderAs, positionsAs, type PlacedOrder } from "@/lib/api/broker";
-import { hasBroker } from "@/lib/users";
+import { getBroker } from "@/lib/users";
 import { OWNER_ID } from "@/lib/auth";
 import { FINAL_ORDER_STATES, type BookOrder, type OpenPosition } from "@/lib/api/groww";
 import type { OrderType, Product, Side } from "@/lib/types";
@@ -239,13 +239,19 @@ const followAt = gf.__mnhaLiveFollow;
 export async function followOrders(): Promise<void> {
   const all = await openOrders();
   if (!all.length) return;
-  // An earlier day's order cannot be learned about from today's order book: settle it as unresolved.
+  // An earlier day's order cannot be learned about from today's order book: one positive look-up by
+  // reference (if the account is still reachable), then it is settled as unresolved.
   const today = istNow().day;
   for (const o of all.filter((x) => x.day !== today)) {
-    await patchOrder(o.id, {
+    const hit = (await connectedNow(o.accountId)) === true ? await orderByRefAs(o.accountId, o.ref, o.segment) : null;
+    const updated = await patchOrder(o.id, {
       final: true,
-      message: `${o.message ? `${o.message} · ` : ""}Not resolved on its day; no longer followed here — check it in Groww.`,
+      ...(hit ? { state: "placed" as const, orderId: hit.orderId, status: hit.status, filled: hit.filled, booked: true } : {}),
+      message: hit
+        ? `Found at Groww after its day: ${hit.status.toLowerCase()}${hit.filled ? `, ${hit.filled} filled` : ""}.`
+        : `${o.message ? `${o.message} · ` : ""}Not resolved on its day; no longer followed here — check it in Groww.`,
     });
+    if (hit && updated && !o.booked) await bookkeep(updated);
   }
   const open = all.filter((x) => x.day === today);
   const byAccount = new Map<string, LiveOrder[]>();
@@ -256,14 +262,12 @@ export async function followOrders(): Promise<void> {
   }
   await pool([...byAccount.entries()], 4, async ([accountId, list]) => {
     const now = Date.now();
+    // Disconnected (or its key unusable): nothing can be read now, and asking would only fill the log.
+    // Checked on every pass — a local read — so a reconnected account is followed again at once.
+    if ((await connectedNow(accountId)) !== true) return;
     if ((followAt.get(accountId) ?? 0) > now) return;
     const young = list.some((o) => now - (o.sentAt ?? o.at) < 120_000);
     followAt.set(accountId, now + (young ? 2_500 : 20_000));
-    // Disconnected since: nothing can be read for it now (and asking every few seconds would only fill the log).
-    if (!(await connectedNow(accountId))) {
-      followAt.set(accountId, now + 300_000);
-      return;
-    }
     await withAccountLock(accountId, async () => {
       for (const segment of ["CASH", "FNO"] as const) {
         const mine = list.filter((o) => o.segment === segment);
@@ -464,6 +468,7 @@ const CANCEL_TRIES = 3;
  */
 async function requestCancel(o: LiveOrder, why: string, by: "system" | "admin", force = false): Promise<boolean> {
   if (!o.orderId || o.final) return false;
+  if ((await connectedNow(o.accountId)) !== true) return false; // no tries used up while it cannot be reached
   if (!force && o.cancelAt && (Date.now() - o.cancelAt < CANCEL_RETRY_MS || (o.cancelTries ?? 1) >= CANCEL_TRIES)) return false;
   const r = await cancelOrderAs(o.accountId, o.orderId, o.segment);
   const tries = (o.cancelTries ?? 0) + 1;
@@ -569,7 +574,8 @@ function strategyRow(positions: OpenPosition[], symbol: string): OpenPosition | 
   return rows.find((p) => p.exchange === "NSE") ?? rows.find((p) => p.exchange === null);
 }
 
-export type CloseResult = "done" | "wait" | "sent" | "gave-up" | "unclear";
+/** offline: the account's Groww is disconnected (or its key unusable) — MNHA can no longer close anything there. */
+export type CloseResult = "done" | "wait" | "sent" | "gave-up" | "unclear" | "offline";
 
 /** Close attempts per step and account, and the gap between them. */
 export const MAX_CLOSE_ATTEMPTS = 3;
@@ -611,6 +617,9 @@ export async function closeLegIn(args: {
       qty = st.open;
       if (qty <= 0) return "done";
     } else {
+      const reach = await connectedNow(accountId);
+      if (reach === false) return "offline";
+      if (reach === "unknown") return "wait";
       // A resting order on the position is cancelled first; its fills count once Groww reports it final.
       if ((await cancelResting(orders, accountId, key, side, "system")) > 0) return "wait";
       const reserve = reserved(orders, accountId, key, side);
@@ -740,9 +749,15 @@ export async function openLegIn(args: {
  * over (15:35 IST), an order MNHA sent today that is still working, or a
  * strategy position it may still hold, would be left with nobody watching it.
  */
-/** Whether MNHA can still reach this account's Groww (the house key configured, or a member's key stored). */
-async function connectedNow(accountId: string): Promise<boolean> {
-  return accountId === OWNER_ID ? houseConfigured() : hasBroker(accountId).catch(() => false);
+/** Whether MNHA can still reach this account's Groww: the house key configured, or a member's key
+ *  stored AND usable. "unknown" when the users file cannot be read — never taken as disconnected. */
+async function connectedNow(accountId: string): Promise<boolean | "unknown"> {
+  if (accountId === OWNER_ID) return houseConfigured();
+  try {
+    return (await getBroker(accountId)) !== null;
+  } catch {
+    return "unknown";
+  }
 }
 
 /**
@@ -755,18 +770,25 @@ async function connectedNow(accountId: string): Promise<boolean> {
 export async function liveExposure(accountId: string): Promise<"open" | "unconfirmed" | null> {
   const now = istNow();
   if (now.minute >= 15 * 60 + 35) return null; // intraday positions are squared off by then
-  if (!(await connectedNow(accountId))) return null;
+  const reach = await connectedNow(accountId);
+  if (reach === "unknown") return "unconfirmed"; // never let a read error wave a deletion through
+  if (!reach) return null; // disconnected: MNHA can neither watch nor close anything there
   const mine = (await ordersOfDay(now.day)).filter((o) => o.accountId === accountId);
+  // An order whose outcome is not known cannot be called open or closed.
+  if (mine.some((o) => o.mode === "live" && (o.state === "sending" || o.state === "unknown"))) return "unconfirmed";
   if (mine.some(working)) return "open";
   for (const leg of ["short", "long"] as const) {
     const st = legState(mine, accountId, leg, "live");
     if (st.possible <= 0 || !st.symbol) continue;
-    // Only if Groww agrees it is still open (the holder may have closed it in the Groww app).
+    // Only if Groww agrees it is still open (the holder may have closed it in the Groww app) —
+    // and not from a reading that may not have caught up with a fill yet.
     const positions = await positionsAs(accountId, "CASH");
     if (!positions) return "unconfirmed";
     const row = strategyRow(positions, st.symbol);
-    const net = row ? row.net : 0;
-    if (net === null) return "unconfirmed";
+    const raw = row ? row.net : 0;
+    if (raw === null) return "unconfirmed";
+    const net = readNet(accountId, { segment: "CASH", exchange: "NSE", symbol: st.symbol, product: "MIS" }, raw);
+    if (net === "stale") return "unconfirmed";
     if (leg === "short" ? net < 0 : net > 0) return "open";
   }
   return null;
@@ -778,29 +800,38 @@ export async function liveExposure(accountId: string): Promise<"open" | "unconfi
 export const DUPLICATE_MS = 15 * 60_000;
 
 /**
- * The admin's latest order of this kind (same symbol, side and product, in any
- * size or price — a retry re-sized from the amount differs in quantity) to this
- * account within DUPLICATE_MS that went out or may have: one from another batch.
+ * The admin's orders of this kind (same symbol, side and product — in any size,
+ * price or type, since a retry re-sized from the amount differs in quantity) to
+ * this account that went out, or may have, since `since` — other than those of
+ * `exceptBatch` and the ids in `ignore`. An order that ended with nothing done
+ * (cancelled or rejected with no fill) is not counted.
  */
 export function recentAdminSame(
   orders: LiveOrder[],
   accountId: string,
   spec: { symbol: string; side: Side; product: Product },
-  exceptBatch: string | null = null,
-): LiveOrder | null {
-  const hits = orders.filter(
+  opts: { since?: number; exceptBatch?: string | null; ignore?: string[] } = {},
+): LiveOrder[] {
+  const since = opts.since ?? Date.now() - DUPLICATE_MS;
+  return orders.filter(
     (o) =>
-      o.accountId === accountId && o.source === "admin" && o.action === "manual" && o.batch !== exceptBatch &&
+      o.accountId === accountId && o.source === "admin" && o.action === "manual" && o.batch !== (opts.exceptBatch ?? null) &&
       o.symbol === spec.symbol && o.side === spec.side && o.product === spec.product &&
-      ["placed", "unknown", "sending"].includes(o.state) && Date.now() - o.at < DUPLICATE_MS,
+      ["placed", "unknown", "sending"].includes(o.state) && !(o.final && !(o.filled ?? 0)) &&
+      o.at >= since && !(opts.ignore ?? []).includes(o.id),
   );
-  return hits.length ? hits[hits.length - 1] : null;
 }
 
-/** The admin's order to one account (always real: shadow mode is for the automatic strategy).
- *  Unless `again`, it is held back (null) when the same kind of order from another batch went
- *  to this account in the last DUPLICATE_MS — checked inside the account's lock, so two
- *  overlapping confirmations can never both send to one account. */
+export type AdminSend = { order: LiveOrder } | { held: "duplicate" | "erasing" | "exists"; dup?: LiveOrder };
+
+/**
+ * The admin's order to one account (always real: shadow mode is for the
+ * automatic strategy). Checked again inside the account's lock, just before
+ * sending: held back when an order of the same kind from another batch went to
+ * this account since `since` — except the ones in `ignore` (those the admin saw
+ * in the preview and chose to send again) — so two overlapping confirmations
+ * can never both send to one account.
+ */
 export async function adminOrderIn(args: {
   batch: string;
   day: number;
@@ -811,12 +842,15 @@ export async function adminOrderIn(args: {
   product: Product;
   type: OrderType;
   price: number | null;
-  again?: boolean;
-}): Promise<LiveOrder | null> {
+  since: number;
+  ignore?: string[];
+}): Promise<AdminSend> {
   const { id, ref } = adminKey(args.batch, args.accountId, "order");
   return withAccountLock(args.accountId, async () => {
-    if (!args.again && recentAdminSame(await ordersOfDay(args.day), args.accountId, args, args.batch)) return null;
-    return sendOrder({
+    if (isErasing(args.accountId)) return { held: "erasing" as const };
+    const dups = recentAdminSame(await ordersOfDay(args.day), args.accountId, args, { since: args.since, exceptBatch: args.batch, ignore: args.ignore });
+    if (dups.length) return { held: "duplicate" as const, dup: dups[dups.length - 1] };
+    const order = await sendOrder({
       id,
       ref,
       day: args.day,
@@ -835,6 +869,7 @@ export async function adminOrderIn(args: {
       segment: "CASH",
       exchange: "NSE",
     });
+    return order ? { order } : { held: "exists" as const };
   });
 }
 

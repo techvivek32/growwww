@@ -21,7 +21,7 @@ import { inr, pool, sleep } from "./util";
  * owner decided (clients sign up for this on paper), unless the admin keeps it out.
  */
 
-export type AccountGroup = "eligible" | "low" | "blocked" | "excluded";
+export type AccountGroup = "eligible" | "low" | "blocked" | "excluded" | "reading";
 
 export interface TradingAccount {
   id: string;
@@ -120,7 +120,7 @@ function classify(a: TradingAccount, r: Reading, settings: LiveSettings): Accoun
     group = "excluded";
     reason = "Kept out of the automatic strategy by the admin.";
   } else if (r.pending) {
-    group = "blocked";
+    group = "reading";
     reason = "Still being read from Groww — refresh in a moment.";
   } else if (!r.canSend) {
     group = "blocked";
@@ -164,13 +164,23 @@ export async function checkAccounts(
   // Forget readings of accounts that are gone (disconnected or erased).
   const ids = new Set(accounts.map((a) => a.id));
   if (!opts.only) for (const k of [...readings.keys()]) if (!ids.has(k)) readings.delete(k);
-  return pool(accounts, opts.budgetMs ? 16 : 4, async (a) => {
+  if (opts.budgetMs) {
+    // Pages: every stale reading starts at once (each Groww call is bounded, and readings in flight
+    // are shared), and the page waits on ONE deadline for all of them, not one per account.
+    const deadline = sleep(opts.budgetMs).then(() => null);
+    return Promise.all(
+      accounts.map(async (a) => {
+        const hit = readings.get(a.id);
+        if (hit && maxAge > 0 && Date.now() - hit.at < maxAge) return classify(a, hit, settings);
+        const r = await Promise.race([readOnce(a).catch(() => null), deadline]);
+        return classify(a, r ?? hit ?? { at: Date.now(), pending: true, canSend: false, denial: null, signed: false, agreement: null, funds: null }, settings);
+      }),
+    );
+  }
+  return pool(accounts, 4, async (a) => {
     const hit = readings.get(a.id);
     if (hit && maxAge > 0 && Date.now() - hit.at < maxAge) return classify(a, hit, settings);
-    const fresh = readOnce(a);
-    if (!opts.budgetMs) return classify(a, await fresh, settings);
-    const r = await Promise.race([fresh, sleep(opts.budgetMs).then(() => null)]);
-    return classify(a, r ?? hit ?? { at: Date.now(), pending: true, canSend: false, denial: null, signed: false, agreement: null, funds: null }, settings);
+    return classify(a, await readOnce(a), settings);
   });
 }
 

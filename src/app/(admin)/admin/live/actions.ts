@@ -11,7 +11,7 @@ import { logAdminAccess } from "@/lib/adminAccess";
 import { houseLtp } from "@/lib/api/broker";
 import { canTakeOrders, checkAccounts, forgetReadings, tradingAccounts } from "@/lib/liveTrading/accounts";
 import { getSettings, ordersOfDay, setBase, setExcluded, setMode, MAX_BASE, MIN_BASE, type LiveMode, type LiveOrder } from "@/lib/liveTrading/store";
-import { adminOrderIn, cancelByAdmin, exitIn, previewExitIn, recentAdminSame, type ExitPick, type ExitRow } from "@/lib/liveTrading/orders";
+import { adminOrderIn, cancelByAdmin, DUPLICATE_MS, exitIn, previewExitIn, recentAdminSame, type ExitPick, type ExitRow } from "@/lib/liveTrading/orders";
 import { clock, istNow, pool, sleep } from "@/lib/liveTrading/util";
 import type { OrderType, Product, Side } from "@/lib/types";
 
@@ -109,7 +109,8 @@ interface OrderSpec {
   qty: number;
 }
 type Plan =
-  | { kind: "order"; at: number; spec: OrderSpec; accounts: string[] }
+  /** flagged: per account, the ids of the same-kind orders the preview showed as already sent. */
+  | { kind: "order"; at: number; spec: OrderSpec; accounts: string[]; flagged: Record<string, string[]> }
   /** picks: per account, exactly the positions the preview showed as to be closed. */
   | { kind: "exit"; at: number; symbol: string | null; accounts: string[]; picks: Record<string, ExitPick[]> };
 
@@ -171,13 +172,13 @@ async function logBulk(kind: "bulk-order" | "bulk-exit", userId: string, detail:
 
 /** How long a confirmation waits for its orders before answering (the rest go on in the background). */
 const ANSWER_WITHIN_MS = 40_000;
-/** Per account, the same kind of admin order (symbol, side, product — any size) that went out recently. */
-async function recentSame(spec: OrderSpec, accounts: string[]): Promise<Map<string, LiveOrder>> {
+/** Per account, the same kind of admin orders (symbol, side, product — any size) that went out since `since`. */
+async function recentSame(spec: OrderSpec, accounts: string[], since?: number): Promise<Map<string, LiveOrder[]>> {
   const today = await ordersOfDay(istNow().day);
-  const out = new Map<string, LiveOrder>();
+  const out = new Map<string, LiveOrder[]>();
   for (const id of accounts) {
-    const hit = recentAdminSame(today, id, spec);
-    if (hit) out.set(id, hit);
+    const hits = recentAdminSame(today, id, spec, { since });
+    if (hits.length) out.set(id, hits);
   }
   return out;
 }
@@ -245,7 +246,8 @@ export async function livePreviewOrder(_prev: OrderFlowState, form: FormData): P
 
   const { ok, refused } = await sendable(ids);
   if (!ok.size) return { error: "None of the ticked accounts can take an order right now (see Accounts)." };
-  const checks = await checkAccounts(await getSettings(), { maxAgeMs: 60_000, only: [...ok.keys()] });
+  // Cash is shown for information only: a slow broker never holds the preview up for long.
+  const checks = await checkAccounts(await getSettings(), { maxAgeMs: 60_000, only: [...ok.keys()], budgetMs: 8_000 });
   const spec: OrderSpec = { symbol, side, product, type, price, qty };
   const dups = await recentSame(spec, [...ok.keys()]);
   const rows = [...ok.entries()].map(([id, label]) => {
@@ -254,11 +256,14 @@ export async function livePreviewOrder(_prev: OrderFlowState, form: FormData): P
       side === "BUY" && free !== null && free < (product === "CNC" ? value : value / 5)
         ? `Free ₹${Math.round(free).toLocaleString("en-IN")} may not cover it — Groww will refuse it if so.`
         : null;
-    const prev = dups.get(id);
-    const dup = prev ? `${prev.side} ${prev.qty.toLocaleString("en-IN")} ${prev.symbol} already went to this account at ${clock(istNow(prev.at).minute)} (${prev.state}).` : null;
+    const prev = dups.get(id)?.at(-1);
+    const dup = prev
+      ? `${prev.side} ${prev.qty.toLocaleString("en-IN")} ${prev.symbol} already went to this account at ${clock(istNow(prev.at).minute)} (${prev.status ? prev.status.toLowerCase() : prev.state}).`
+      : null;
     return { id, label, free, note, dup };
   });
-  const id = keepPlan({ kind: "order", at: Date.now(), spec, accounts: rows.map((r) => r.id) });
+  const flagged = Object.fromEntries([...dups.entries()].map(([acct, list]) => [acct, list.map((o) => o.id)]));
+  const id = keepPlan({ kind: "order", at: Date.now(), spec, accounts: rows.map((r) => r.id), flagged });
   const names = new Map((await tradingAccounts()).map((a) => [a.id, a.label]));
   return { plan: { id, spec, px, value, rows, refused: refused.map((r) => names.get(r) ?? r) } };
 }
@@ -273,17 +278,37 @@ export async function liveConfirmOrder(_prev: OrderFlowState, form: FormData): P
   const ok = await canTakeOrders(plan.accounts);
   const day = istNow().day;
   const s = plan.spec;
-  // Checked again now — and once more inside each account's lock, just before sending (adminOrderIn):
-  // a confirmation whose answer was lost, re-made from a new preview, sends nothing twice.
-  const dups = again ? new Map<string, LiveOrder>() : await recentSame(s, [...ok.keys()]);
-  const targets = [...ok.entries()].filter(([id]) => !dups.has(id));
+  // The window runs from 15 minutes before the PREVIEW, so a duplicate the admin was shown cannot age
+  // out before the click. Accounts flagged in the preview are skipped unless the admin ticked "send it
+  // again" — and even then only the orders shown are overridden: any other one of the same kind
+  // (another batch, recorded since) still holds the send back, checked again inside each account's
+  // lock just before sending (adminOrderIn), so overlapping confirmations never both send.
+  const since = Math.min(plan.at, Date.now()) - DUPLICATE_MS;
+  const shown = (id: string) => plan.flagged[id] ?? [];
+  const nowDups = await recentSame(s, [...ok.keys()], since);
+  const held = [...ok.keys()].filter((id) => {
+    const extra = (nowDups.get(id) ?? []).filter((o) => !again || !shown(id).includes(o.id));
+    return (!again && shown(id).length > 0) || extra.length > 0;
+  });
+  const targets = [...ok.entries()].filter(([id]) => !held.includes(id));
   const ip = clientIp(await headers());
+  const describeSpec = `${s.side} ${s.qty} ${s.symbol} ${s.product} ${s.type}${s.price != null ? ` @ ${s.price}` : ""}`;
+  for (const id of held) await logBulk("bulk-order", id, `${describeSpec} · held back: the same order already went to this account`, ip);
   let errors = 0;
+  let lateHeld = 0;
+  let erasing = 0;
   const run = pool(targets, 4, async ([accountId, label]) => {
     try {
-      const o = await adminOrderIn({ batch: planId, day, accountId, symbol: s.symbol, side: s.side, qty: s.qty, product: s.product, type: s.type, price: s.price, again });
-      if (!o) return null;
-      await logBulk("bulk-order", accountId, `${s.side} ${s.qty} ${s.symbol} ${s.product} ${s.type}${s.price != null ? ` @ ${s.price}` : ""} · ${o.state}${o.orderId ? ` · ${o.orderId}` : ""}`, ip);
+      const r = await adminOrderIn({ batch: planId, day, accountId, symbol: s.symbol, side: s.side, qty: s.qty, product: s.product, type: s.type, price: s.price, since, ignore: again ? shown(accountId) : [] });
+      if ("held" in r) {
+        if (r.held === "duplicate") {
+          lateHeld++;
+          await logBulk("bulk-order", accountId, `${describeSpec} · held back: another batch of this order reached the account first`, ip);
+        } else if (r.held === "erasing") erasing++;
+        return null;
+      }
+      const o = r.order;
+      await logBulk("bulk-order", accountId, `${describeSpec} · ${o.state}${o.orderId ? ` · ${o.orderId}` : ""}`, ip);
       return sentRow(label, o);
     } catch (err) {
       // One account's failure never stops the others, nor hides what they did.
@@ -296,18 +321,16 @@ export async function liveConfirmOrder(_prev: OrderFlowState, form: FormData): P
   const rows = await Promise.race([run, sleep(Math.max(0, answerBy - Date.now())).then(() => undefined)]);
   revalidatePath(PATH);
   const skipped = plan.accounts.length - ok.size;
-  const extra = `${dups.size ? `, ${dups.size} held back (the same order went there in the last 15 minutes)` : ""}${skipped ? `, ${skipped} skipped (no longer able to trade)` : ""}`;
+  const extra = `${held.length ? `, ${held.length} held back (the same order already went there)` : ""}${skipped ? `, ${skipped} skipped (no longer able to trade)` : ""}`;
   if (rows === undefined) {
     return { done: { planId, summary: `${s.side} ${s.qty.toLocaleString("en-IN")} ${s.symbol}: still sending to ${targets.length} account${targets.length === 1 ? "" : "s"}${extra} — results appear under Today's orders.`, rows: [], pending: true } };
   }
   const sent = rows.filter((r): r is SentRow => r !== null);
   const by = (st: string) => sent.filter((r) => r.state === st).length;
-  // Held back at the last moment, inside the account's lock: another batch of this order got there first.
-  const late = targets.length - sent.length - errors;
   return {
     done: {
       planId,
-      summary: `${s.side} ${s.qty.toLocaleString("en-IN")} ${s.symbol}: ${by("placed")} placed, ${by("rejected")} rejected, ${by("unknown")} unknown, ${by("refused")} refused${extra}${late > 0 ? `, ${late} held back (another batch of this order reached them first)` : ""}${errors ? ` — and ${errors} stopped with an error: some of those may have gone out; check Today's orders` : ""}.`,
+      summary: `${s.side} ${s.qty.toLocaleString("en-IN")} ${s.symbol}: ${by("placed")} placed, ${by("rejected")} rejected, ${by("unknown")} unknown, ${by("refused")} refused${extra}${lateHeld ? `, ${lateHeld} held back (another batch of this order reached them first)` : ""}${erasing ? `, ${erasing} skipped (being deleted)` : ""}${errors ? ` — and ${errors} stopped with an error: some of those may have gone out; check Today's orders` : ""}.`,
       rows: sent,
       pending: false,
     },
@@ -339,7 +362,8 @@ export async function livePreviewExit(_prev: ExitFlowState, form: FormData): Pro
   if (!ids.length) return { error: "Tick at least one account." };
   const { ok, refused } = await sendable(ids);
   if (!ok.size) return { error: "None of the ticked accounts can send orders right now (see Accounts)." };
-  const accounts = await pool([...ok.entries()], 4, async ([id, label]) => ({ id, label, ...(await previewExitIn(id, symbol)) }));
+  // Each read is bounded (25 s at most), and they run side by side so the preview answers in time.
+  const accounts = await pool([...ok.entries()], 16, async ([id, label]) => ({ id, label, ...(await previewExitIn(id, symbol)) }));
   // The confirmation closes only what this preview shows: an account whose positions could not be read is left out.
   const picks: Record<string, ExitPick[]> = {};
   for (const a of accounts) {

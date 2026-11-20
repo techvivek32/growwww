@@ -19,7 +19,7 @@ import {
 export interface AccountOption {
   id: string;
   label: string;
-  group: "eligible" | "low" | "blocked" | "excluded";
+  group: "eligible" | "low" | "blocked" | "excluded" | "reading";
   free: number | null;
 }
 
@@ -141,7 +141,7 @@ function AccountPicker({ accounts, defaults }: { accounts: AccountOption[]; defa
   const usable = accounts.filter((a) => a.group !== "blocked");
   const [picked, setPicked] = useState<Set<string>>(() => new Set(usable.filter(defaults).map((a) => a.id)));
   const set = (ids: string[]) => setPicked(new Set(ids));
-  const tag: Record<AccountOption["group"], string> = { eligible: "eligible", low: "low balance", excluded: "kept out of auto", blocked: "blocked" };
+  const tag: Record<AccountOption["group"], string> = { eligible: "eligible", low: "low balance", excluded: "kept out of auto", blocked: "blocked", reading: "being read" };
   return (
     <fieldset className="space-y-2">
       <legend className={eyebrow}>Accounts ({picked.size} of {usable.length})</legend>
@@ -223,8 +223,10 @@ export function OrderFlow({ accounts, base }: { accounts: AccountOption[]; base:
   const [preview, previewAction, previewing] = useActionState<OrderFlowState, FormData>(livePreviewOrder, {});
   const [sent, sendAction] = useActionState<OrderFlowState, FormData>(liveConfirmOrder, {});
   const [type, setType] = useState("MARKET");
+  const [again, setAgain] = useState(false);
   const plan = preview.plan;
   const doneHere = sent.done && plan && sent.done.planId === plan.id;
+  const sendCount = plan ? (again ? plan.rows.length : plan.rows.filter((r) => !r.dup).length) : 0;
   return (
     <div className="space-y-4">
       <form onSubmit={submitWith(previewAction)} className="space-y-3">
@@ -301,11 +303,11 @@ export function OrderFlow({ accounts, base }: { accounts: AccountOption[]; base:
             <input type="hidden" name="planId" value={plan.id} />
             {plan.rows.some((r) => r.dup) && (
               <label className="flex basis-full items-center gap-2 text-[12.5px] text-ink">
-                <input type="checkbox" name="again" value="1" />
+                <input type="checkbox" name="again" value="1" checked={again} onChange={(e) => setAgain(e.target.checked)} />
                 Send it again to the accounts that already got this same order (otherwise they are skipped)
               </label>
             )}
-            <Submit label={`Send to ${plan.rows.length} account${plan.rows.length === 1 ? "" : "s"}`} busy="Sending…" cls={btnDanger} />
+            <Submit label={`Send to ${sendCount} account${sendCount === 1 ? "" : "s"}`} busy="Sending…" cls={btnDanger} />
             <span className="text-[12px] text-ink3">Real orders, sent once. The preview expires in 10 minutes.</span>
           </form>
           {sent.error && <p role="alert" className="text-[12.5px] text-down">{sent.error}</p>}
