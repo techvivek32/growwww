@@ -54,6 +54,19 @@ export const config = {
     // sign-in and sign-up, robots, and static assets. Everything else needs a
     // valid session. Redirecting a crawler to a sign-in page teaches it
     // nothing and reads worse than an honest Disallow.
-    "/((?!login|signup|legal|m/|mediapipe/|robots.txt|sitemap.xml|_next/static|_next/image|favicon.ico|$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    //
+    // api/mobile/login and api/mobile/signup are the Flutter app's sign-in
+    // and registration. They have to be public for the same reason /login and
+    // /signup are — there is no session yet — and they are the ONLY routes
+    // under api/mobile/ that are: every other one carries account data and
+    // stays behind the session gate, so the phone is not a way around a
+    // boundary the browser respects.
+    //
+    // Both defend themselves with the same rate limits as their web
+    // counterparts, and both refuse to confirm whether an address is
+    // registered: login gives one message for a wrong address and a wrong
+    // password alike, and signup answers an existing address with the same
+    // shape as a new one.
+    "/((?!login|signup|legal|m/|mediapipe/|api/mobile/login|api/mobile/signup|robots.txt|sitemap.xml|_next/static|_next/image|favicon.ico|$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

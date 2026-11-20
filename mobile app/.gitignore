@@ -1,0 +1,66 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Release signing — losing these means never being able to update an
+# installed app; leaking them lets someone sign an app that claims to be this
+# one. Back them up somewhere private, never in git.
+android/key.properties
+android/mnha-release.jks
+*.jks
+*.keystore
+
+# Built APKs and bundles.
+#
+# The real build output goes to /build/ (ignored above); these are the
+# hand-copied release builds. Git is not a binary store, and five of them had
+# already collected in this folder — 237 MB — because /build/ does not cover
+# the project root. Once pushed they stay in history for good.
+#
+# Worth knowing why this is not self-correcting: GitHub only hard-rejects a
+# file over 100 MB. These are ~50 MB each, so the push would SUCCEED and
+# quietly add a quarter of a gigabyte to every future clone.
+*.apk
+*.aab
