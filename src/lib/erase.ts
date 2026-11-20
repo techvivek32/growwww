@@ -7,6 +7,8 @@ import { deleteMembership } from "@/lib/membership";
 import { deleteOrders } from "@/lib/ledger";
 import { deleteNotifications } from "@/lib/notifications";
 import { scrubAdminAccessDetails } from "@/lib/adminAccess";
+import { forgetAccount } from "@/lib/liveTrading/store";
+import { withAccountLock } from "@/lib/liveTrading/util";
 import { clearErasing, markErasing, revokeHandoffs } from "@/lib/kycHandoff";
 
 /**
@@ -19,9 +21,11 @@ export async function eraseAccount(userId: string): Promise<string[]> {
   const steps: [string, (id: string) => Promise<void>][] = [
     // First, so no phone link can upload photos while the rest is erased.
     ["phone links", async (id) => {
-      markErasing(id); // uploads already under way write nothing from here on
+      markErasing(id); // uploads already under way, and live-trading sends, write nothing from here on
       revokeHandoffs(id);
     }],
+    // Early, and under the account's live-trading lock: no order for it is in flight while it goes.
+    ["live trading", (id) => withAccountLock(id, () => forgetAccount(id))],
     ["verification", deleteKyc],
     ["agreement", deleteConsents],
     ["agreement media", deleteConsentMedia],

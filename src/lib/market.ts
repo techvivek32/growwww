@@ -71,6 +71,12 @@ function istDate(d: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: IST }).format(d);
 }
 
+/** True on an NSE trading day (a weekday that is not a listed holiday), for an IST date `YYYY-MM-DD`. */
+export function isTradingDate(isoDate: string): boolean {
+  const wd = new Date(`${isoDate}T12:00:00Z`).getUTCDay();
+  return wd !== 0 && wd !== 6 && !HOLIDAYS.has(isoDate);
+}
+
 /** For the admin console: the holiday list needs the exchange's next calendar —
  *  the current year has no dates, or (from 15 December) the next year has none. */
 export function holidayListNotice(now: Date = new Date()): string | null {

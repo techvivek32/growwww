@@ -13,7 +13,7 @@ function H({ children }: { children: React.ReactNode }) {
 export default function RiskPage() {
   return (
     <PublicShell>
-      <LegalArticle title="Risk Disclosure" updated="October 2026">
+      <LegalArticle title="Risk Disclosure" updated="November 2026">
         <div className="rounded-xl border border-warn/40 bg-warnsoft/50 p-5 text-[14px] leading-relaxed text-ink2">
           <p className="font-semibold text-ink">Trading can lose you money — potentially all of it, and in derivatives more than you put in.</p>
           <p className="mt-2">
@@ -35,8 +35,7 @@ export default function RiskPage() {
           <p>
             SEBI&apos;s own studies have found that the large majority of individual F&amp;O traders lose money after
             costs. Trading costs — brokerage, STT, exchange fees, GST, stamp duty and slippage — are real and
-            compound; a strategy that looks profitable before costs can be a loss after them. Our backtest simulation
-            charges these costs on purpose, so you can see the difference.
+            compound; a strategy that looks profitable before costs can be a loss after them.
           </p>
         </div>
 
@@ -47,6 +46,18 @@ export default function RiskPage() {
             is not a forecast, not personalised advice, and not a recommendation to buy, sell or hold. A strategy
             with a positive historical edge can still lose, and edges decay as markets change. Nothing here
             guarantees a future outcome.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <H>Automatic trading in your account</H>
+          <p>
+            MNHA&apos;s automatic intraday strategy (section 4 of the User Agreement) trades connected accounts without
+            asking first. It can lose money on any day and over long stretches, and its paper-trading and past results
+            do not predict it. Its orders can be rejected, filled at a worse price than the screen showed, or — after a
+            technical fault — left open; Groww squares intraday positions off itself near the close, with its own
+            charge. If MNHA switches it off during the day it opens nothing new, but still closes what it opened. Its
+            profits and losses, and Groww&apos;s brokerage and charges on its trades, are yours.
           </p>
         </div>
 

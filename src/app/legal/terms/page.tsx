@@ -15,16 +15,17 @@ export default function TermsPage() {
     <PublicShell>
       <LegalArticle title="Terms of Service" updated="November 2026">
         <p>
-          These terms govern your use of MNHA Financials (&ldquo;the Service&rdquo;), a decision-support trading
-          terminal that connects to your own brokerage account. By creating an account or using the Service, you
+          These terms govern your use of MNHA Financials (&ldquo;the Service&rdquo;), a trading terminal that
+          connects to your own brokerage account. By creating an account or using the Service, you
           agree to them. If you do not agree, do not use the Service.
         </p>
 
         <div className="space-y-2">
           <H>1. What the Service is — and is not</H>
           <p>
-            MNHA Financials is software that reads your brokerage account and helps you act on it. It is <strong>not</strong>{" "}
-            a broker, a bank, a portfolio manager, or an investment adviser. It does not hold your money or your
+            MNHA Financials is software that reads your brokerage account, sends the orders you confirm and, as the User
+            Agreement describes, runs an automatic intraday strategy in it. It is <strong>not</strong>{" "}
+            a broker or a bank, and it is not registered as a portfolio manager or an investment adviser. It does not hold your money or your
             securities — those remain with your broker (Groww) at all times. It is not registered with SEBI as a
             Research Analyst or an Investment Adviser, and nothing it displays is personalised investment advice or a
             recommendation to buy or sell any security.
@@ -44,11 +45,11 @@ export default function TermsPage() {
           <H>3. Trading decisions are yours</H>
           <p>
             MNHA connects to your brokerage account to show it to you and, once you set it up, to send the orders you
-            confirm on its order ticket. MNHA&apos;s admin may also place or cancel an order in your account on your
-            instruction, as the User Agreement describes; each one is recorded and you are notified. MNHA never trades
-            your account on its own judgment. Every trading decision is your own — what to trade, in what size, and
-            when — and you are
-            solely responsible for it and its outcomes. The Service may fail, be delayed, or display stale data; you
+            confirm on its order ticket. MNHA also runs an automatic intraday strategy in connected accounts, and
+            MNHA&apos;s admin may place or cancel orders and close positions in your account, as the User Agreement
+            describes; each order is recorded and you are notified. Apart from those, every trading decision is your
+            own — what to trade, in what size, and when — and the outcome of every trade in your account, the
+            strategy&apos;s included, is yours. The Service may fail, be delayed, or display stale data; you
             must verify anything material with your broker before acting on it.
           </p>
         </div>

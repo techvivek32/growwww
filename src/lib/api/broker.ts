@@ -7,6 +7,7 @@ import { egressFor, type Egress } from "./egress";
 import { currentUserId } from "../session";
 import { getBroker, findById, getUserBrokerMeta } from "../users";
 import { OWNER_ID, isReservedId } from "../auth";
+import { DENIAL_MESSAGE, tradePermission } from "../trading";
 
 /**
  * Resolve WHOSE broker this request talks to. The owner (env session) uses the
@@ -318,6 +319,9 @@ export interface PlacedOrder {
   filled: number | null;
   message: string | null;
   referenceId: string | null;
+  /** HTTP status of Groww's reply to the order itself, when one came back
+   *  (429: throttled before it was looked at — nothing was placed). */
+  httpStatus?: number;
 }
 
 /**
@@ -342,6 +346,17 @@ async function placeOrderImpl(input: groww.PlaceOrderInput): Promise<PlacedOrder
       status: null,
       filled: null,
       message: "Order placement is disabled, or no broker is connected on this account.",
+      referenceId: null,
+    };
+  }
+  if (input.referenceId !== undefined && !groww.isValidReferenceId(input.referenceId)) {
+    return {
+      ok: false,
+      outcome: "refused",
+      orderId: null,
+      status: null,
+      filled: null,
+      message: "The order's reference is not one Groww accepts, so nothing was sent.",
       referenceId: null,
     };
   }
@@ -376,7 +391,7 @@ async function placeOrderImpl(input: groww.PlaceOrderInput): Promise<PlacedOrder
       filled: null,
       message:
         "The order request did not complete. Check the order book in Groww before retrying — it may still have reached the exchange.",
-      referenceId: null,
+      referenceId: input.referenceId ?? null,
     };
   }
 
@@ -394,11 +409,20 @@ async function placeOrderImpl(input: groww.PlaceOrderInput): Promise<PlacedOrder
         ? "Groww did not confirm this order. Check the order book in Groww before retrying — it may still have reached the exchange."
         : res.message ?? "Groww rejected the order.",
       referenceId: res.referenceId,
+      httpStatus: res.httpStatus,
     };
   }
 
+  // Read back in the SAME credential context the order went out in (the
+  // caller's). Never through withUserCreds: from the admin console or the
+  // background executor that would resolve some other account, or none.
   const segment = input.segment ?? "CASH";
-  const readBack = await safe("order-status", () => groww.getOrderStatus(res.orderId as string, segment), null);
+  let readBack: Awaited<ReturnType<typeof groww.getOrderStatus>> = null;
+  try {
+    readBack = await groww.getOrderStatus(res.orderId as string, segment);
+  } catch (err) {
+    console.error("[broker] order-status failed:", err instanceof Error ? err.message : err);
+  }
 
   const status = readBack?.status ?? res.status;
   return {
@@ -410,6 +434,7 @@ async function placeOrderImpl(input: groww.PlaceOrderInput): Promise<PlacedOrder
     filled: readBack?.filled ?? null,
     message: readBack?.remark ?? res.message,
     referenceId: res.referenceId,
+    httpStatus: res.httpStatus,
   };
 }
 
@@ -426,6 +451,141 @@ export async function cancelOrder(
       return { ok: false, message: "The cancel request did not complete. Check Groww.", sent: true };
     }
   });
+}
+
+/* ------------------------------------------------------- named accounts */
+
+/**
+ * Run `fn` against ONE named account, whoever is signed in (or nobody, for the
+ * background executor): the owner's house account with the server's own key
+ * and address, or a member with their stored key, sent from the address
+ * registered on it. Throws when the account has no usable Groww connection —
+ * it never falls back to some other account.
+ */
+export async function runAsAccount<T>(accountId: string, fn: () => Promise<T>): Promise<T> {
+  if (accountId === OWNER_ID) {
+    // `undefined` creds = the env house key; `undefined` egress = the house address.
+    return runWithCreds(undefined, () => runWithEgress(undefined, async () => {
+      if (!groww.hasCredentials()) throw new Error("The house Groww key is not configured on this server.");
+      return fn();
+    }));
+  }
+  if (!accountId || isReservedId(accountId)) throw new Error("Not a trading account.");
+  const [creds, egress] = await Promise.all([getBroker(accountId), egressOf(accountId)]);
+  if (!creds) throw new Error("This account has no Groww connection.");
+  return runWithCreds(creds, () => runWithEgress(egress, fn));
+}
+
+/** True when this server has the owner's house Groww key configured. */
+export function houseConfigured(): boolean {
+  return runWithCreds(undefined, () => groww.hasCredentials());
+}
+
+/** Place an order in a named account (see runAsAccount); refused, never thrown, when it has no connection.
+ *  The trading gate is checked again at the moment of sending: a member whose
+ *  address can no longer be sent from is refused — their key is never used
+ *  from some other address (one registered IP, one account). */
+export async function placeOrderAs(accountId: string, input: groww.PlaceOrderInput): Promise<PlacedOrder> {
+  const perm = await tradePermission(accountId).catch(() => null);
+  if (!perm?.allowed) {
+    return {
+      ok: false,
+      outcome: "refused",
+      orderId: null,
+      status: null,
+      filled: null,
+      message: perm ? DENIAL_MESSAGE[perm.reason ?? "no-broker"] : "The account's trading permission could not be checked, so nothing was sent.",
+      referenceId: null,
+    };
+  }
+  try {
+    return await runAsAccount(accountId, () => placeOrderImpl(input));
+  } catch (err) {
+    // placeOrderImpl never throws once it is running, so this is the account
+    // lookup failing: nothing was sent.
+    return {
+      ok: false,
+      outcome: "refused",
+      orderId: null,
+      status: null,
+      filled: null,
+      message: err instanceof Error ? err.message : "This account could not be used, so nothing was sent.",
+      referenceId: null,
+    };
+  }
+}
+
+/** Cancel an order in a named account. `sent`: the request went to Groww (its answer may still be lost). */
+export async function cancelOrderAs(
+  accountId: string,
+  orderId: string,
+  segment: "CASH" | "FNO",
+): Promise<{ ok: boolean; message: string | null; sent: boolean }> {
+  const perm = await tradePermission(accountId).catch(() => null);
+  if (!perm?.allowed) return { ok: false, message: perm ? DENIAL_MESSAGE[perm.reason ?? "no-broker"] : "Permission could not be checked.", sent: false };
+  try {
+    return await runAsAccount(accountId, async () => {
+      if (!canTrade()) return { ok: false, message: "Order placement is disabled, or no broker is connected.", sent: false };
+      try {
+        return { ...(await groww.cancelOrder(orderId, segment)), sent: true };
+      } catch (err) {
+        console.error(`[broker] cancel failed for ${accountId}:`, err instanceof Error ? err.message : err);
+        return { ok: false, message: "The cancel request did not complete.", sent: true };
+      }
+    });
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "This account could not be used.", sent: false };
+  }
+}
+
+/** Free money in a named account (null: not connected, or Groww did not report it). */
+export async function fundsAs(accountId: string): Promise<groww.Funds | null> {
+  try {
+    return await runAsAccount(accountId, () => groww.getFundsStrict());
+  } catch (err) {
+    console.error(`[broker] funds read failed for ${accountId}:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/** A named account's open positions in one segment (null: could not be read). */
+export async function positionsAs(accountId: string, segment: "CASH" | "FNO"): Promise<groww.OpenPosition[] | null> {
+  try {
+    return await runAsAccount(accountId, () => groww.getOpenPositions(segment));
+  } catch (err) {
+    console.error(`[broker] positions read failed for ${accountId}:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/** A named account's order book for today in one segment (null: could not be read). */
+export async function orderBookAs(accountId: string, segment: "CASH" | "FNO"): Promise<{ orders: groww.BookOrder[]; complete: boolean } | null> {
+  try {
+    return await runAsAccount(accountId, () => groww.getOrderBook(segment));
+  } catch (err) {
+    console.error(`[broker] order book read failed for ${accountId}:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/** Groww's status-by-reference lookup in a named account (null: not confirmed, or not readable). */
+export async function orderByRefAs(accountId: string, ref: string, segment: "CASH" | "FNO"): Promise<groww.BookOrder | null> {
+  try {
+    return await runAsAccount(accountId, () => groww.getOrderByReference(ref, segment));
+  } catch (err) {
+    console.error(`[broker] order lookup failed for ${accountId}:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/** Last prices on the house key, whoever is signed in (the shared market-data feed). */
+export async function houseLtp(symbols: string[]): Promise<Record<string, number>> {
+  try {
+    return await runAsAccount(OWNER_ID, () => groww.getLtp(symbols));
+  } catch (err) {
+    console.error("[broker] house LTP failed:", err instanceof Error ? err.message : err);
+    return {};
+  }
 }
 
 /**

@@ -62,6 +62,8 @@ const ACCESS_EVENT: Record<AdminAccess["kind"], { label: string; cls: string }> 
   "connect-broker": { label: "Connected Groww for the client", cls: "text-warn" },
   order: { label: "Sent an order for the client", cls: "text-warn" },
   cancel: { label: "Sent a cancellation for the client", cls: "text-warn" },
+  "bulk-order": { label: "Live trading: sent an order to this account", cls: "text-warn" },
+  "bulk-exit": { label: "Live trading: closed a position in this account", cls: "text-warn" },
 };
 const INV_TONE: Record<InvoiceStatus, "warn" | "up" | "neutral"> = { due: "warn", paid: "up", waived: "neutral" };
 const KYC_TONE = { approved: "up", rejected: "down", submitted: "warn", none: "neutral" } as const;
@@ -103,7 +105,7 @@ function CardTitle({ title, count, sub }: { title: string; count?: string; sub?:
 /* ------------------------------------------------------------ data */
 /** Everything the admin pages read, loaded once per request and shared by every section. */
 export async function loadAdmin() {
-  const [users, kyc, consents, members, invoices, orders, orderStats, access, pool] = await Promise.all([
+  const [users, kyc, consents, members, invoices, orders, orderStats, access, pool, bulkAccess] = await Promise.all([
     listUsers(),
     listKyc(),
     listConsents(),
@@ -111,8 +113,9 @@ export async function loadAdmin() {
     listInvoices(),
     listOrders(undefined, Number.MAX_SAFE_INTEGER),
     orderStatsByUser(),
-    recentAdminAccess(20),
+    recentAdminAccess(20, { bulk: false }),
     listEgress(),
+    recentAdminAccess(20, { bulk: true }),
   ]);
   const house = houseIp();
   // The two sign-in addresses that are not user records — they never appear in
@@ -166,7 +169,7 @@ export async function loadAdmin() {
   const ordersToday = orders.filter((o) => istDay(o.at) === today);
   const countStatus = (list: typeof orders, s: LedgerStatus) => list.filter((o) => o.status === s).length;
   const orderLog = orders.slice(0, 100);
-  return { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, connected, last7, pendingKyc,
+  return { users, kyc, consents, members, invoices, orders, orderStats, access, bulkAccess, pool, house, reserved, connected, last7, pendingKyc,
            activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday,
            countStatus, orderLog };
 }
@@ -431,9 +434,42 @@ export function AccountsSection({ d }: { d: AdminData }) {
   );
 }
 
+/** One admin-access table (the openings, or Live trading's per-account acts). */
+function AccessTable({ rows, emailFor }: { rows: AdminAccess[]; emailFor: Map<string, string> }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[620px] border-collapse text-left">
+        <thead>
+          <tr className="border-b border-line font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">
+            <th className="px-5 py-3 font-medium">Time (IST)</th>
+            <th className="px-5 py-3 font-medium">Client</th>
+            <th className="px-5 py-3 font-medium">Event</th>
+            <th className="px-5 py-3 font-medium">Admin IP</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((e, i) => (
+            <tr key={`${e.at}-${i}`} className="border-b border-line last:border-0">
+              <td className="tnum px-5 py-2.5 text-[12px] text-ink2">{LOG_TIME.format(new Date(e.at))}</td>
+              <td className="px-5 py-2.5 text-[12.5px] text-ink">
+                {emailFor.get(e.userId) ?? (e.userId === OWNER_ID ? "Owner (house account)" : <span className="text-ink3">deleted account</span>)}
+              </td>
+              <td className="px-5 py-2.5 text-[12px]">
+                <span className={(ACCESS_EVENT[e.kind] ?? ACCESS_EVENT.close).cls}>{ACCESS_EVENT[e.kind]?.label ?? e.kind}</span>
+                {e.detail && <span className="tnum mt-0.5 block text-[11.5px] text-ink3">{e.detail}</span>}
+              </td>
+              <td className="tnum px-5 py-2.5 text-[12px] text-ink3">{e.ip}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /** Admin access log. */
 export function AccessSection({ d }: { d: AdminData }) {
-  const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
+  const { access, bulkAccess, emailFor } = d;
   return (
     <>
       <Card pad={false}>
@@ -445,33 +481,19 @@ export function AccessSection({ d }: { d: AdminData }) {
         {access.length === 0 ? (
           <p className="px-5 py-6 text-center text-[13px] text-ink3">No client account has been opened from the console yet.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] border-collapse text-left">
-              <thead>
-                <tr className="border-b border-line font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">
-                  <th className="px-5 py-3 font-medium">Time (IST)</th>
-                  <th className="px-5 py-3 font-medium">Client</th>
-                  <th className="px-5 py-3 font-medium">Event</th>
-                  <th className="px-5 py-3 font-medium">Admin IP</th>
-                </tr>
-              </thead>
-              <tbody>
-                {access.map((e, i) => (
-                  <tr key={`${e.at}-${i}`} className="border-b border-line last:border-0">
-                    <td className="tnum px-5 py-2.5 text-[12px] text-ink2">{LOG_TIME.format(new Date(e.at))}</td>
-                    <td className="px-5 py-2.5 text-[12.5px] text-ink">{emailFor.get(e.userId) ?? <span className="text-ink3">deleted account</span>}</td>
-                    <td className="px-5 py-2.5 text-[12px]">
-                      <span className={(ACCESS_EVENT[e.kind] ?? ACCESS_EVENT.close).cls}>{ACCESS_EVENT[e.kind]?.label ?? e.kind}</span>
-                      {e.detail && <span className="tnum mt-0.5 block text-[11.5px] text-ink3">{e.detail}</span>}
-                    </td>
-                    <td className="tnum px-5 py-2.5 text-[12px] text-ink3">{e.ip}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <AccessTable rows={access} emailFor={emailFor} />
         )}
       </Card>
+      {bulkAccess.length > 0 && (
+        <Card pad={false} className="mt-6">
+          <CardTitle
+            title="Live trading: the admin's orders and exits in client accounts"
+            count={`latest ${bulkAccess.length}`}
+            sub="One line per account for every order or exit the admin sent to many accounts at once from Live trading. Kept apart, so a big batch never pushes the openings above out of the log."
+          />
+          <AccessTable rows={bulkAccess} emailFor={emailFor} />
+        </Card>
+      )}
     </>
   );
 }
@@ -604,7 +626,7 @@ export function OrdersSection({ d }: { d: AdminData }) {
         <CardTitle
           title="Order log"
           count={`latest ${orderLog.length} of ${orders.length}`}
-          sub="Every order sent through MNHA, recorded server-side when the order action ran. “By admin” marks one the admin sent from inside the client's account (marked from this release on). Fills and money live at Groww."
+          sub="Every order sent through MNHA, recorded server-side when the order action ran. “By admin” marks one the admin sent (from inside the client's account, or to many accounts from Live trading); “strategy” marks one MNHA's automatic strategy sent. Fills and money live at Groww."
         />
         {orderLog.length === 0 ? (
           <p className="px-5 py-8 text-center text-[13.5px] text-ink3">No orders recorded yet.</p>
@@ -637,6 +659,7 @@ export function OrdersSection({ d }: { d: AdminData }) {
                       <td className="px-4 py-2.5 whitespace-nowrap">
                         <Pill tone={LOG_TONE[o.status]}>{o.status}</Pill>
                         {o.by === "admin" && <span className="ml-1.5 text-[11px] font-semibold text-warn">by admin</span>}
+                        {o.by === "system" && <span className="ml-1.5 text-[11px] font-semibold text-violet">strategy</span>}
                       </td>
                       <td className="tnum px-4 py-2.5 text-[12.5px] whitespace-nowrap">
                         {o.status === "cancelled" ? (

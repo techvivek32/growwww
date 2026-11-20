@@ -1,4 +1,5 @@
-"""The paper-trading SESSION LOOP: one process per trading day, 09:12 to 15:30 IST. NO ORDER IS EVER SENT.
+"""The paper-trading SESSION LOOP: one process per trading day, 09:12 to 15:30 IST. NO ORDER IS EVER SENT FROM HERE
+(the website's live executor reads book A's recorded decisions and places its own orders).
 
 It runs the 2026 strategy (livex) and watches the open paper positions every 5 seconds at Groww's live prices.
 Two paper books take the SAME picks:
@@ -10,8 +11,9 @@ Two paper books take the SAME picks:
              hit, with the usual slippage, and recorded in livex_fast.
 
 Timeline: 09:20 decide (livex.decide) → every 5 s: quotes for the open names, stop checks for book B, a live mark
-every 30 s → 10:15 flip (livex.flip) → 15:15 square-off at the live price for book B → 15:17 settle (livex.settle)
-for book A and the bar-based record.
+every 30 s, and at each 5-minute close book A's market stop (livex.market_stop_check, recorded for the website's
+live executor) → 10:15 flip (livex.flip) → 15:15 square-off at the live price for book B → 15:17 settle
+(livex.settle) for book A and the bar-based record.
 """
 
 from __future__ import annotations
@@ -101,6 +103,7 @@ def session() -> dict:
     next_flip = 0.0
     flip_fails = 0
     last_mark = 0.0
+    last_mstop_bar = -1
     squared = False
     summary: dict = {"day": date.isoformat()}
     while True:
@@ -130,6 +133,21 @@ def session() -> dict:
                     row = con.execute("SELECT skip, pick, pick_px FROM livex_days WHERE day=?", (day,)).fetchone()
                     if row and not row[0] and row[1]:
                         _open_leg(con, day, "short", row[1], -1, float(row[2]), now)
+            if decided and not squared:
+                # Book A's market stop for the website's live executor: each 5-minute close is checked once, in
+                # its own try, BEFORE the 10:15 flip's long fetch (so the 10:15 close is never missed) and before
+                # book B's checks (so a failed quote never holds them up).
+                t = time.time()  # not the loop's `now`: a slow decide() in this pass would make it stale
+                bar = livex.mstop_bar_due(t)
+                if bar is not None and bar != last_mstop_bar:
+                    try:
+                        res = livex.market_stop_check(t, con)
+                        if res.get("checked"):
+                            last_mstop_bar = bar
+                        if res.get("stop"):
+                            summary["mstop"] = res
+                    except Exception as e:  # noqa: BLE001
+                        log(f"market stop check failed: {e}")
             if decided and not flipped and minute >= 10 * 60 + 15 + 0.5 and now >= next_flip:
                 # Its own try: a flip that is not done yet never holds up book B's stop checks, the square-off
                 # or the settle below, and it backs off instead of re-fetching back to back.

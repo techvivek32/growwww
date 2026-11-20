@@ -33,10 +33,11 @@ export interface LedgerEntry {
   trigger?: number | null;
   orderId: string | null;
   message: string | null;
-  /** Set when the admin sent this from inside the client's account ("Open
-   *  account"). Absent: the account holder sent it, or it was written before
-   *  admin orders were marked. */
-  by?: "admin";
+  /** Who sent it, when not the account holder: "admin" — the admin, from
+   *  inside the client's account ("Open account") or from Live trading;
+   *  "system" — MNHA's automatic strategy (Live trading). Absent: the account
+   *  holder sent it, or it was written before orders were marked. */
+  by?: "admin" | "system";
 }
 
 interface Store { entries: LedgerEntry[] }

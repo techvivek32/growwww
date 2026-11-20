@@ -12,8 +12,9 @@ export const dynamic = "force-dynamic";
 
 /**
  * The admin console's own chrome. The admin login is not a trading account —
- * no broker, no markets, no order entry — so it gets none of the terminal's
- * nav, and the terminal's accounts never see this one.
+ * no broker of its own and no markets desk — so it gets none of the terminal's
+ * nav, and the terminal's accounts never see this one. Its orders go to
+ * clients' accounts, from Live trading.
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const uid = await currentUserId();

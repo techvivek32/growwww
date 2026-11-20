@@ -56,8 +56,8 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
         By creating an account you accept the{" "}
         <Link href="/legal/terms" className="underline underline-offset-2 hover:text-pub-cream">terms</Link> and{" "}
         <Link href="/legal/privacy" className="underline underline-offset-2 hover:text-pub-cream">privacy policy</Link>. MNHA
-        is decision-support software, not investment advice; your Groww key is encrypted at rest and used only for your
-        own account.
+        is a trading terminal, not investment advice; it also runs an automatic intraday strategy in connected accounts, as
+        the agreement describes. Your Groww key is encrypted at rest and used only for your own account.
       </p>
     </AuthShell>
   );

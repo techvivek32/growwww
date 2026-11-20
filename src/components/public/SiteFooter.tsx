@@ -42,7 +42,7 @@ export default function SiteFooter() {
               Your Groww account, in plain <em>sight.</em>
             </p>
             <p className="mt-5 font-plex text-[10.5px] tracking-[0.12em] text-[#6d685d] uppercase">
-              No tips · No auto-trading · No guaranteed returns
+              No tips · No custody · No guaranteed returns
             </p>
           </div>
           <div className="grid grid-cols-2 gap-10 sm:grid-cols-3 lg:col-span-7">
@@ -67,12 +67,13 @@ export default function SiteFooter() {
 
         <div className="mt-16 flex flex-col gap-6 border-t border-pub-ink/15 pt-6 lg:flex-row lg:items-start lg:justify-between">
           <p className="max-w-[48rem] text-[12px] leading-relaxed text-[#5f5a50]">
-            MNHA Financials is decision-support software, not a broker and not an investment adviser. It is not
-            registered with SEBI as a Research Analyst or Investment Adviser, and nothing on this site is a
+            MNHA Financials is a trading terminal, not a broker and not an investment adviser. It is not
+            registered with SEBI as a portfolio manager, Research Analyst or Investment Adviser, and nothing on this site is a
             recommendation to buy or sell any security. Prices and figures come from market data and can be
             wrong or late; past results do not predict future results. Trading in equities and derivatives
             carries a risk of loss — SEBI&apos;s own studies found roughly 9 in 10 individual F&amp;O traders lost
-            money. Orders you confirm are placed on your own Groww account through Groww&apos;s official API.
+            money. Orders you confirm, the orders of MNHA&apos;s automatic intraday strategy and the orders MNHA&apos;s
+            admin sends go to your own Groww account through Groww&apos;s official API.
             &ldquo;Groww&rdquo; is a trademark of its owner; MNHA Financials is independent and is not affiliated
             with or endorsed by it.
           </p>

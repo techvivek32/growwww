@@ -13,7 +13,7 @@ import { Arrow, Button, Container, Display, Eyebrow, TextLink } from "@/componen
 export const metadata: Metadata = {
   title: "MNHA Financials — your Groww account on one calm desk",
   description:
-    "Connect your own Groww account: holdings, positions, orders and live option chains on one calm desk. Your money never leaves Groww, and nothing is bought or sold for you automatically.",
+    "Connect your own Groww account: holdings, positions, orders and live option chains on one calm desk. Your money never leaves Groww.",
   robots: { index: true, follow: true },
   alternates: { canonical: "/" },
 };
@@ -95,11 +95,11 @@ const PATH: { n: string; title: string; body: string; rows: [string, string, str
   {
     n: "03.",
     title: "The desk",
-    body: "Your desk opens on your own account. MNHA shows it plainly, and once your Groww key has the static IP we give you, you can place orders from it — each one only after you confirm it.",
+    body: "Your desk opens on your own account. MNHA shows it plainly, and once your Groww key has the static IP we give you, you can place orders from it — each one only after you confirm it — and MNHA's automatic intraday strategy can trade it, as the User Agreement describes.",
     rows: [
       ["3.1", "Balance, holdings and positions, live", "live"],
       ["3.2", "Option chains, indices and quotes", "live"],
-      ["3.3", "Orders sent only when you confirm them", "live"],
+      ["3.3", "Your own orders sent only when you confirm them", "live"],
     ],
   },
 ];
@@ -107,7 +107,7 @@ const PATH: { n: string; title: string; body: string; rows: [string, string, str
 const FAQ: [string, string][] = [
   [
     "Is MNHA a broker? Where does my money sit?",
-    "No. MNHA is software that connects to your own Groww account through Groww's official trading API. Your cash and shares never leave Groww, we hold no money, and an API key cannot withdraw funds. MNHA reads your account, and sends an order to Groww only when you confirm it — or when you ask MNHA's admin to place it for you.",
+    "No. MNHA is software that connects to your own Groww account through Groww's official trading API. Your cash and shares never leave Groww, we hold no money, and an API key cannot withdraw funds. MNHA reads your account and sends three kinds of orders to Groww: the ones you confirm, those of its automatic intraday strategy (section 4 of the User Agreement), and those MNHA's admin sends (section 8).",
   ],
   [
     "Do you ever see my Groww password?",
@@ -115,7 +115,7 @@ const FAQ: [string, string][] = [
   ],
   [
     "Do I need to add an IP address on my Groww key?",
-    "Only to place orders from MNHA, and we give you the exact one during setup. Exchange rules require orders sent through the API to arrive from a registered static IP, so we reserve an address for your account alone and show it in the connect step — you paste it onto your Groww key. One address serves one Groww account, so yours is never shared with another client.",
+    "Yes, for MNHA to send any order to your account — yours, the automatic strategy's or the admin's — and we give you the exact one during setup. Exchange rules require orders sent through the API to arrive from a registered static IP, so we reserve an address for your account alone and show it in the connect step — you paste it onto your Groww key. One address serves one Groww account, so yours is never shared with another client.",
   ],
   [
     "What do I need before I start?",
@@ -123,11 +123,11 @@ const FAQ: [string, string][] = [
   ],
   [
     "What returns should I expect?",
-    "Nobody can honestly promise a return, and we don't. Most active traders lose money after costs — SEBI's own studies found roughly 9 in 10 individual F&O traders lost money. MNHA promises no return, gives no tips and never trades your account on its own judgment.",
+    "Nobody can honestly promise a return, and we don't. Most active traders lose money after costs — SEBI's own studies found roughly 9 in 10 individual F&O traders lost money. MNHA promises no return and gives no tips. Its automatic intraday strategy, which trades connected accounts as the User Agreement describes, can lose money like any other.",
   ],
   [
     "Is this investment advice?",
-    "No. MNHA shows your own account and live market data. It gives no tips and recommends nothing to buy or sell. Every order on your account is your own decision, whether you confirm it on MNHA's order ticket, place it in your Groww app, or ask MNHA's admin to place it.",
+    "No. MNHA shows your own account and live market data, and gives no tips or recommendations. Orders reach your account three ways: you confirm one (on MNHA's order ticket or in your Groww app), MNHA's automatic intraday strategy sends one as section 4 of the User Agreement describes, or MNHA's admin sends one. Every result is yours.",
   ],
   [
     "What does it cost?",
@@ -135,7 +135,7 @@ const FAQ: [string, string][] = [
   ],
   [
     "Can I leave and delete everything?",
-    "Yes. Disconnect Groww or delete your account from Settings at any time. Deleting erases your stored keys, agreement media, verification files, order log and notifications here; membership invoices are kept as billing records. An active membership must be left first (that closes its period) and an unpaid invoice settled. Your Groww account is untouched — and you can also revoke the key on Groww.",
+    "Yes. Disconnect Groww or delete your account from Settings at any time (on a trading day, deleting waits until any position or order MNHA has open in your account that day is closed, or until after 15:35 IST). Deleting erases your stored keys, agreement media, verification files, order log and notifications here; membership invoices are kept as billing records. An active membership must be left first (that closes its period) and an unpaid invoice settled. Your Groww account is untouched — and you can also revoke the key on Groww.",
   ],
 ];
 
@@ -157,7 +157,7 @@ export default async function Landing() {
   const STATS: [string, string][] = [
     ["3", "Agreement languages"],
     ["5", "Option chains"],
-    ["0", "Automatic orders"],
+    ["AES-256", "Keys encrypted"],
     ["₹0", "Held by us"],
   ];
 
@@ -185,8 +185,7 @@ export default async function Landing() {
               </Display>
               <p className="mt-8 max-w-[34rem] text-[18px] leading-[1.6] text-pub-muted">
                 Connect your Groww account: balance, holdings, positions and live option chains on one calm
-                desk. Your money never leaves Groww, and nothing is bought or sold for you
-                automatically. No tips, no hype.
+                desk. Your money never leaves Groww. No tips, no hype.
               </p>
               <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-5">
                 <Button href="/signup">Create your account</Button>
@@ -231,7 +230,7 @@ export default async function Landing() {
               Most trading apps are built to make you trade more. This one is built to help you <em>see.</em>
             </Display>
             <p className="mt-9 font-plex text-[11px] tracking-[0.12em] text-pub-muted uppercase">
-              No guaranteed returns · No tips · No auto-trading
+              No guaranteed returns · No tips · No custody
             </p>
           </Container>
         </section>
@@ -335,7 +334,7 @@ export default async function Landing() {
                   [G.vault, "Your money stays put", "Cash and shares never leave your Groww account. We take no custody and an API key cannot withdraw a rupee.", "/#faq", "Where money sits"],
                   [G.bars, "Honest numbers", "Every figure is read live from Groww or the exchange feed. A value we can't read shows as a dash — never a guess.", "/#desk", "See the desk"],
                   [G.key, "Keys, not passwords", "You paste a Groww API key, never your password. Keys are verified live and stored AES-256 encrypted.", "/legal/privacy", "Read the privacy policy"],
-                  [G.scale, "Nothing promised", "No guaranteed returns, no tips, and no automatic trading on your account.", "/legal/risk-disclosure", "Read the risk disclosure"],
+                  [G.scale, "Nothing promised", "No guaranteed returns and no tips. MNHA's automatic strategy can lose money, and every result is yours.", "/legal/risk-disclosure", "Read the risk disclosure"],
                 ] as const
               ).map(([icon, title, body, href, link]) => (
                 <div key={title}>
@@ -394,8 +393,8 @@ export default async function Landing() {
                 Fifteen minutes from now, your Groww account gets a calmer <em>desk.</em>
               </Display>
               <p className="mt-5 text-[16px] leading-[1.6] text-pub-ink/75">
-                Create your login, sign the agreement, and connect Groww with the guided wizard. MNHA shows your account and sends the orders
-                you confirm; it never trades on its own judgment.
+                Create your login, sign the agreement, and connect Groww with the guided wizard. MNHA shows your account, sends the orders
+                you confirm, and runs its automatic intraday strategy as the agreement describes.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-x-7 gap-y-4">
                 <Button href="/signup" variant="ink">

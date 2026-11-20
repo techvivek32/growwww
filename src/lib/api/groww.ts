@@ -66,6 +66,10 @@ interface Reply<T> {
   body: T;
 }
 
+/** Every call ends within this, connection included: the socket timeout below starts only once a
+ *  socket is handed over, which through a proxy tunnel is after its CONNECT — and that can stall. */
+const DEADLINE_MS = 25_000;
+
 function request<T>(
   path: string,
   opts: { method?: string; token: string; json?: unknown } ,
@@ -73,6 +77,15 @@ function request<T>(
   const payload = opts.json === undefined ? undefined : JSON.stringify(opts.json);
 
   return new Promise((resolve, reject) => {
+    const deadline: { timer?: ReturnType<typeof setTimeout> } = {};
+    const ok = (reply: Reply<T>) => {
+      clearTimeout(deadline.timer);
+      resolve(reply);
+    };
+    const fail = (err: Error) => {
+      clearTimeout(deadline.timer);
+      reject(err);
+    };
     const req = https.request(
       {
         host: HOST,
@@ -93,15 +106,19 @@ function request<T>(
         res.on("data", (c) => (raw += c));
         res.on("end", () => {
           try {
-            resolve({ status: res.statusCode ?? 0, body: JSON.parse(raw) as T });
+            ok({ status: res.statusCode ?? 0, body: JSON.parse(raw) as T });
           } catch {
-            reject(new Error(`groww ${path}: ${res.statusCode} non-JSON: ${raw.slice(0, 160)}`));
+            fail(new Error(`groww ${path}: ${res.statusCode} non-JSON: ${raw.slice(0, 160)}`));
           }
         });
+        res.on("error", fail);
+        // Cut off mid-body (the deadline, or the server): a no-op once "end" has settled it.
+        res.on("close", () => fail(new Error(`groww ${path}: the reply was cut off`)));
       },
     );
     req.on("timeout", () => req.destroy(new Error(`groww ${path}: timed out`)));
-    req.on("error", reject);
+    req.on("error", fail);
+    deadline.timer = setTimeout(() => req.destroy(new Error(`groww ${path}: no answer within ${DEADLINE_MS / 1000} s`)), DEADLINE_MS);
     if (payload) req.write(payload);
     req.end();
   });
@@ -276,7 +293,10 @@ export interface GrowwRefusal {
 }
 const refusals = new Map<string, GrowwRefusal>();
 const lastLogged = new Map<string, number>();
-const callKind = (path: string) => (path.startsWith("/v1/live-data") ? "live-data" : path.split("?")[0]);
+// Order look-ups carry the order's id in the path: one kind for all of them, so
+// the maps above hold one entry per key instead of one per order.
+const callKind = (path: string) =>
+  path.startsWith("/v1/live-data") ? "live-data" : path.startsWith("/v1/order/status/") ? "order-status" : path.split("?")[0];
 
 function noteRefusal(path: string, status: number, body: { error?: { code?: string; message?: string } } | undefined): void {
   const creds = resolveCreds();
@@ -312,8 +332,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** Envelope unwrap: Groww wraps everything in { status, payload }. */
-async function get<T>(path: string): Promise<T | null> {
+/** A read's whole answer: whether Groww said SUCCESS, and its payload. */
+interface Envelope<T> {
+  ok: boolean;
+  httpStatus: number;
+  payload: T | null;
+}
+
+/** One read, with the 429 retry. Keeps whether Groww answered SUCCESS apart
+ *  from the payload, for callers that must tell "Groww has nothing" from
+ *  "Groww could not be read". A network failure still throws. */
+async function getEnvelope<T>(path: string): Promise<Envelope<T>> {
   const token = await accessToken();
   const creds = resolveCreds();
   const fp = creds ? keyFingerprint(creds.apiKey) : "";
@@ -329,11 +358,17 @@ async function get<T>(path: string): Promise<T | null> {
     }
     if (res.status !== 200 || res.body?.status !== "SUCCESS") {
       noteRefusal(path, res.status, res.body);
-      return null;
+      return { ok: false, httpStatus: res.status, payload: null };
     }
     if (creds) refusals.delete(`${fp}:${callKind(path)}`);
-    return res.body.payload ?? null;
+    return { ok: true, httpStatus: res.status, payload: res.body.payload ?? null };
   }
+}
+
+/** Envelope unwrap: Groww wraps everything in { status, payload }. */
+async function get<T>(path: string): Promise<T | null> {
+  const r = await getEnvelope<T>(path);
+  return r.ok ? r.payload : null;
 }
 
 /** Same envelope, for writes. Returns the full body so callers can read
@@ -423,6 +458,27 @@ export async function getMargin(): Promise<Margin | null> {
     marginUsed: p.net_margin_used ?? 0,
     charges: p.brokerage_and_charges ?? 0,
   };
+}
+
+export interface Funds {
+  /** Groww's clear cash. */
+  cash: number;
+  /** Margin in use right now (net_margin_used; 0 when Groww leaves it out). */
+  used: number;
+  /** cash − used, never below zero: the money this account has free to trade. */
+  free: number;
+}
+
+/**
+ * Free money for the live-trading gate: null unless Groww actually reported
+ * the cash figure — a missing number is never read as zero or as plenty.
+ * Margin in use is taken off, so an account never looks richer than it is.
+ */
+export async function getFundsStrict(): Promise<Funds | null> {
+  const p = await get<{ clear_cash?: unknown; net_margin_used?: unknown }>("/v1/margins/detail/user");
+  if (!p || typeof p.clear_cash !== "number" || !Number.isFinite(p.clear_cash)) return null;
+  const used = typeof p.net_margin_used === "number" && Number.isFinite(p.net_margin_used) ? Math.max(0, p.net_margin_used) : 0;
+  return { cash: p.clear_cash, used, free: Math.max(0, p.clear_cash - used) };
 }
 
 /* --------------------------------------------------------------- holdings */
@@ -525,6 +581,92 @@ export async function getPositions(): Promise<Position[]> {
   });
 }
 
+/** The position fields the closing logic reads. */
+export interface GrowwPositionRaw {
+  trading_symbol?: string;
+  segment?: string;
+  exchange?: string;
+  product?: string;
+  quantity?: unknown;
+  net_price?: unknown;
+  credit_quantity?: unknown;
+  debit_quantity?: unknown;
+  carry_forward_credit_quantity?: unknown;
+  carry_forward_debit_quantity?: unknown;
+}
+
+/** One open position, read for closing it: nothing defaulted, nothing guessed. */
+export interface OpenPosition {
+  symbol: string;
+  segment: "CASH" | "FNO";
+  exchange: "NSE" | "BSE" | null;
+  /** null: a product this desk does not know — such a position is never closed from here. */
+  product: Product | null;
+  /** Signed: more than 0 is long, less than 0 is short. null when Groww's own
+   *  figures disagree about the direction — such a position is never closed from here. */
+  net: number | null;
+  avg: number | null;
+}
+
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/**
+ * The signed net quantity of a position. Groww's documentation says neither
+ * whether a short's `quantity` is negative, nor whether `credit_quantity` and
+ * `debit_quantity` (bought, sold) include the carried-forward legs. So a
+ * direction is accepted only when it is the same under every reading:
+ *  - a negative quantity is a short; zero is flat;
+ *  - otherwise the net from the fills is worked out both ways — today's
+ *    bought minus sold, and that plus the carried-forward net — and the
+ *    quantity must match exactly one direction: +q (long) or −q (short).
+ * Anything else (both, neither, or no fill figures at all) is null, and
+ * nothing is sent: reading a short as a long would double it, not close it.
+ */
+export function signedNet(p: GrowwPositionRaw): number | null {
+  const q = num(p.quantity);
+  if (q === null) return null;
+  if (q <= 0) return q;
+  const cr = num(p.credit_quantity);
+  const dr = num(p.debit_quantity);
+  if (cr === null && dr === null) return null;
+  const base = (cr ?? 0) - (dr ?? 0);
+  const cf = (num(p.carry_forward_credit_quantity) ?? 0) - (num(p.carry_forward_debit_quantity) ?? 0);
+  const readings = cf === 0 ? [base] : [base, base + cf];
+  const long = readings.includes(q);
+  const short = readings.includes(-q);
+  if (long && !short) return q;
+  if (short && !long) return -q;
+  return null;
+}
+
+/**
+ * Every position Groww holds for this account in one segment, for closing:
+ * the product and exchange exactly as Groww reports them, and a net quantity
+ * whose sign has been checked (see signedNet). null when the read failed — an
+ * unread book is never treated as an empty one.
+ */
+export async function getOpenPositions(segment: "CASH" | "FNO"): Promise<OpenPosition[] | null> {
+  const r = await getEnvelope<{ positions?: GrowwPositionRaw[] }>(`/v1/positions/user?segment=${segment}`);
+  if (!r.ok) return null;
+  const out: OpenPosition[] = [];
+  for (const p of r.payload?.positions ?? []) {
+    if (!p.trading_symbol) continue;
+    const seg = (p.segment ?? segment).toUpperCase();
+    if (seg !== segment) continue; // asked for one segment: never act on another's row
+    const ex = (p.exchange ?? "").toUpperCase();
+    const product = (PRODUCTS as string[]).includes((p.product ?? "").toUpperCase()) ? ((p.product as string).toUpperCase() as Product) : null;
+    out.push({
+      symbol: p.trading_symbol,
+      segment,
+      exchange: ex === "NSE" || ex === "BSE" ? ex : null,
+      product,
+      net: signedNet(p),
+      avg: num(p.net_price),
+    });
+  }
+  return out;
+}
+
 /* ----------------------------------------------------------------- orders */
 
 interface GrowwOrder {
@@ -542,6 +684,9 @@ interface GrowwOrder {
   product?: string;
   created_at?: string;
   exchange_time?: string;
+  order_reference_id?: string;
+  segment?: string;
+  exchange?: string;
 }
 
 /** Groww's vocabulary mapped onto the one the screens already speak. */
@@ -613,6 +758,74 @@ export async function getOrders(): Promise<Order[]> {
         note: o.remark || undefined,
       };
     });
+}
+
+/** One order as Groww's order book reports it, for following an order we sent. */
+export interface BookOrder {
+  orderId: string;
+  referenceId: string | null;
+  symbol: string | null;
+  /** Groww's own status word, upper-case (EXECUTED, REJECTED, …). */
+  status: string;
+  qty: number | null;
+  filled: number;
+  avg: number | null;
+  remark: string | null;
+}
+
+/** Order states after which nothing more will happen to the order. */
+export const FINAL_ORDER_STATES = new Set(["EXECUTED", "COMPLETED", "COMPLETE", "DELIVERY_AWAITED", "REJECTED", "FAILED", "CANCELLED", "CANCELED"]);
+
+/**
+ * Groww's status-by-reference lookup. Positive only: the order when Groww
+ * confirms one with this reference, else null — Groww does not document how it
+ * answers for a reference it never saw, so null never means "not placed".
+ */
+export async function getOrderByReference(ref: string, segment: "CASH" | "FNO"): Promise<BookOrder | null> {
+  const r = await getEnvelope<{ groww_order_id?: string; order_status?: string; filled_quantity?: unknown; remark?: string; order_reference_id?: string }>(
+    `/v1/order/status/reference/${encodeURIComponent(ref)}?segment=${segment}`,
+  );
+  const p = r.ok ? r.payload : null;
+  if (!p?.groww_order_id || (p.order_reference_id !== undefined && p.order_reference_id !== ref)) return null;
+  return {
+    orderId: p.groww_order_id,
+    referenceId: ref,
+    symbol: null,
+    status: (p.order_status ?? "").toUpperCase(),
+    qty: null,
+    filled: num(p.filled_quantity) ?? 0,
+    avg: null,
+    remark: p.remark ?? null,
+  };
+}
+
+/**
+ * Today's order book in one segment, up to `maxPages` pages of 100.
+ * `complete` says every page was read, so an order missing from it was never
+ * placed. null when the book could not be read.
+ */
+export async function getOrderBook(segment: "CASH" | "FNO", maxPages = 5): Promise<{ orders: BookOrder[]; complete: boolean } | null> {
+  const orders: BookOrder[] = [];
+  for (let page = 0; page < maxPages; page++) {
+    const r = await getEnvelope<{ order_list?: GrowwOrder[] }>(`/v1/order/list?segment=${segment}&page=${page}&page_size=100`);
+    if (!r.ok) return null;
+    const list = r.payload?.order_list ?? [];
+    for (const o of list) {
+      if (!o.groww_order_id) continue;
+      orders.push({
+        orderId: o.groww_order_id,
+        referenceId: o.order_reference_id ?? null,
+        symbol: o.trading_symbol ?? null,
+        status: (o.order_status ?? "").toUpperCase(),
+        qty: num(o.quantity),
+        filled: num(o.filled_quantity) ?? 0,
+        avg: num(o.average_fill_price) && (o.average_fill_price as number) > 0 ? (o.average_fill_price as number) : null,
+        remark: o.remark ?? null,
+      });
+    }
+    if (list.length < 100) return { orders, complete: true };
+  }
+  return { orders, complete: false };
 }
 
 /* --------------------------------------------------------------- FNO data */
@@ -733,6 +946,13 @@ export interface PlaceOrderInput {
   segment?: "CASH" | "FNO";
   /** SENSEX/BANKEX contracts trade on BSE; everything else here is NSE. */
   exchange?: "NSE" | "BSE";
+  /** Our own reference for the order (see isValidReferenceId); a fresh one when absent. */
+  referenceId?: string;
+}
+
+/** Groww's rule for an order reference: 8 to 20 letters, digits and at most two hyphens. */
+export function isValidReferenceId(ref: string): boolean {
+  return /^[A-Za-z0-9-]{8,20}$/.test(ref) && (ref.match(/-/g) ?? []).length <= 2;
 }
 
 export interface PlaceOrderResult {
@@ -758,7 +978,7 @@ function referenceId(): string {
 
 export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResult> {
   const segment = input.segment ?? "CASH";
-  const ref = referenceId();
+  const ref = input.referenceId ?? referenceId();
 
   const body: Record<string, unknown> = {
     trading_symbol: input.symbol,

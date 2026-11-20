@@ -85,3 +85,104 @@ def test_session_book_b_records_a_stop_exit_with_costs(tmp_path, monkeypatch):
     assert r[1] == "stop 0.5%" and r[0] == pytest.approx(3000.0 * 1.006 * (1 + 3e-4))
     assert r[2] < -0.006 * 500_000 * 0.9 and r[3] == np.floor(500_000 / (3000.0 * (1 - 3e-4)))
     assert S._open_legs(con, day) == []
+
+
+def _livex_db(tmp_path, monkeypatch):
+    from mnha_research import config, db, livex
+
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "t.sqlite", raising=False)
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "t.sqlite", raising=False)
+    return livex._db()
+
+
+def _at(day: int, hh: int, mm: int, ss: float = 0.0) -> float:
+    """Epoch seconds of IST hh:mm:ss on IST day number `day`."""
+    return day * 86_400 + hh * 3600 + mm * 60 + ss - 19_800
+
+
+def test_mstop_bar_due_checks_each_close_from_0925_to_1510_once_a_few_seconds_after_it():
+    from mnha_research import livex
+
+    day = 20_400
+    assert livex.mstop_bar_due(_at(day, 9, 20, 5)) is None  # bar 0 is the entry
+    assert livex.mstop_bar_due(_at(day, 9, 25, 1)) is None  # too soon after the close
+    assert livex.mstop_bar_due(_at(day, 9, 25, 4)) == 1
+    assert livex.mstop_bar_due(_at(day, 9, 26, 1)) is None  # more than a minute after it
+    assert livex.mstop_bar_due(_at(day, 10, 15, 30)) == livex.FLIP_BAR
+    assert livex.mstop_bar_due(_at(day, 15, 10, 10)) == 70 == livex.MSTOP_LAST_BAR
+    assert livex.mstop_bar_due(_at(day, 15, 15, 10)) is None  # 15:15 is the square-off, not a stop check
+    assert livex.bar_close_minute(0) == 9 * 60 + 20 and livex.bar_close_minute(livex.EXIT_BAR) == 15 * 60 + 15
+
+
+def test_market_stop_is_recorded_once_when_the_average_stock_is_up_half_a_percent(tmp_path, monkeypatch):
+    from mnha_research import livex
+
+    con = _livex_db(tmp_path, monkeypatch)
+    day = (pd.Timestamp("2026-11-16") - pd.Timestamp("1970-01-01")).days
+    syms = [f"S{i}" for i in range(40)]
+    with con:
+        con.execute("INSERT INTO livex_days(day, status, skip, pick, pick_px) VALUES(?,?,?,?,?)", (day, "decided", 0, "S0", 100.0))
+        con.executemany("INSERT INTO livex_rows(day, symbol, px_0920) VALUES(?,?,?)", [(day, s, 100.0) for s in syms])
+    quotes = {"q": {s: 100.4 for s in syms}}
+    monkeypatch.setattr(livex, "_ltp_many", lambda symbols: {s: quotes["q"][s] for s in symbols if s in quotes["q"]})
+    out = livex.market_stop_check(_at(day, 9, 25, 5), con)
+    assert out["checked"] and not out["stop"] and out["mkt"] == pytest.approx(0.004)
+    beat = con.execute("SELECT bar, value FROM livex_events WHERE day=? AND kind='mstop_check'", (day,)).fetchone()
+    assert beat[0] == 1 and beat[1] == pytest.approx(0.004)  # the watcher's heartbeat
+    quotes["q"] = {s: 100.6 for s in syms}
+    out = livex.market_stop_check(_at(day, 9, 30, 5), con)
+    assert out["stop"] and out["bar"] == 2
+    ev = con.execute("SELECT bar, value FROM livex_events WHERE day=? AND kind='mstop'", (day,)).fetchall()
+    assert len(ev) == 1 and ev[0][0] == 2 and ev[0][1] == pytest.approx(0.006)
+    assert con.execute("SELECT bar FROM livex_events WHERE day=? AND kind='mstop_check'", (day,)).fetchone()[0] == 2
+    assert livex.market_stop_check(_at(day, 9, 35, 5), con)["why"] == "already stopped"
+    assert livex.market_stop_check(_at(day, 9, 37, 0), con) == {"checked": False, "why": "not at a bar close"}
+
+
+def test_market_stop_needs_quotes_and_an_open_short(tmp_path, monkeypatch):
+    from mnha_research import livex
+
+    con = _livex_db(tmp_path, monkeypatch)
+    day = (pd.Timestamp("2026-11-17") - pd.Timestamp("1970-01-01")).days
+    syms = [f"S{i}" for i in range(40)]
+    with con:
+        con.execute("INSERT INTO livex_days(day, status, skip, pick, pick_px, flip) VALUES(?,?,?,?,?,?)", (day, "flipped", 0, "S0", 100.0, 1))
+        con.executemany("INSERT INTO livex_rows(day, symbol, px_0920) VALUES(?,?,?)", [(day, s, 100.0) for s in syms])
+    monkeypatch.setattr(livex, "_ltp_many", lambda symbols: {s: 101.0 for s in symbols[:10]})
+    out = livex.market_stop_check(_at(day, 9, 50, 5), con)  # before 10:15 the short is still open: 10 of 40 quotes is too few
+    assert out["checked"] is False and "quotes" in out["why"]
+    assert livex.market_stop_check(_at(day, 10, 30, 5), con)["why"] == "the short was covered by the 10:15 flip"
+    with con:
+        con.execute("UPDATE livex_days SET status='decided', flip=NULL, skip=1 WHERE day=?", (day,))
+    assert livex.market_stop_check(_at(day, 9, 50, 5), con)["why"] == "no open short"  # a regime-skip day takes nothing
+    assert con.execute("SELECT COUNT(*) FROM livex_events").fetchone()[0] == 0
+
+
+def test_today_state_reports_the_pick_the_live_flip_and_the_stop(tmp_path, monkeypatch):
+    import json
+
+    from mnha_research import live, livex
+
+    con = _livex_db(tmp_path, monkeypatch)
+    day = (pd.Timestamp("2026-11-18") - pd.Timestamp("1970-01-01")).days
+    now = _at(day, 10, 20, 0)
+    empty = livex.today_state(now)
+    assert empty["day"] == day and empty["status"] is None and empty["flip"] is None and empty["mstop"] is None
+    assert empty["mstop_check"] is None
+    with con:
+        con.execute("INSERT INTO livex_days(day, status, skip, pick, pick_px, decided_at, info) VALUES(?,?,?,?,?,?,?)",
+                    (day, "decided", 0, "TCS", 3000.0, _at(day, 9, 20, 40), json.dumps({"late": False})))
+    st = livex.today_state(now)
+    assert (st["status"], st["skip"], st["pick"], st["pick_px"], st["late"]) == ("decided", False, "TCS", 3000.0, False)
+    with con:
+        con.execute("UPDATE livex_days SET flip=1, flip_symbol='INFY', flip_px=1500.0 WHERE day=?", (day,))
+    assert livex.today_state(now)["flip"] is None  # a flip worked out by settle() was never decided live
+    with con:
+        con.execute("UPDATE livex_days SET status='flipped', flip_at=? WHERE day=?", (_at(day, 10, 16, 0), day))
+        con.execute("INSERT INTO livex_events(day, kind, at, bar, value) VALUES(?,?,?,?,?)", (day, "mstop", _at(day, 9, 45, 4), 5, 0.0061))
+        con.execute("INSERT INTO livex_events(day, kind, at, bar, value) VALUES(?,?,?,?,?)", (day, "mstop_check", _at(day, 9, 45, 4), 5, 0.0061))
+    st = livex.today_state(now)
+    assert st["flip"] == {"at": _at(day, 10, 16, 0), "do": True, "symbol": "INFY", "px": 1500.0}
+    assert st["mstop"]["bar"] == 5 and st["mstop"]["move"] == pytest.approx(0.0061)
+    assert st["mstop_check"] == {"at": _at(day, 9, 45, 4), "bar": 5, "move": pytest.approx(0.0061)}
+    assert live.today_ist(now) == day

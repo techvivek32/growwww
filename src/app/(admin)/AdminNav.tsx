@@ -36,6 +36,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
   {
     title: "Trading",
     items: [
+      { label: "Live trading", href: "/admin/live", icon: I("M13 2L3 14h9l-1 8 10-12h-9l1-8z"), live: true },
       { label: "Order addresses", href: "/admin/addresses", icon: I("M12 22s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12zM12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z") },
       { label: "Order log", href: "/admin/orders", icon: I("M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01") },
       { label: "Fee ledger", href: "/admin/fees", icon: I("M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6") },
@@ -103,7 +104,7 @@ export default function AdminNav() {
         ))}
       </nav>
       <div className="border-t border-sideline px-4 py-3 text-[11px] leading-snug text-sidemuted">
-        Broker keys are encrypted and never shown here. No order can be placed from this console.
+        Broker keys are encrypted and never shown here. Live trading sends real orders to clients&apos; Groww accounts.
       </div>
     </div>
   );

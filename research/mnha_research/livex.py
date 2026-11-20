@@ -9,7 +9,9 @@
          and buy the day's top gainer (price >= Rs 50) with Rs 5L, held to 15:15.
   15:15  square off.
 
-NO ORDER IS EVER SENT. This module reads Groww market data and writes its own tables (prefix livex_).
+NO ORDER IS EVER SENT FROM HERE. This module reads Groww market data and writes its own tables (prefix livex_).
+The website's live-trading executor reads the day's decisions (`today_state`, served at /live/today) and places
+the real orders itself, in the accounts its admin has made eligible.
 It reuses live.py's data plumbing and reproduces exp/search's engine for this variant (checked by `parity`).
 """
 
@@ -38,6 +40,8 @@ FLIP_BAR = 11  # closes 10:15
 FLIP_THR = 0.0025
 FLIP_MIN_PX = 50.0
 EXIT_BAR = lab.NB - 1
+MSTOP_LAST_BAR = EXIT_BAR - 1  # 70, the 15:10 close: the last bar the market stop is checked at (15:15 is the square-off)
+MSTOP_WINDOW_S = (3.0, 60.0)  # a bar's close is checked live between 3 and 60 seconds after it
 B_VOL = ["fb_v_daily", "fb_dv_rank", "fb_dv_vs_liq", "r_fb_v_daily"]
 F_EXT = lab.F_STAGE2 + lab.F_EXTRA
 F_FBV = lab.F_STAGE2 + B_VOL
@@ -55,6 +59,8 @@ CREATE TABLE IF NOT EXISTS livex_marks (day INTEGER NOT NULL, at REAL NOT NULL, 
 CREATE TABLE IF NOT EXISTS livex_trades (day INTEGER NOT NULL, leg TEXT NOT NULL, symbol TEXT NOT NULL, side INTEGER NOT NULL,
   qty REAL NOT NULL, entry REAL NOT NULL, exit REAL NOT NULL, entry_bar INTEGER NOT NULL, exit_bar INTEGER NOT NULL, why INTEGER NOT NULL,
   gross REAL NOT NULL, costs REAL NOT NULL, net REAL NOT NULL, PRIMARY KEY (day, leg, symbol));
+CREATE TABLE IF NOT EXISTS livex_events (day INTEGER NOT NULL, kind TEXT NOT NULL, at REAL NOT NULL, bar INTEGER, value REAL, info TEXT,
+  PRIMARY KEY (day, kind));
 """
 WHY = {0: "time", 5: "market stop", 6: "flip cover"}
 log = live.log
@@ -570,6 +576,102 @@ def report() -> dict:
             "max_fall_rs": round(float((eq.cummax().clip(lower=0) - eq).max())) if len(daily) else None,
             "days": [{"day": day_to_date(int(r.day)).isoformat(), "pick": r.pick, "skip": bool(r.skip), "flip": r.flip_symbol if r.flip and not r.skip else None,
                       "net": round(float(daily.get(r.day, 0.0)))} for r in D.itertuples()][-15:]}
+
+
+# ------------------------------------------------------------ live executor (the website's real-money mirror of book A)
+def bar_close_minute(i: int) -> int:
+    """IST minute at which 5-minute bar i closes (bar 0 closes 09:20, FLIP_BAR 10:15, EXIT_BAR 15:15)."""
+    return config.SESSION_OPEN + 5 * (i + 1)
+
+
+def mstop_bar_due(now: float | None = None) -> int | None:
+    """The bar (1..MSTOP_LAST_BAR) whose close was MSTOP_WINDOW_S seconds ago, or None."""
+    m = live.minute_ist(now)
+    i = int((m - config.SESSION_OPEN) // 5) - 1
+    if not 1 <= i <= MSTOP_LAST_BAR:
+        return None
+    since = (m - bar_close_minute(i)) * 60.0
+    return i if MSTOP_WINDOW_S[0] <= since <= MSTOP_WINDOW_S[1] else None
+
+
+def market_stop_check(now: float | None = None, con=None) -> dict:
+    """Book A's market stop, live, for the website's executor: at each 5-minute close from 09:25 to 15:10, the average
+    stock's move since the 09:20 close, with Groww's live prices a few seconds after the close standing in for the bar's
+    close (`settle` still prices the paper record from the bars, so the two can differ by a bar now and then). Once the
+    move reaches MSTOP the short is to be covered: recorded ONCE as the day's 'mstop' event in livex_events. Every
+    completed check also refreshes the day's 'mstop_check' row: the watcher's heartbeat, which the executor watches so
+    a dead or blind watcher never leaves a real short without its stop.
+    'checked' False: not at a bar close, or too few quotes (the session loop tries again within the window)."""
+    now = now if now is not None else time.time()
+    i = mstop_bar_due(now)
+    if i is None:
+        return {"checked": False, "why": "not at a bar close"}
+    day = live.today_ist(now)
+    con = con if con is not None else _db()
+    r = con.execute("SELECT status, skip, pick, flip FROM livex_days WHERE day=?", (day,)).fetchone()
+    if not r or r[0] not in ("decided", "flipped") or r[1] or not r[2]:
+        return {"checked": True, "bar": i, "why": "no open short"}
+    if r[0] == "flipped" and r[3] and i > FLIP_BAR:
+        return {"checked": True, "bar": i, "why": "the short was covered by the 10:15 flip"}
+    if con.execute("SELECT 1 FROM livex_events WHERE day=? AND kind='mstop'", (day,)).fetchone():
+        return {"checked": True, "bar": i, "why": "already stopped"}
+    px0 = {s_: float(p) for s_, p in con.execute("SELECT symbol, px_0920 FROM livex_rows WHERE day=?", (day,)) if p}
+    q = _ltp_many(list(px0))
+    moves = [q[s_] / p - 1 for s_, p in px0.items() if q.get(s_) and q[s_] > 0]
+    if not px0 or len(moves) < max(live.MIN_ROWS, 0.8 * len(px0)):
+        return {"checked": False, "bar": i, "why": f"only {len(moves)} of {len(px0)} quotes"}
+    mkt = float(np.mean(moves))
+    out = {"checked": True, "bar": i, "mkt": round(mkt, 5), "stop": mkt >= MSTOP}
+    info = json.dumps({"quotes": len(moves), "rows": len(px0)})
+    with con:
+        con.execute("INSERT OR REPLACE INTO livex_events(day, kind, at, bar, value, info) VALUES(?,?,?,?,?,?)",
+                    (day, "mstop_check", time.time(), i, mkt, info))
+        if mkt >= MSTOP:
+            con.execute("INSERT OR IGNORE INTO livex_events(day, kind, at, bar, value, info) VALUES(?,?,?,?,?,?)",
+                        (day, "mstop", time.time(), i, mkt, info))
+    if mkt >= MSTOP:
+        m = bar_close_minute(i)
+        log(f"MARKET STOP at the {m // 60:02d}:{m % 60:02d} close: the average stock is up {mkt:.2%} since 09:20 — cover the short")
+    return out
+
+
+def today_state(now: float | None = None) -> dict:
+    """Today's book A decisions for the website's executor: the 09:20 pick, the 10:15 flip (only when decided live) and the
+    market stop. Read-only: it never creates or migrates a table, so polling it every few seconds costs no write."""
+    import sqlite3
+
+    now = now if now is not None else time.time()
+    day = live.today_ist(now)
+    out = {"as_of": now, "day": day, "date": day_to_date(day).isoformat(), "minute": round(live.minute_ist(now), 4),
+           "status": None, "skip": None, "pick": None, "pick_px": None, "decided_at": None, "late": False,
+           "flip": None, "mstop": None, "mstop_check": None, "settled_at": None, "last_mark_at": None, "book": BOOK,
+           "mstop_at": MSTOP}
+    with db.tx() as con:
+        try:
+            r = con.execute("SELECT status, skip, pick, pick_px, decided_at, flip_at, flip, flip_symbol, flip_px, settled_at, info "
+                            "FROM livex_days WHERE day=?", (day,)).fetchone()
+        except sqlite3.OperationalError:  # no livex table yet: nothing decided
+            return out
+        if r:
+            try:
+                info = json.loads(r[10]) if r[10] else {}
+            except ValueError:
+                info = {}
+            out.update(status=r[0], skip=None if r[1] is None else bool(r[1]), pick=r[2], pick_px=r[3], decided_at=r[4],
+                       late=bool(info.get("late")), settled_at=r[9])
+            if r[5] is not None and r[6] is not None:  # decided live at 10:15, not worked out later by settle()
+                out["flip"] = {"at": r[5], "do": bool(r[6]), "symbol": r[7], "px": r[8]}
+        try:
+            for kind, at, bar, value in con.execute("SELECT kind, at, bar, value FROM livex_events WHERE day=? AND kind IN ('mstop', 'mstop_check')", (day,)):
+                out[kind] = {"at": at, "bar": bar, "move": value}
+        except sqlite3.OperationalError:  # the events table arrives with the first session after this release
+            pass
+        try:
+            mk = con.execute("SELECT MAX(at) FROM livex_marks WHERE day=?", (day,)).fetchone()
+            out["last_mark_at"] = mk[0] if mk else None
+        except sqlite3.OperationalError:
+            pass
+    return out
 
 
 # ------------------------------------------------------------ parity with the backtest engine

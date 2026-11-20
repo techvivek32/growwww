@@ -94,8 +94,8 @@ export function Attention({ d }: { d: AdminData }) {
   const noAddress = d.users.filter((u) => u.hasBroker && !u.brokerStaticIp);
   const ended = d.activeMembers.filter((m) => isPast(m.periodEndsAt));
   const onOld = d.users.filter((u) => !d.signedNow.has(u.id) && d.signedOld.has(u.id));
-  // An earlier version that still counts blocks nothing: 3.3 signers are only invited to sign the
-  // new one, and 3.4 signers need nothing. A version that no longer counts must be signed again.
+  // An earlier version that still counts blocks nothing: its signers are only invited to sign the
+  // new one (see INVITE_TO_SIGN). A version that no longer counts must be signed again.
   const mustResign = onOld.filter((u) => !isAcceptedVersion(d.signedOld.get(u.id)?.agreementVersion ?? ""));
   const invited = onOld.filter((u) => INVITE_TO_SIGN.includes(d.signedOld.get(u.id)?.agreementVersion ?? "")).length;
   const holidayNote = holidayListNotice();
@@ -258,6 +258,7 @@ export function RecentOrders({ d }: { d: AdminData }) {
                 <td className="px-2 py-2 whitespace-nowrap">
                   <Pill tone={tone[o.status]}>{o.status}</Pill>
                   {o.by === "admin" && <span className="ml-1.5 text-[11px] font-semibold text-warn">by admin</span>}
+                  {o.by === "system" && <span className="ml-1.5 text-[11px] font-semibold text-violet">strategy</span>}
                 </td>
                 <td className="tnum px-2 py-2 text-[12.5px] whitespace-nowrap">
                   {o.status === "cancelled" ? <span className="text-ink2">Cancel</span> : (

@@ -13,6 +13,7 @@ import { setKycDecision, scheduleKycCall } from "@/lib/kyc";
 import { getMembership, settlePeriod, settlementNotice, listInvoices, markInvoice } from "@/lib/membership";
 import { notify } from "@/lib/notifications";
 import { eraseAccount } from "@/lib/erase";
+import { liveExposure } from "@/lib/liveTrading/orders";
 import { getNavFor } from "@/lib/api/broker";
 import { addEgress, removeEgress } from "@/lib/egressStore";
 
@@ -54,6 +55,8 @@ export async function adminDisconnectBroker(formData: FormData): Promise<void> {
 export async function adminDeleteUser(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
   const userId = String(formData.get("userId") ?? "");
+  // Not while MNHA's strategy has something live in the account today (see Live trading).
+  if (userId && !isReservedId(userId) && (await liveExposure(userId))) redirect("/admin/live?erase=held");
   if (userId && !isReservedId(userId)) {
     const failed = await eraseAccount(userId);
     if (failed.length) console.error(`[erase] admin delete of ${userId} partly failed: ${failed.join(", ")}`);

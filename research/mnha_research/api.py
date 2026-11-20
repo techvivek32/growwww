@@ -195,6 +195,16 @@ def live_summary(authorization: str | None = Header(default=None)) -> dict:
     return out
 
 
+@app.get("/live/today")
+def live_today(authorization: str | None = Header(default=None)) -> dict:
+    """Today's book A decisions (09:20 pick, 10:15 flip, market stop) for the website's live-trading executor.
+    Local only (the middleware), with the same bearer token as /live."""
+    _authorised(authorization)
+    from . import livex
+
+    return livex.today_state()
+
+
 @app.get("/paper")
 def paper_books() -> list[dict]:
     books = _rows("SELECT * FROM paper_books ORDER BY id")

@@ -68,8 +68,8 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
   }
   const acc = active && membership && navInfo ? accrual(membership, navInfo.nav) : null;
   const bills = await listInvoices(uid);
-  // MNHA does not trade for members on its own judgment — they make their own
-  // trades, so a performance fee would be charged on gains MNHA had no part in.
+  // The performance fee stays off: charging one needs the operator's own SEBI
+  // registration (PMS/IA), and the automatic strategy does not change that.
   const notOffered = true;
 
   return (
@@ -170,8 +170,7 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
           </ol>
           {notOffered ? (
             <p className="text-[13px] leading-relaxed text-ink3">
-              Membership is not offered at present. You make your own trades, so there is nothing for MNHA to
-              charge a fee on.
+              Membership is not offered at present, so there is no fee to pay.
             </p>
           ) : navInfo ? (
             <>

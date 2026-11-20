@@ -104,7 +104,7 @@ async function verify(form: FormData): Promise<FormState> {
     kind: "account",
     tone: "up",
     title: "Welcome to MNHA Financials",
-    body: "Your email is verified. Connect your Groww account to see it here. MNHA places no orders by itself.",
+    body: "Your email is verified. Connect your Groww account to see it here. Section 4 of the agreement explains how MNHA's automatic intraday strategy trades connected accounts.",
     key: "welcome",
   });
   await setSession(created.user.id);

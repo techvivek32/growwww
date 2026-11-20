@@ -50,8 +50,9 @@ export default async function ConsentPage() {
     >
       {earlier && (
         <p className="mb-6 border border-pub-hair px-4 py-3 text-[14px] leading-snug text-pub-cream">
-          You signed version {earlier.agreementVersion.split(" ")[0]}, which still applies. Signing this version is optional — your
-          access stays the same either way. Signing needs a new selfie and ID photo.
+          You signed version {earlier.agreementVersion.split(" ")[0]}. This version adds MNHA&apos;s automatic intraday strategy (section 4),
+          which now trades connected accounts — yours included — whether or not you sign it. Signing is optional; your access stays
+          the same either way. Signing needs a new selfie and ID photo.
         </p>
       )}
       <ConsentFlow contract={CONTRACT} />

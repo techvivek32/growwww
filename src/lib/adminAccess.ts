@@ -5,7 +5,8 @@ import path from "node:path";
 /**
  * A log of every time the admin opens or leaves a client's account, and of the
  * acts the admin performs inside it: connecting Groww, placing or cancelling
- * an order. It is a security log: it keeps the client's internal id (not their
+ * an order — and of the orders and exits the admin sends to many accounts at
+ * once from Live trading. It is a security log: it keeps the client's internal id (not their
  * email or any other personal detail), when, and the admin's IP — and only the
  * latest entries, so it rotates out by itself.
  *
@@ -16,10 +17,12 @@ import path from "node:path";
 
 export interface AdminAccess {
   at: number;
-  kind: "open" | "close" | "connect-broker" | "order" | "cancel";
+  /** bulk-order / bulk-exit: an order or exit the admin sent to this client's
+   *  account from Live trading (one line per account). */
+  kind: "open" | "close" | "connect-broker" | "order" | "cancel" | "bulk-order" | "bulk-exit";
   userId: string;
   ip: string;
-  /** Order and cancel lines only: what was sent and how it ended. */
+  /** Order, cancel and bulk lines only: what was sent and how it ended. */
   detail?: string;
 }
 
@@ -29,6 +32,9 @@ interface Store {
 
 const FILE = process.env.ADMIN_ACCESS_FILE ?? path.join(process.cwd(), "data", "admin-access.json");
 const MAX_ITEMS = 1000;
+/** Live trading's per-account lines are kept apart, so a big batch never pushes out the account openings. */
+const MAX_BULK = 3000;
+const isBulk = (e: AdminAccess) => e.kind === "bulk-order" || e.kind === "bulk-exit";
 
 const g = globalThis as { __mnhaAdminAccess?: { queue: Promise<unknown> } };
 g.__mnhaAdminAccess ??= { queue: Promise.resolve() };
@@ -74,7 +80,12 @@ export async function logAdminAccess(entry: Omit<AdminAccess, "at">): Promise<vo
   await enqueue(async () => {
     const store = await readStrict(); // never overwrite a log that could not be read
     store.items.push({ at: Date.now(), ...entry });
-    if (store.items.length > MAX_ITEMS) store.items = store.items.slice(-MAX_ITEMS);
+    const bulk = store.items.filter(isBulk);
+    const rest = store.items.filter((e) => !isBulk(e));
+    if (bulk.length > MAX_BULK || rest.length > MAX_ITEMS) {
+      const keep = new Set([...bulk.slice(-MAX_BULK), ...rest.slice(-MAX_ITEMS)]);
+      store.items = store.items.filter((e) => keep.has(e));
+    }
     await write(store);
   });
 }
@@ -95,7 +106,8 @@ export async function scrubAdminAccessDetails(userId: string): Promise<void> {
   });
 }
 
-/** Newest first. */
-export async function recentAdminAccess(limit = 25): Promise<AdminAccess[]> {
-  return (await read()).items.slice(-limit).reverse();
+/** Newest first. `bulk`: only Live trading's per-account lines (true), or only the others (false). */
+export async function recentAdminAccess(limit = 25, opts: { bulk?: boolean } = {}): Promise<AdminAccess[]> {
+  const items = (await read()).items.filter((e) => opts.bulk === undefined || isBulk(e) === opts.bulk);
+  return items.slice(-limit).reverse();
 }

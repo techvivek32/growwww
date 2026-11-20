@@ -7,6 +7,7 @@ import { isReservedId } from "@/lib/auth";
 import { changePassword, clearBroker } from "@/lib/users";
 import { getMembership, hasDueInvoice } from "@/lib/membership";
 import { eraseAccount } from "@/lib/erase";
+import { liveExposure } from "@/lib/liveTrading/orders";
 import { setOptionalConsent, recordConsentChange, OPTIONAL_CONSENTS, type ConsentKey } from "@/lib/consent";
 
 export interface PwState {
@@ -45,6 +46,8 @@ export async function deleteAccountAction(): Promise<void> {
   // live reading), and an unpaid invoice settled — deletion skips neither.
   if ((await getMembership(uid))?.status === "active") redirect("/settings?delete=active");
   if (await hasDueInvoice(uid)) redirect("/settings?delete=due");
+  // Not while MNHA's strategy has something live in the account today: nobody would watch it after.
+  if (await liveExposure(uid)) redirect("/settings?delete=live");
   const failed = await eraseAccount(uid);
   if (failed.length) {
     console.error(`[erase] account ${uid} partly erased; failed: ${failed.join(", ")}`);

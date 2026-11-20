@@ -7,6 +7,8 @@ import { getAccount, getNav, getConnectionStatus } from "@/lib/api/broker";
 import { marketState } from "@/lib/market";
 import WaveArt from "@/components/public/WaveArt";
 import AutoRefresh from "@/components/AutoRefresh";
+import { getSettings } from "@/lib/liveTrading/store";
+import { tradePermission } from "@/lib/trading";
 
 export const metadata: Metadata = { title: "Home · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -29,21 +31,46 @@ function Row({ n, label, value, note, tone = "ink" }: { n: string; label: string
 
 /**
  * The home page. Everything on it is read live: the market session, and for a
- * member their own Groww link and order address. It says plainly that MNHA
- * places no order by itself.
+ * member their own Groww link and order address. It says plainly which orders
+ * can reach the account: the holder's own, MNHA's automatic strategy's (and
+ * whether it is sending real orders now), and the admin's.
  */
 export default async function HomePage() {
   const uid = await currentUserId();
   if (!uid) redirect("/login");
   const isOwner = uid === OWNER_ID;
 
-  const [account, nav, conn] = await Promise.all([getAccount(), getNav(), getConnectionStatus()]);
+  const [account, nav, conn, live, perm] = await Promise.all([
+    getAccount(),
+    getNav(),
+    getConnectionStatus(),
+    getSettings().catch(() => null),
+    tradePermission(uid).catch(() => null),
+  ]);
   const orderIp = conn.orderIp;
   const ms = marketState();
   const connected = account.balance !== null;
   const whoSends = isOwner
-    ? "An order goes to Groww only when you confirm it."
-    : "An order goes to Groww only when you confirm it, or when you ask MNHA's admin to place it for you.";
+    ? "Your own orders go to Groww only when you confirm them."
+    : "Your own orders go to Groww only when you confirm them; MNHA's admin can also send orders to your account.";
+  const keptOut = live ? live.excluded.includes(uid) : false;
+  const baseRs = live?.base ?? 500_000;
+  const base = `₹${baseRs.toLocaleString("en-IN")}`;
+  // This account's own standing, not just the switch: an account without a usable order
+  // address, or with less than the base free, takes no part even while the strategy is on.
+  const free = account.balance !== null ? Math.max(0, account.balance - (account.usedMargin ?? 0)) : null;
+  const strategy =
+    !live
+      ? { value: "Automatic strategy: status unavailable", tone: "warn" as const }
+      : keptOut
+        ? { value: "Automatic strategy: your account is kept out", tone: "muted" as const }
+        : live.mode !== "live"
+          ? { value: "Automatic strategy: not sending orders now", tone: "muted" as const }
+          : !perm?.allowed
+            ? { value: "Automatic strategy: on — your account cannot take part (no usable order address on your Groww key)", tone: "warn" as const }
+            : free !== null && free < baseRs
+              ? { value: `Automatic strategy: on — your account has less than ${base} free, so it takes no part`, tone: "warn" as const }
+              : { value: "Automatic strategy: on — your account takes part", tone: "ink" as const };
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -69,7 +96,9 @@ export default async function HomePage() {
                 : "Your desk shows your own Groww account as soon as it can be read. This page refreshes itself."}
             </p>
             <p className="mt-4 border-l-2 border-mark pl-3.5 text-[13.5px] leading-relaxed text-ink2">
-              MNHA places <strong className="text-ink">no orders</strong> by itself. {whoSends}
+              <strong className="text-ink">MNHA&apos;s automatic intraday strategy</strong> trades connected accounts whose Groww key
+              has MNHA&apos;s order address and that have the base amount free, as your agreement describes; every order shows in your
+              notifications. {whoSends}
             </p>
           </div>
         </div>
@@ -109,9 +138,9 @@ export default async function HomePage() {
           <Row
             n={isOwner ? "02" : "04"}
             label="Orders"
-            value="None placed automatically"
-            note={`Nothing is bought or sold for you by itself. ${whoSends} Every trade is your own decision.`}
-            tone="muted"
+            value={strategy.value}
+            note={`On a trading day the strategy may short one F&O stock at about 09:20 and buy one at about 10:15, closing both by about 15:15 — intraday only, ${base} a trade, in accounts with at least that much free. ${whoSends} Every result is yours.`}
+            tone={strategy.tone}
           />
         </ul>
       </section>

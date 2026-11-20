@@ -131,8 +131,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <>
               <p className={body}>
                 Your Groww API key is stored encrypted and used only for your own account: to read it, and to send the
-                orders you confirm here or ask MNHA&apos;s admin to place. Disconnecting removes the stored credentials; you
-                can reconnect any time.
+                orders you confirm here, the orders of MNHA&apos;s automatic intraday strategy, and the orders and exits
+                MNHA&apos;s admin sends. Disconnecting removes the stored credentials (a position the strategy already opened
+                stays open until it is closed); you can reconnect any time.
                 {keyOnFile && !status.live && " Groww did not answer just now — if that keeps happening, re-connect."}
               </p>
 
@@ -255,6 +256,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               <p role="alert" className="mb-4 border-l-2 border-warn bg-warnsoft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink">
                 Your membership is still running. Leave it first from Membership — that closes the current period — and
                 then delete your account.
+              </p>
+            )}
+            {deleteFlag === "live" && (
+              <p role="alert" className="mb-4 border-l-2 border-warn bg-warnsoft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink">
+                MNHA has a position or an order open in your account today — its automatic strategy&apos;s, or one MNHA&apos;s
+                admin sent. You can delete your account once it is closed, or after the market closes (after 15:35 IST).
               </p>
             )}
             {deleteFlag === "due" && (

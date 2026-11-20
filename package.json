@@ -9,7 +9,8 @@
     "build": "next build",
     "start": "next start -H 127.0.0.1",
     "lint": "eslint",
-    "snapshot": "node scripts/snapshot.mjs"
+    "snapshot": "node scripts/snapshot.mjs",
+    "test:live": "node scripts/test-live-trading.cjs ."
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.0.1",
