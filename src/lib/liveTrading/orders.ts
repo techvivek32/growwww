@@ -2,7 +2,9 @@ import "server-only";
 import crypto from "node:crypto";
 import { appendOrder, type LedgerStatus } from "@/lib/ledger";
 import { notify, type NotifTone } from "@/lib/notifications";
-import { cancelOrderAs, orderBookAs, orderByRefAs, placeOrderAs, positionsAs, type PlacedOrder } from "@/lib/api/broker";
+import { cancelOrderAs, houseConfigured, orderBookAs, orderByRefAs, placeOrderAs, positionsAs, type PlacedOrder } from "@/lib/api/broker";
+import { hasBroker } from "@/lib/users";
+import { OWNER_ID } from "@/lib/auth";
 import { FINAL_ORDER_STATES, type BookOrder, type OpenPosition } from "@/lib/api/groww";
 import type { OrderType, Product, Side } from "@/lib/types";
 import {
@@ -235,8 +237,17 @@ const followAt = gf.__mnhaLiveFollow;
  * order Groww still shows as working is followed for as long as it works.
  */
 export async function followOrders(): Promise<void> {
-  const open = await openOrders();
-  if (!open.length) return;
+  const all = await openOrders();
+  if (!all.length) return;
+  // An earlier day's order cannot be learned about from today's order book: settle it as unresolved.
+  const today = istNow().day;
+  for (const o of all.filter((x) => x.day !== today)) {
+    await patchOrder(o.id, {
+      final: true,
+      message: `${o.message ? `${o.message} · ` : ""}Not resolved on its day; no longer followed here — check it in Groww.`,
+    });
+  }
+  const open = all.filter((x) => x.day === today);
   const byAccount = new Map<string, LiveOrder[]>();
   for (const o of open) {
     const list = byAccount.get(o.accountId) ?? [];
@@ -248,6 +259,11 @@ export async function followOrders(): Promise<void> {
     if ((followAt.get(accountId) ?? 0) > now) return;
     const young = list.some((o) => now - (o.sentAt ?? o.at) < 120_000);
     followAt.set(accountId, now + (young ? 2_500 : 20_000));
+    // Disconnected since: nothing can be read for it now (and asking every few seconds would only fill the log).
+    if (!(await connectedNow(accountId))) {
+      followAt.set(accountId, now + 300_000);
+      return;
+    }
     await withAccountLock(accountId, async () => {
       for (const segment of ["CASH", "FNO"] as const) {
         const mine = list.filter((o) => o.segment === segment);
@@ -724,20 +740,34 @@ export async function openLegIn(args: {
  * over (15:35 IST), an order MNHA sent today that is still working, or a
  * strategy position it may still hold, would be left with nobody watching it.
  */
-export async function liveExposure(accountId: string): Promise<string | null> {
+/** Whether MNHA can still reach this account's Groww (the house key configured, or a member's key stored). */
+async function connectedNow(accountId: string): Promise<boolean> {
+  return accountId === OWNER_ID ? houseConfigured() : hasBroker(accountId).catch(() => false);
+}
+
+/**
+ * Whether this account must not be deleted just now: "open" — an order MNHA
+ * sent today is still working, or a strategy position it opened is still open
+ * at Groww; "unconfirmed" — Groww cannot be read to tell; null — go ahead.
+ * After the session (15:35 IST), or once the account's Groww is disconnected
+ * (MNHA can then neither watch nor close anything there), nothing is held.
+ */
+export async function liveExposure(accountId: string): Promise<"open" | "unconfirmed" | null> {
   const now = istNow();
   if (now.minute >= 15 * 60 + 35) return null; // intraday positions are squared off by then
+  if (!(await connectedNow(accountId))) return null;
   const mine = (await ordersOfDay(now.day)).filter((o) => o.accountId === accountId);
-  if (mine.some(working)) return "An order MNHA sent today is still working at Groww.";
+  if (mine.some(working)) return "open";
   for (const leg of ["short", "long"] as const) {
     const st = legState(mine, accountId, leg, "live");
     if (st.possible <= 0 || !st.symbol) continue;
     // Only if Groww agrees it is still open (the holder may have closed it in the Groww app).
     const positions = await positionsAs(accountId, "CASH");
-    if (!positions) return "MNHA's automatic strategy may have a position open in this account today, and Groww's positions cannot be read just now.";
+    if (!positions) return "unconfirmed";
     const row = strategyRow(positions, st.symbol);
     const net = row ? row.net : 0;
-    if (net === null || (leg === "short" ? net < 0 : net > 0)) return "MNHA's automatic strategy has a position open in this account today.";
+    if (net === null) return "unconfirmed";
+    if (leg === "short" ? net < 0 : net > 0) return "open";
   }
   return null;
 }

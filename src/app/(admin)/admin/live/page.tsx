@@ -91,7 +91,7 @@ export default async function LiveTradingPage({ searchParams }: { searchParams: 
           <ul className="space-y-1.5 text-[13px]">
             {sp.erase === "held" && (
               <li className="text-down">
-                That account was NOT deleted: MNHA&apos;s strategy has a position or an order open in it today. Close it with Exit below, or delete it after 15:35 IST.
+                That account was NOT deleted: MNHA has (or could not confirm it no longer has) a position or an order open in it today. Close it with Exit below, or delete it after 15:35 IST.
               </li>
             )}
             {tradingOff && <li className="text-down">Order placement is switched off on this server (TRADING_ENABLED=false): every real order is refused before it is sent.</li>}

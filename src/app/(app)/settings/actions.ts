@@ -46,8 +46,9 @@ export async function deleteAccountAction(): Promise<void> {
   // live reading), and an unpaid invoice settled — deletion skips neither.
   if ((await getMembership(uid))?.status === "active") redirect("/settings?delete=active");
   if (await hasDueInvoice(uid)) redirect("/settings?delete=due");
-  // Not while MNHA's strategy has something live in the account today: nobody would watch it after.
-  if (await liveExposure(uid)) redirect("/settings?delete=live");
+  // Not while MNHA has something live in the account today: nobody would watch it after.
+  const exposure = await liveExposure(uid);
+  if (exposure) redirect(`/settings?delete=${exposure === "open" ? "live" : "unconfirmed"}`);
   const failed = await eraseAccount(uid);
   if (failed.length) {
     console.error(`[erase] account ${uid} partly erased; failed: ${failed.join(", ")}`);

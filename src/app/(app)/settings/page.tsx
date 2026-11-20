@@ -264,6 +264,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 admin sent. You can delete your account once it is closed, or after the market closes (after 15:35 IST).
               </p>
             )}
+            {deleteFlag === "unconfirmed" && (
+              <p role="alert" className="mb-4 border-l-2 border-warn bg-warnsoft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink">
+                MNHA could not confirm with Groww just now that what it opened in your account today is closed. Please try again in
+                a minute, or after the market closes (after 15:35 IST).
+              </p>
+            )}
             {deleteFlag === "due" && (
               <p role="alert" className="mb-4 border-l-2 border-warn bg-warnsoft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink">
                 You have an unpaid membership invoice. Please settle it first — see Membership — and then delete your account.

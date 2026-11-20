@@ -7,7 +7,9 @@ import { getAccount, getNav, getConnectionStatus } from "@/lib/api/broker";
 import { marketState } from "@/lib/market";
 import WaveArt from "@/components/public/WaveArt";
 import AutoRefresh from "@/components/AutoRefresh";
-import { getSettings } from "@/lib/liveTrading/store";
+import { getDay, getSettings } from "@/lib/liveTrading/store";
+import { istNow } from "@/lib/liveTrading/util";
+import { isTradingDate } from "@/lib/market";
 import { tradePermission } from "@/lib/trading";
 
 export const metadata: Metadata = { title: "Home · MNHA Financials" };
@@ -40,12 +42,14 @@ export default async function HomePage() {
   if (!uid) redirect("/login");
   const isOwner = uid === OWNER_ID;
 
-  const [account, nav, conn, live, perm] = await Promise.all([
+  const t = istNow();
+  const [account, nav, conn, live, perm, today] = await Promise.all([
     getAccount(),
     getNav(),
     getConnectionStatus(),
     getSettings().catch(() => null),
     tradePermission(uid).catch(() => null),
+    isTradingDate(t.date) ? getDay(t.day, t.date).catch(() => null) : Promise.resolve(null),
   ]);
   const orderIp = conn.orderIp;
   const ms = marketState();
@@ -59,8 +63,17 @@ export default async function HomePage() {
   // This account's own standing, not just the switch: an account without a usable order
   // address, or with less than the base free, takes no part even while the strategy is on.
   const free = account.balance !== null ? Math.max(0, account.balance - (account.usedMargin ?? 0)) : null;
-  const strategy =
-    !live
+  // Once today's accounts are fixed (the day's first strategy order), the day's plan decides —
+  // not a fresh look at cash or the switch: the strategy's margin lowers free cash, and what the
+  // day opened is closed in the mode it began in, whatever the switch says now.
+  const inPlay = today?.accounts && !today.done.close ? today : null;
+  const strategy = inPlay
+    ? inPlay.accounts!.includes(uid)
+      ? inPlay.mode === "live"
+        ? { value: "Automatic strategy: your account is in today's trades — its positions are closed by about 15:15", tone: "ink" as const }
+        : { value: "Automatic strategy: today runs in shadow mode — nothing is sent", tone: "muted" as const }
+      : { value: "Automatic strategy: your account is not in today's trades", tone: "muted" as const }
+    : !live
       ? { value: "Automatic strategy: status unavailable", tone: "warn" as const }
       : keptOut
         ? { value: "Automatic strategy: your account is kept out", tone: "muted" as const }

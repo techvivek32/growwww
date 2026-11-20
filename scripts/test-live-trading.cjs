@@ -49,6 +49,7 @@ const world = {
   byRef: {}, // accountId -> { ref: BookOrder }  (Groww's status-by-reference)
   cancels: [], // [accountId, orderId]
   erasing: new Set(),
+  disconnected: new Set(),
 };
 const broker = {
   placeOrderAs: async (accountId, input) => {
@@ -63,6 +64,7 @@ const broker = {
   },
   orderBookAs: async (accountId) => world.books[accountId] ?? null,
   orderByRefAs: async (accountId, ref) => (world.byRef[accountId] ?? {})[ref] ?? null,
+  houseConfigured: () => true,
   cancelOrderAs: async (accountId, orderId) => {
     world.cancels.push([accountId, orderId]);
     return { ok: true, message: null, sent: true };
@@ -74,6 +76,8 @@ const orders = load("src/lib/liveTrading/orders.ts", {
   "@/lib/ledger": { appendOrder: async (e) => void world.ledger.push(e) },
   "@/lib/notifications": { notify: async (u, n) => void world.notes.push([u, n]) },
   "@/lib/api/broker": broker,
+  "@/lib/users": { hasBroker: async (id) => !world.disconnected.has(id) },
+  "@/lib/auth": { OWNER_ID: "owner" },
   "@/lib/kycHandoff": { isErasing: (id) => world.erasing.has(id) },
   "@/lib/api/groww": { FINAL_ORDER_STATES: groww.FINAL_ORDER_STATES },
   "./store": store,
@@ -102,6 +106,7 @@ const reset = async () => {
   world.byRef = {};
   world.cancels = [];
   world.erasing = new Set();
+  world.disconnected = new Set();
 };
 const pos = (symbol, net, product = "MIS", segment = "CASH", exchange = "NSE") => ({ symbol, segment, exchange, product, net, avg: 100 });
 let dayN = 21000;
@@ -165,7 +170,7 @@ test("an order is sent once: a second send of the same id sends nothing", async 
 
 test("an unknown outcome is found by reference and booked once", async () => {
   await reset();
-  const day = freshDay();
+  const day = util.istNow().day; // followed orders: today's book only covers today
   world.placeQueue.push({ ok: false, outcome: "unknown", orderId: null, status: null, filled: null, message: "timeout", httpStatus: 0 });
   const o = await orders.openLegIn({ day, action: "entry", leg: "short", accountId: "u2", mode: "live", symbol: "INFY", qty: 50 });
   assert.equal(o.state, "unknown");
@@ -223,7 +228,7 @@ test("a record left 'sending' by a crash is booked when found, and called not-se
 
 test("'never placed' needs a book that shows references; status-by-reference can confirm one", async () => {
   await reset();
-  const day = freshDay();
+  const day = util.istNow().day; // followed orders: today's book only covers today
   const base = { day, updatedAt: 0, source: "auto", mode: "live", action: "entry", leg: "short", batch: null, symbol: "SBIN", side: "SELL", qty: 10, product: "MIS", type: "MARKET", price: null, segment: "CASH", exchange: "NSE", state: "unknown", orderId: null, status: null, filled: null, avg: null, message: null, final: false, booked: true };
   // a book with orders but no references at all: never concluded "not placed"
   const k1 = orders.strategyKey(day, "entry", "r1", 0);
@@ -346,7 +351,7 @@ test("a rejected cover is retried after the gap, at most three times", async () 
 
 test("a close stuck at Groww is never doubled — not by another step, not by an admin exit", async () => {
   await reset();
-  const day = freshDay();
+  const day = util.istNow().day; // followed orders: today's book only covers today
   await filledEntry(day, "w1", "TCS", 100);
   world.positions.w1 = { CASH: [pos("TCS", -100)], FNO: [] };
   world.placeQueue.push({ ok: true, outcome: "placed", orderId: "S1", status: "OPEN", filled: 0, message: null, httpStatus: 200 });
@@ -412,7 +417,7 @@ test("a strategy entry stuck unfilled is cancelled after a minute; a stuck close
 
 test("an admin's resting limit order on the strategy position is cancelled before the close, never counted on", async () => {
   await reset();
-  const day = freshDay();
+  const day = util.istNow().day; // followed orders: today's book only covers today
   await filledEntry(day, "l1", "TCS", 100);
   // the admin's take-profit: BUY 100 TCS MIS LIMIT, resting
   world.placeQueue.push({ ok: true, outcome: "placed", orderId: "TP1", status: "OPEN", filled: 0, message: null, httpStatus: 200 });
@@ -539,6 +544,28 @@ test("an exit confirmation closes only what its preview showed, in that directio
   const r2 = await orders.exitIn({ batch: "bPICK0002", day, accountId: "p2", symbol: null, picks });
   assert.equal(world.places.length, 0);
   assert.match(r2.rows[0].skip, /direction changed/);
+});
+
+test("deletion is held only while MNHA can still see something open — never after a disconnect", async () => {
+  await reset();
+  const day = util.istNow().day;
+  const minute = util.istNow().minute;
+  world.placeQueue.push({ ok: true, outcome: "placed", orderId: "DX1", status: "EXECUTED", filled: 10, message: null, httpStatus: 200 });
+  const e = await orders.openLegIn({ day, action: "entry", leg: "short", accountId: "del1", mode: "live", symbol: "TCS", qty: 10 });
+  await store.patchOrder(e.id, { final: true, filled: 10, status: "EXECUTED" });
+  if (minute < 15 * 60 + 35) {
+    world.positions.del1 = { CASH: [pos("TCS", -10)], FNO: [] };
+    assert.equal(await orders.liveExposure("del1"), "open");
+    world.positions.del1 = null; // Groww cannot be read
+    assert.equal(await orders.liveExposure("del1"), "unconfirmed");
+    world.positions.del1 = { CASH: [], FNO: [] }; // closed in the Groww app
+    assert.equal(await orders.liveExposure("del1"), null);
+    world.positions.del1 = { CASH: [pos("TCS", -10)], FNO: [] };
+    world.disconnected.add("del1"); // MNHA can no longer watch or close it: nothing to hold for
+    assert.equal(await orders.liveExposure("del1"), null);
+  } else {
+    assert.equal(await orders.liveExposure("del1"), null); // after the session nothing is held
+  }
 });
 
 test("nothing is sent or recorded for an account being erased", async () => {
