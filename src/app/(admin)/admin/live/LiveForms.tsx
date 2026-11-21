@@ -223,8 +223,10 @@ export function OrderFlow({ accounts, base }: { accounts: AccountOption[]; base:
   const [preview, previewAction, previewing] = useActionState<OrderFlowState, FormData>(livePreviewOrder, {});
   const [sent, sendAction] = useActionState<OrderFlowState, FormData>(liveConfirmOrder, {});
   const [type, setType] = useState("MARKET");
-  const [again, setAgain] = useState(false);
+  // The "send it again" tick belongs to ONE preview: a new preview always starts unticked.
+  const [againFor, setAgainFor] = useState<string | null>(null);
   const plan = preview.plan;
+  const again = Boolean(plan && againFor === plan.id);
   const doneHere = sent.done && plan && sent.done.planId === plan.id;
   const sendCount = plan ? (again ? plan.rows.length : plan.rows.filter((r) => !r.dup).length) : 0;
   return (
@@ -303,14 +305,14 @@ export function OrderFlow({ accounts, base }: { accounts: AccountOption[]; base:
             <input type="hidden" name="planId" value={plan.id} />
             {plan.rows.some((r) => r.dup) && (
               <label className="flex basis-full items-center gap-2 text-[12.5px] text-ink">
-                <input type="checkbox" name="again" value="1" checked={again} onChange={(e) => setAgain(e.target.checked)} />
+                <input type="checkbox" name="again" value="1" checked={again} onChange={(e) => setAgainFor(e.target.checked ? plan.id : null)} />
                 Send it again to the accounts that already got this same order (otherwise they are skipped)
               </label>
             )}
             <Submit label={`Send to ${sendCount} account${sendCount === 1 ? "" : "s"}`} busy="Sending…" cls={btnDanger} />
             <span className="text-[12px] text-ink3">Real orders, sent once. The preview expires in 10 minutes.</span>
           </form>
-          {sent.error && <p role="alert" className="text-[12.5px] text-down">{sent.error}</p>}
+          {sent.error && (!sent.errorFor || sent.errorFor === plan.id) && <p role="alert" className="text-[12.5px] text-down">{sent.error}</p>}
         </div>
       )}
 
@@ -412,7 +414,7 @@ export function ExitFlow({ accounts, suggestions }: { accounts: AccountOption[];
           ) : (
             <p className="text-[12.5px] text-ink3">Nothing to close.</p>
           )}
-          {sent.error && <p role="alert" className="text-[12.5px] text-down">{sent.error}</p>}
+          {sent.error && (!sent.errorFor || sent.errorFor === plan.id) && <p role="alert" className="text-[12.5px] text-down">{sent.error}</p>}
         </div>
       )}
 

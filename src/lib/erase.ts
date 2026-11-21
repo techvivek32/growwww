@@ -18,10 +18,11 @@ import { clearErasing, markErasing, revokeHandoffs } from "@/lib/kycHandoff";
  * so the caller can surface them. Invoices are kept — see deleteMembership.
  */
 export async function eraseAccount(userId: string): Promise<string[]> {
+  let mark: symbol | null = null;
   const steps: [string, (id: string) => Promise<void>][] = [
     // First, so no phone link can upload photos while the rest is erased.
     ["phone links", async (id) => {
-      markErasing(id); // uploads already under way, and live-trading sends, write nothing from here on
+      mark = markErasing(id); // uploads already under way, and live-trading sends, write nothing from here on
       revokeHandoffs(id);
     }],
     // Early, and under the account's live-trading lock: no order for it is in flight while it goes.
@@ -44,6 +45,6 @@ export async function eraseAccount(userId: string): Promise<string[]> {
       console.error(`[erase] ${name} failed for ${userId}:`, e instanceof Error ? e.message : e);
     }
   }
-  if (failed.includes("account")) clearErasing(userId); // the account is still there: it may upload again
+  if (failed.includes("account") && mark) clearErasing(userId, mark); // the account is still there: it may upload again
   return failed;
 }

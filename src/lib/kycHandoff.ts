@@ -65,15 +65,23 @@ export function handoffHeld(token: string, userId: string): boolean {
   return store.get(token)?.userId === userId;
 }
 
-/* Accounts being erased right now, so an upload already under way writes nothing
- * even before the account record (erased last) is gone. */
-const erasing = ((globalThis as { __mnhaErasing?: Set<string> }).__mnhaErasing ??= new Set<string>());
-export function markErasing(userId: string): void {
-  erasing.add(userId);
+/* Accounts being erased right now, so an upload already under way (or a live-trading
+ * send) writes nothing even before the account record (erased last) is gone. One mark
+ * per request: a request lifts only its own, never another one still under way. */
+const erasing = ((globalThis as { __mnhaErasingMarks?: Map<string, Set<symbol>> }).__mnhaErasingMarks ??= new Map<string, Set<symbol>>());
+export function markErasing(userId: string): symbol {
+  const mark = Symbol(userId);
+  const marks = erasing.get(userId) ?? new Set<symbol>();
+  marks.add(mark);
+  erasing.set(userId, marks);
+  return mark;
 }
-export function clearErasing(userId: string): void {
-  erasing.delete(userId);
+export function clearErasing(userId: string, mark: symbol): void {
+  const marks = erasing.get(userId);
+  if (!marks) return;
+  marks.delete(mark);
+  if (!marks.size) erasing.delete(userId);
 }
 export function isErasing(userId: string): boolean {
-  return erasing.has(userId);
+  return (erasing.get(userId)?.size ?? 0) > 0;
 }

@@ -12,6 +12,7 @@ import { modesFor } from "@/lib/liveTrading/executor";
 import { istNow } from "@/lib/liveTrading/util";
 import { isTradingDate } from "@/lib/market";
 import { tradePermission } from "@/lib/trading";
+import { houseConfigured } from "@/lib/api/broker";
 
 export const metadata: Metadata = { title: "Home · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -76,8 +77,15 @@ export default async function HomePage() {
   const opensNow = inPlay && live ? modesFor(live, inPlay).open === inPlay.mode : false;
   const mayStill = Boolean(inPlay?.accounts?.includes(uid) && !keptOut && opensNow && (!inPlay.done.entry || !inPlay.done.flip));
   const shadowDay = inPlay?.mode === "shadow";
+  // Can MNHA send to this account at all right now? (Its order address, its Groww key, the house key.)
+  // A Groww read that failed just now is not counted: that alone does not stop MNHA's orders.
+  const reachable = Boolean(perm?.allowed) && conn.credentials && (!isOwner || houseConfigured());
   const strategy = inPlay
-    ? keptOut
+    ? !shadowDay && traded && !reachable
+      ? { value: "Automatic strategy: MNHA cannot send orders to your Groww right now — if a strategy position is open, close it in Groww (Groww squares intraday positions off itself near 15:20)", tone: "warn" as const }
+      : !shadowDay && !traded && mayStill && !reachable
+        ? { value: "Automatic strategy: your account cannot take part right now (MNHA cannot send orders to your Groww)", tone: "warn" as const }
+        : keptOut
       ? { value: traded && !shadowDay ? "Automatic strategy: your account is kept out — what it opened today is still closed by about 15:15" : "Automatic strategy: your account is kept out", tone: "muted" as const }
       : traded || mayStill
         ? shadowDay
@@ -92,11 +100,13 @@ export default async function HomePage() {
         ? { value: "Automatic strategy: your account is kept out", tone: "muted" as const }
         : live.mode !== "live"
           ? { value: "Automatic strategy: not sending orders now", tone: "muted" as const }
-          : !perm?.allowed
+          : !perm?.allowed || (isOwner && !houseConfigured())
             ? { value: "Automatic strategy: on — your account cannot take part (no usable order address on your Groww key)", tone: "warn" as const }
-            : free !== null && free < baseRs
-              ? { value: `Automatic strategy: on — your account has less than ${base} free, so it takes no part`, tone: "warn" as const }
-              : { value: "Automatic strategy: on — your account takes part", tone: "ink" as const };
+            : free === null
+              ? { value: "Automatic strategy: on — your Groww cash could not be read just now, so whether your account takes part is not known", tone: "warn" as const }
+              : free < baseRs
+                ? { value: `Automatic strategy: on — your account has less than ${base} free, so it takes no part`, tone: "warn" as const }
+                : { value: "Automatic strategy: on — your account takes part when it has at least that much free shortly before 09:20", tone: "ink" as const };
 
   return (
     <div className="mx-auto max-w-5xl">

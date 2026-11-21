@@ -4,6 +4,7 @@ import { liveToday, type LiveToday } from "@/lib/research";
 import { houseLtp } from "@/lib/api/broker";
 import { checkAccounts } from "./accounts";
 import { tradePermission } from "@/lib/trading";
+import { notify } from "@/lib/notifications";
 import { currentConsent } from "@/lib/consent";
 import { OWNER_ID } from "@/lib/auth";
 import { ACTION_LABEL, acctToken, addNote, getDay, getSettings, ordersOfDay, updateDay, type DaySignals, type DayState, type LegPlan, type LiveSettings, type OrderAction, type Leg } from "./store";
@@ -506,15 +507,39 @@ async function closeAll(now: IstNow, day: DayState, action: OrderAction, leg: Le
     } else {
       E.held.since.delete(k);
     }
-    if (results[i] === "offline") await noteOnce(now, `offline|${accounts[i]}`, "error", `${label(accounts[i])}: Groww is disconnected (or its key no longer works), so MNHA cannot close its ${plan.symbol} — Groww squares intraday positions off itself near 15:20.`);
-    if (results[i] === "gave-up") await noteOnce(now, `gave-up|${action}|${accounts[i]}`, "error", `${label(accounts[i])}: ${plan.symbol} could not be closed after several tries — close it from Exit below or in Groww.`);
+    if (results[i] === "offline") {
+      await noteOnce(now, `offline|${action}|${accounts[i]}`, "error", `${label(accounts[i])}: Groww is disconnected (or its key no longer works), so MNHA cannot close its ${plan.symbol} now — it keeps trying and closes it as soon as Groww is reconnected; otherwise Groww squares intraday positions off itself near 15:20.`);
+      if (mode === "live") await tellHolder(now, accounts[i], `offline|${action}`, plan.symbol, "your Groww is disconnected from MNHA (or its key no longer works)");
+    }
+    if (results[i] === "gave-up") {
+      await noteOnce(now, `gave-up|${action}|${accounts[i]}`, "error", `${label(accounts[i])}: ${plan.symbol} could not be closed after several tries — close it from Exit below or in Groww.`);
+      if (mode === "live") await tellHolder(now, accounts[i], `gave-up|${action}`, plan.symbol, "Groww refused the closing order several times");
+    }
     if (results[i] === "unclear") await noteOnce(now, `unclear|${action}|${accounts[i]}`, "error", `${label(accounts[i])}: Groww's figures for ${plan.symbol} disagree about the direction, so nothing was sent — check it in Groww.`);
   }
   return {
-    converged: results.every((r) => r === "done" || r === "gave-up" || r === "unclear" || r === "offline"),
+    // "offline" never counts as finished: the step stays open and closes the position the moment
+    // the account's Groww is reachable again (checking costs a local read, no broker call). The
+    // 15:15 close gives up at 15:24 and reports what is still open.
+    converged: results.every((r) => r === "done" || r === "gave-up" || r === "unclear"),
     failed: results.filter((r) => r === "gave-up" || r === "unclear" || r === "offline").length,
     accounts: accounts.length,
   };
+}
+
+/** Tell the account holder, once per day and reason, that MNHA could not close its strategy position. */
+async function tellHolder(now: IstNow, accountId: string, why: string, symbol: string, reason: string): Promise<void> {
+  try {
+    await notify(accountId, {
+      kind: "order",
+      tone: "warn",
+      title: "MNHA could not close a strategy position",
+      body: `${symbol}: ${reason}. Please close it in Groww — Groww squares intraday positions off itself near 15:20.`,
+      key: `lt-hold-${now.day}-${why}`,
+    });
+  } catch (err) {
+    console.error("[live] holder notice failed:", err instanceof Error ? err.message : err);
+  }
 }
 
 async function stopStep(now: IstNow, signals: DaySignals): Promise<void> {

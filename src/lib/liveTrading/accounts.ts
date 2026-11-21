@@ -165,17 +165,20 @@ export async function checkAccounts(
   const ids = new Set(accounts.map((a) => a.id));
   if (!opts.only) for (const k of [...readings.keys()]) if (!ids.has(k)) readings.delete(k);
   if (opts.budgetMs) {
-    // Pages: every stale reading starts at once (each Groww call is bounded, and readings in flight
-    // are shared), and the page waits on ONE deadline for all of them, not one per account.
+    // Pages: up to 16 stale readings at a time (each Groww call is bounded, and readings in flight
+    // are shared), all under ONE deadline, not one per account. Past it no new reading starts: the
+    // last reading stands in (or "being read"), and the next look picks those accounts up.
+    const endAt = Date.now() + opts.budgetMs;
     const deadline = sleep(opts.budgetMs).then(() => null);
-    return Promise.all(
-      accounts.map(async (a) => {
-        const hit = readings.get(a.id);
-        if (hit && maxAge > 0 && Date.now() - hit.at < maxAge) return classify(a, hit, settings);
-        const r = await Promise.race([readOnce(a).catch(() => null), deadline]);
-        return classify(a, r ?? hit ?? { at: Date.now(), pending: true, canSend: false, denial: null, signed: false, agreement: null, funds: null }, settings);
-      }),
-    );
+    const standIn = (a: TradingAccount, hit: Reading | undefined) =>
+      classify(a, hit ?? { at: Date.now(), pending: true, canSend: false, denial: null, signed: false, agreement: null, funds: null }, settings);
+    return pool(accounts, 16, async (a) => {
+      const hit = readings.get(a.id);
+      if (hit && maxAge > 0 && Date.now() - hit.at < maxAge) return classify(a, hit, settings);
+      if (Date.now() >= endAt) return standIn(a, hit);
+      const r = await Promise.race([readOnce(a).catch(() => null), deadline]);
+      return r ? classify(a, r, settings) : standIn(a, hit);
+    });
   }
   return pool(accounts, 4, async (a) => {
     const hit = readings.get(a.id);

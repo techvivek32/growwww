@@ -81,8 +81,9 @@ export async function liveCancelOrder(form: FormData): Promise<void> {
   const id = String(form.get("id") ?? "");
   if (!id) return;
   const ip = clientIp(await headers());
-  const o = await cancelByAdmin(id);
-  if (o) {
+  const r = await cancelByAdmin(id);
+  if (r?.sent) {
+    const o = r.order;
     try {
       await logAdminAccess({ kind: "cancel", userId: o.accountId, ip, detail: `Live trading: cancel ${o.side} ${o.qty} ${o.symbol} · ${o.orderId ?? ""} · ${o.message ?? ""}` });
     } catch (err) {
@@ -197,6 +198,8 @@ export interface OrderPlanView {
 
 export interface OrderFlowState {
   error?: string;
+  /** The preview an error belongs to (shown only under that one). */
+  errorFor?: string;
   plan?: OrderPlanView;
   done?: { planId: string; summary: string; rows: SentRow[]; pending: boolean };
 }
@@ -256,9 +259,11 @@ export async function livePreviewOrder(_prev: OrderFlowState, form: FormData): P
       side === "BUY" && free !== null && free < (product === "CNC" ? value : value / 5)
         ? `Free ₹${Math.round(free).toLocaleString("en-IN")} may not cover it — Groww will refuse it if so.`
         : null;
-    const prev = dups.get(id)?.at(-1);
-    const dup = prev
-      ? `${prev.side} ${prev.qty.toLocaleString("en-IN")} ${prev.symbol} already went to this account at ${clock(istNow(prev.at).minute)} (${prev.status ? prev.status.toLowerCase() : prev.state}).`
+    const list = dups.get(id) ?? [];
+    const dup = list.length
+      ? `${list.length === 1 ? "An order" : `${list.length} orders`} of this kind already went to this account: ${list
+          .map((o) => `${o.side} ${o.qty.toLocaleString("en-IN")} at ${clock(istNow(o.at).minute)} (${o.status ? o.status.toLowerCase() : o.state})`)
+          .join("; ")}.`
       : null;
     return { id, label, free, note, dup };
   });
@@ -273,38 +278,35 @@ export async function liveConfirmOrder(_prev: OrderFlowState, form: FormData): P
   if (!(await requireAdmin())) return { error: NOT_ADMIN };
   const planId = String(form.get("planId") ?? "");
   const plan = takePlan(planId, "order");
-  if (!plan || plan.kind !== "order") return { error: "This preview has expired or was already sent. Make a new one." };
+  if (!plan || plan.kind !== "order") return { error: "This preview has expired or was already sent. Make a new one.", errorFor: planId };
   const again = String(form.get("again") ?? "") === "1";
   const ok = await canTakeOrders(plan.accounts);
   const day = istNow().day;
   const s = plan.spec;
-  // The window runs from 15 minutes before the PREVIEW, so a duplicate the admin was shown cannot age
-  // out before the click. Accounts flagged in the preview are skipped unless the admin ticked "send it
-  // again" — and even then only the orders shown are overridden: any other one of the same kind
-  // (another batch, recorded since) still holds the send back, checked again inside each account's
-  // lock just before sending (adminOrderIn), so overlapping confirmations never both send.
+  // The duplicate window runs from 15 minutes before the PREVIEW, so a duplicate the admin was shown
+  // cannot age out before the click. The decision is made per account inside its lock, just before
+  // sending (adminOrderIn), where every earlier send has finished: an order of the same kind held
+  // back — unless the admin ticked "send it again", and then only the orders the preview showed are
+  // overridden. One that Groww reports cancelled or rejected with nothing filled does not count.
   const since = Math.min(plan.at, Date.now()) - DUPLICATE_MS;
   const shown = (id: string) => plan.flagged[id] ?? [];
-  const nowDups = await recentSame(s, [...ok.keys()], since);
-  const held = [...ok.keys()].filter((id) => {
-    const extra = (nowDups.get(id) ?? []).filter((o) => !again || !shown(id).includes(o.id));
-    return (!again && shown(id).length > 0) || extra.length > 0;
-  });
-  const targets = [...ok.entries()].filter(([id]) => !held.includes(id));
+  const targets = [...ok.entries()];
   const ip = clientIp(await headers());
   const describeSpec = `${s.side} ${s.qty} ${s.symbol} ${s.product} ${s.type}${s.price != null ? ` @ ${s.price}` : ""}`;
-  for (const id of held) await logBulk("bulk-order", id, `${describeSpec} · held back: the same order already went to this account`, ip);
-  let errors = 0;
-  let lateHeld = 0;
-  let erasing = 0;
+  const tally = { held: 0, erasing: 0, exists: 0, errors: 0 };
   const run = pool(targets, 4, async ([accountId, label]) => {
     try {
       const r = await adminOrderIn({ batch: planId, day, accountId, symbol: s.symbol, side: s.side, qty: s.qty, product: s.product, type: s.type, price: s.price, since, ignore: again ? shown(accountId) : [] });
       if ("held" in r) {
         if (r.held === "duplicate") {
-          lateHeld++;
-          await logBulk("bulk-order", accountId, `${describeSpec} · held back: another batch of this order reached the account first`, ip);
-        } else if (r.held === "erasing") erasing++;
+          tally.held++;
+          await logBulk("bulk-order", accountId, `${describeSpec} · held back: ${r.dup ? `${r.dup.side} ${r.dup.qty} ${r.dup.symbol} already went to this account at ${clock(istNow(r.dup.at).minute)}` : "the same order already went to this account"}`, ip);
+        } else if (r.held === "erasing") {
+          tally.erasing++;
+          await logBulk("bulk-order", accountId, `${describeSpec} · not sent: the account was being deleted`, ip);
+        } else {
+          tally.exists++;
+        }
         return null;
       }
       const o = r.order;
@@ -312,7 +314,7 @@ export async function liveConfirmOrder(_prev: OrderFlowState, form: FormData): P
       return sentRow(label, o);
     } catch (err) {
       // One account's failure never stops the others, nor hides what they did.
-      errors++;
+      tally.errors++;
       console.error(`[live] bulk order for ${accountId} failed:`, err instanceof Error ? err.message : err);
       return null;
     }
@@ -321,16 +323,21 @@ export async function liveConfirmOrder(_prev: OrderFlowState, form: FormData): P
   const rows = await Promise.race([run, sleep(Math.max(0, answerBy - Date.now())).then(() => undefined)]);
   revalidatePath(PATH);
   const skipped = plan.accounts.length - ok.size;
-  const extra = `${held.length ? `, ${held.length} held back (the same order already went there)` : ""}${skipped ? `, ${skipped} skipped (no longer able to trade)` : ""}`;
+  const tail = (extraNotes: string) => `${extraNotes}${skipped ? `, ${skipped} skipped (no longer able to trade)` : ""}`;
   if (rows === undefined) {
-    return { done: { planId, summary: `${s.side} ${s.qty.toLocaleString("en-IN")} ${s.symbol}: still sending to ${targets.length} account${targets.length === 1 ? "" : "s"}${extra} — results appear under Today's orders.`, rows: [], pending: true } };
+    return { done: { planId, summary: `${s.side} ${s.qty.toLocaleString("en-IN")} ${s.symbol}: still sending to ${targets.length} account${targets.length === 1 ? "" : "s"}${tail("")} — results appear under Today's orders and in the admin access log.`, rows: [], pending: true } };
   }
   const sent = rows.filter((r): r is SentRow => r !== null);
   const by = (st: string) => sent.filter((r) => r.state === st).length;
+  const notes = [
+    tally.held ? `${tally.held} held back (the same order already went there)` : "",
+    tally.erasing ? `${tally.erasing} not sent (being deleted at that moment)` : "",
+    tally.exists ? `${tally.exists} already sent by this same confirmation` : "",
+  ].filter(Boolean);
   return {
     done: {
       planId,
-      summary: `${s.side} ${s.qty.toLocaleString("en-IN")} ${s.symbol}: ${by("placed")} placed, ${by("rejected")} rejected, ${by("unknown")} unknown, ${by("refused")} refused${extra}${lateHeld ? `, ${lateHeld} held back (another batch of this order reached them first)` : ""}${erasing ? `, ${erasing} skipped (being deleted)` : ""}${errors ? ` — and ${errors} stopped with an error: some of those may have gone out; check Today's orders` : ""}.`,
+      summary: `${s.side} ${s.qty.toLocaleString("en-IN")} ${s.symbol}: ${by("placed")} placed, ${by("rejected")} rejected, ${by("unknown")} unknown, ${by("refused")} refused${tail(notes.length ? `, ${notes.join(", ")}` : "")}${tally.errors ? ` — and ${tally.errors} stopped with an error: some of those may have gone out; check Today's orders` : ""}.`,
       rows: sent,
       pending: false,
     },
@@ -348,9 +355,14 @@ export interface ExitPlanView {
 
 export interface ExitFlowState {
   error?: string;
+  /** The preview an error belongs to (shown only under that one). */
+  errorFor?: string;
   plan?: ExitPlanView;
   done?: { planId: string; summary: string; pending: boolean; accounts: { id: string; label: string; error: string | null; skipped: ExitRow[]; sent: SentRow[] }[] };
 }
+
+const EXIT_PREVIEW_WITHIN_MS = 20_000;
+const NOT_READ_IN_TIME = "Groww's positions were not read in time — left out of this exit; preview again to include it.";
 
 export async function livePreviewExit(_prev: ExitFlowState, form: FormData): Promise<ExitFlowState> {
   if (!(await requireAdmin())) return { error: NOT_ADMIN };
@@ -362,8 +374,15 @@ export async function livePreviewExit(_prev: ExitFlowState, form: FormData): Pro
   if (!ids.length) return { error: "Tick at least one account." };
   const { ok, refused } = await sendable(ids);
   if (!ok.size) return { error: "None of the ticked accounts can send orders right now (see Accounts)." };
-  // Each read is bounded (25 s at most), and they run side by side so the preview answers in time.
-  const accounts = await pool([...ok.entries()], 16, async ([id, label]) => ({ id, label, ...(await previewExitIn(id, symbol)) }));
+  // Up to 16 accounts are read side by side, all under one deadline so the preview answers in time
+  // however many accounts are ticked: an account not read by then is shown so and left out.
+  const endAt = Date.now() + EXIT_PREVIEW_WITHIN_MS;
+  const late = sleep(EXIT_PREVIEW_WITHIN_MS).then(() => ({ rows: [] as ExitRow[], error: NOT_READ_IN_TIME }));
+  const accounts = await pool([...ok.entries()], 16, async ([id, label]) => {
+    if (Date.now() >= endAt) return { id, label, rows: [] as ExitRow[], error: NOT_READ_IN_TIME };
+    const read = previewExitIn(id, symbol).catch(() => ({ rows: [] as ExitRow[], error: "Groww's positions could not be read." }));
+    return { id, label, ...(await Promise.race([read, late])) };
+  });
   // The confirmation closes only what this preview shows: an account whose positions could not be read is left out.
   const picks: Record<string, ExitPick[]> = {};
   for (const a of accounts) {
@@ -380,10 +399,10 @@ export async function livePreviewExit(_prev: ExitFlowState, form: FormData): Pro
 export async function liveConfirmExit(_prev: ExitFlowState, form: FormData): Promise<ExitFlowState> {
   const answerBy = Date.now() + ANSWER_WITHIN_MS;
   if (!(await requireAdmin())) return { error: NOT_ADMIN };
-  if (String(form.get("confirm") ?? "").trim().toUpperCase() !== "EXIT") return { error: "Type EXIT to close these positions." };
   const planId = String(form.get("planId") ?? "");
+  if (String(form.get("confirm") ?? "").trim().toUpperCase() !== "EXIT") return { error: "Type EXIT to close these positions.", errorFor: planId };
   const plan = takePlan(planId, "exit");
-  if (!plan || plan.kind !== "exit") return { error: "This preview has expired or was already sent. Make a new one." };
+  if (!plan || plan.kind !== "exit") return { error: "This preview has expired or was already sent. Make a new one.", errorFor: planId };
   const ok = await canTakeOrders(plan.accounts);
   const day = istNow().day;
   const ip = clientIp(await headers());

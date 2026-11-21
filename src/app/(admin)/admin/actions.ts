@@ -13,9 +13,7 @@ import { setKycDecision, scheduleKycCall } from "@/lib/kyc";
 import { getMembership, settlePeriod, settlementNotice, listInvoices, markInvoice } from "@/lib/membership";
 import { notify } from "@/lib/notifications";
 import { eraseAccount } from "@/lib/erase";
-import { liveExposure } from "@/lib/liveTrading/orders";
-import { withAccountLock } from "@/lib/liveTrading/util";
-import { clearErasing, markErasing } from "@/lib/kycHandoff";
+import { eraseIfClear } from "@/lib/liveTrading/orders";
 import { getNavFor } from "@/lib/api/broker";
 import { addEgress, removeEgress } from "@/lib/egressStore";
 
@@ -58,21 +56,11 @@ export async function adminDeleteUser(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
   const userId = String(formData.get("userId") ?? "");
   if (userId && !isReservedId(userId)) {
-    // Not while MNHA has something live in the account today (see Live trading): sends stop first,
-    // and the check runs under the account's lock.
-    markErasing(userId);
-    let exposure: Awaited<ReturnType<typeof liveExposure>>;
-    try {
-      exposure = await withAccountLock(userId, () => liveExposure(userId));
-    } catch (err) {
-      clearErasing(userId); // sends must not stay stopped for an account that is not being deleted
-      throw err;
-    }
-    if (exposure) {
-      clearErasing(userId);
-      redirect("/admin/live?erase=held");
-    }
-    const failed = await eraseAccount(userId);
+    // Not while MNHA has something live in the account today (see Live trading): the check runs
+    // under the account's lock with its sends stopped (eraseIfClear).
+    const outcome = await eraseIfClear(userId, () => eraseAccount(userId));
+    if ("held" in outcome) redirect("/admin/live?erase=held");
+    const failed = outcome.done;
     if (failed.length) console.error(`[erase] admin delete of ${userId} partly failed: ${failed.join(", ")}`);
   }
   revalidatePath("/admin");

@@ -19,7 +19,7 @@ import {
   type OrderAction,
 } from "./store";
 import { istNow, pool, sleep, withAccountLock } from "./util";
-import { isErasing } from "@/lib/kycHandoff";
+import { clearErasing, isErasing, markErasing } from "@/lib/kycHandoff";
 
 /**
  * Sending, following and closing live-trading orders.
@@ -244,14 +244,25 @@ export async function followOrders(): Promise<void> {
   const today = istNow().day;
   for (const o of all.filter((x) => x.day !== today)) {
     const hit = (await connectedNow(o.accountId)) === true ? await orderByRefAs(o.accountId, o.ref, o.segment) : null;
+    const rejected = hit ? hit.status === "REJECTED" || hit.status === "FAILED" : false;
     const updated = await patchOrder(o.id, {
       final: true,
-      ...(hit ? { state: "placed" as const, orderId: hit.orderId, status: hit.status, filled: hit.filled, booked: true } : {}),
+      ...(hit ? { state: rejected ? ("rejected" as const) : ("placed" as const), orderId: hit.orderId, status: hit.status, filled: hit.filled, booked: true } : {}),
       message: hit
         ? `Found at Groww after its day: ${hit.status.toLowerCase()}${hit.filled ? `, ${hit.filled} filled` : ""}.`
         : `${o.message ? `${o.message} · ` : ""}Not resolved on its day; no longer followed here — check it in Groww.`,
     });
-    if (hit && updated && !o.booked) await bookkeep(updated);
+    if (hit && updated) {
+      if (!o.booked) await bookkeep(updated);
+      else if (o.state === "unknown" || o.state === "sending") {
+        await tell(o.accountId, {
+          tone: rejected ? "down" : "up",
+          title: rejected ? "Order found at Groww: rejected" : "Order found at Groww",
+          body: `${describe(updated)} — ${ACTION_LABEL[o.action]}: Groww has it as ${hit.status.toLowerCase()}${hit.filled ? `, ${hit.filled} filled` : ""}.`,
+          key: `lt-${o.ref}-f`,
+        });
+      }
+    }
   }
   const open = all.filter((x) => x.day === today);
   const byAccount = new Map<string, LiveOrder[]>();
@@ -667,14 +678,16 @@ export async function closeLegIn(args: {
 }
 
 /** The admin's cancel of one of MNHA's working orders (from Today's orders). Null: nothing to cancel. */
-export async function cancelByAdmin(id: string): Promise<LiveOrder | null> {
+export async function cancelByAdmin(id: string): Promise<{ order: LiveOrder; sent: boolean } | null> {
   const first = await getOrder(id);
   if (!first) return null;
   return withAccountLock(first.accountId, async () => {
     const o = await getOrder(id);
     if (!o || !working(o) || !o.orderId) return null;
-    await requestCancel(o, "Cancelled by the MNHA admin", "admin", true);
-    return getOrder(id);
+    const sent = await requestCancel(o, "Cancelled by the MNHA admin", "admin", true);
+    if (!sent) await patchOrder(o.id, { message: `${o.message ? `${o.message} · ` : ""}Cancel not sent: this account's Groww cannot be reached.` });
+    const order = await getOrder(id);
+    return order ? { order, sent } : null;
   });
 }
 
@@ -749,6 +762,33 @@ export async function openLegIn(args: {
  * over (15:35 IST), an order MNHA sent today that is still working, or a
  * strategy position it may still hold, would be left with nobody watching it.
  */
+/**
+ * The deletion check, for the delete actions: inside the account's lock (so nothing is half-sent
+ * across it), sends to the account are stopped and liveExposure decides. Held: the stop is lifted
+ * at once. Passed: it stays while `run` (the erasure) goes, then this request's own mark is lifted —
+ * the erasure keeps its own for good, or lifts it if the account could not be removed.
+ */
+export async function eraseIfClear<T>(accountId: string, run: () => Promise<T>): Promise<{ held: "open" | "unconfirmed" } | { done: T }> {
+  let mark: symbol | null = null;
+  const held = await withAccountLock(accountId, async () => {
+    mark = markErasing(accountId);
+    try {
+      const ex = await liveExposure(accountId);
+      if (ex) clearErasing(accountId, mark);
+      return ex;
+    } catch (err) {
+      clearErasing(accountId, mark);
+      throw err;
+    }
+  });
+  if (held) return { held };
+  try {
+    return { done: await run() };
+  } finally {
+    if (mark) clearErasing(accountId, mark);
+  }
+}
+
 /** Whether MNHA can still reach this account's Groww: the house key configured, or a member's key
  *  stored AND usable. "unknown" when the users file cannot be read — never taken as disconnected. */
 async function connectedNow(accountId: string): Promise<boolean | "unknown"> {
@@ -817,20 +857,27 @@ export function recentAdminSame(
     (o) =>
       o.accountId === accountId && o.source === "admin" && o.action === "manual" && o.batch !== (opts.exceptBatch ?? null) &&
       o.symbol === spec.symbol && o.side === spec.side && o.product === spec.product &&
-      ["placed", "unknown", "sending"].includes(o.state) && !(o.final && !(o.filled ?? 0)) &&
+      ["placed", "unknown", "sending"].includes(o.state) && !nothingHappened(o) &&
       o.at >= since && !(opts.ignore ?? []).includes(o.id),
   );
+}
+
+/** Groww itself reported the order cancelled, rejected or failed with nothing filled. An order whose
+ *  outcome was never learned (given up, or never found) is NOT "nothing": it may have filled. */
+function nothingHappened(o: LiveOrder): boolean {
+  return o.state === "placed" && o.final && (o.filled ?? 0) === 0 && /CANCEL|REJECT|FAIL/.test(o.status ?? "");
 }
 
 export type AdminSend = { order: LiveOrder } | { held: "duplicate" | "erasing" | "exists"; dup?: LiveOrder };
 
 /**
  * The admin's order to one account (always real: shadow mode is for the
- * automatic strategy). Checked again inside the account's lock, just before
- * sending: held back when an order of the same kind from another batch went to
- * this account since `since` — except the ones in `ignore` (those the admin saw
- * in the preview and chose to send again) — so two overlapping confirmations
- * can never both send to one account.
+ * automatic strategy). The duplicate check is made here, inside the account's
+ * lock, just before sending — so it sees how every earlier send to the account
+ * ended, and two overlapping confirmations can never both send: held back when
+ * an order of the same kind from another batch went to this account since
+ * `since`, except the ones in `ignore` (those the admin was shown in the
+ * preview and chose to send again).
  */
 export async function adminOrderIn(args: {
   batch: string;

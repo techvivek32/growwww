@@ -84,7 +84,14 @@ const orders = load("src/lib/liveTrading/orders.ts", {
     },
   },
   "@/lib/auth": { OWNER_ID: "owner" },
-  "@/lib/kycHandoff": { isErasing: (id) => world.erasing.has(id) },
+  "@/lib/kycHandoff": {
+    isErasing: (id) => world.erasing.has(id),
+    markErasing: (id) => {
+      world.erasing.add(id);
+      return Symbol(id);
+    },
+    clearErasing: (id) => void world.erasing.delete(id),
+  },
   "@/lib/api/groww": { FINAL_ORDER_STATES: groww.FINAL_ORDER_STATES },
   "./store": store,
   "./util": util,
@@ -519,7 +526,15 @@ test("the admin can cancel a working MNHA order", async () => {
   const o = (await orders.adminOrderIn({ batch: "bLIM00009", day, accountId: "k1", symbol: "INFY", side: "BUY", qty: 5, product: "CNC", type: "LIMIT", price: 1, since: Date.now() - orders.DUPLICATE_MS })).order;
   const after = await orders.cancelByAdmin(o.id);
   assert.deepEqual(world.cancels, [["k1", "LIM9"]]);
-  assert.ok(after.cancelAt);
+  assert.equal(after.sent, true);
+  assert.ok(after.order.cancelAt);
+  // a disconnected account's order: nothing is sent, and the record says so
+  world.placeQueue.push({ ok: true, outcome: "placed", orderId: "LIM10", status: "OPEN", filled: 0, message: null, httpStatus: 200 });
+  const o2 = (await orders.adminOrderIn({ batch: "bLIM00010", day, accountId: "k2", symbol: "INFY", side: "BUY", qty: 5, product: "CNC", type: "LIMIT", price: 1, since: Date.now() - orders.DUPLICATE_MS })).order;
+  world.disconnected.add("k2");
+  const after2 = await orders.cancelByAdmin(o2.id);
+  assert.equal(after2.sent, false);
+  assert.equal(world.cancels.length, 1);
   assert.ok(world.ledger.some((x) => x.status === "cancelled" && x.by === "admin"));
 });
 
@@ -627,6 +642,35 @@ test("deletion is held only while MNHA can still see something open — never af
   }
 });
 
+test("deletion waits for a clear account, and nothing is sent while it runs", async () => {
+  await reset();
+  const day = util.istNow().day;
+  const minute = util.istNow().minute;
+  world.placeQueue.push({ ok: true, outcome: "placed", orderId: "EC1", status: "EXECUTED", filled: 10, message: null, httpStatus: 200 });
+  const e = await orders.openLegIn({ day, action: "entry", leg: "short", accountId: "era1", mode: "live", symbol: "TCS", qty: 10 });
+  await store.patchOrder(e.id, { final: true, filled: 10, status: "EXECUTED" });
+  let ran = 0;
+  if (minute < 15 * 60 + 35) {
+    world.positions.era1 = { CASH: [pos("TCS", -10)], FNO: [] };
+    const h = await orders.eraseIfClear("era1", async () => void ran++);
+    assert.deepEqual(h, { held: "open" });
+    assert.equal(ran, 0);
+    assert.equal(world.erasing.has("era1"), false); // held: the account works as before
+  }
+  world.positions.era1 = { CASH: [], FNO: [] };
+  const sentBefore = world.places.length;
+  const r = await orders.eraseIfClear("era1", async () => {
+    ran++;
+    // while the deletion runs, no order reaches the account
+    assert.equal(await orders.openLegIn({ day, action: "entry", leg: "short", accountId: "era1", mode: "live", symbol: "TCS", qty: 1 }), null);
+    return "gone";
+  });
+  assert.deepEqual(r, { done: "gone" });
+  assert.equal(ran, 1);
+  assert.equal(world.places.length, sentBefore);
+  assert.equal(world.erasing.has("era1"), false);
+});
+
 test("nothing is sent or recorded for an account being erased", async () => {
   await reset();
   const day = freshDay();
@@ -705,6 +749,7 @@ const sim = { now: 0, today: () => null, prices: {}, checks: [], trading: true, 
 const execMod = load("src/lib/liveTrading/executor.ts", {
   "server-only": {},
   "@/lib/trading": { tradePermission: async (id) => ({ allowed: !sim.blocked.has(id) }) },
+  "@/lib/notifications": { notify: async (u, n) => void world.notes.push([u, n]) },
   "@/lib/consent": { currentConsent: async () => ({ agreementVersion: "3.6" }) },
   "@/lib/auth": { OWNER_ID: "owner" },
   "@/lib/market": { isTradingDate: () => sim.trading },
@@ -930,6 +975,38 @@ test("day: an account whose address stops being sendable gets no flip buy — bu
   }
   assert.deepEqual(sent("owner"), [ENTRY, COVER, LONG, SELL_LONG]);
   assert.deepEqual(sent("m1"), [ENTRY, COVER]);
+});
+
+test("day: an account offline at the market stop is covered as soon as it reconnects, and told meanwhile", async () => {
+  await reset();
+  exchange();
+  Date.now = () => sim.now;
+  const d = 30000 + (++dayN);
+  sim.prices = { AAA: 1000, BBB: 500 };
+  sim.checks = ACCOUNTS.map((a) => ({ ...a }));
+  sim.today = timeline(d, { mstopAt: at(d, 9, 45, 5), flip: { at: at(d, 10, 16, 10), do: false } });
+  await store.setMode("live", "test");
+  try {
+    await runDay(at(d, 9, 12), at(d, 9, 44));
+    world.disconnected.add("m1"); // its Groww key goes away just before the stop
+    await runDay(at(d, 9, 44, 3), at(d, 9, 52));
+    assert.deepEqual(sent("m1"), [ENTRY]);
+    assert.deepEqual(sent("owner"), [ENTRY, COVER]);
+    assert.ok(world.notes.some(([u, n]) => u === "m1" && /could not close/.test(n.title)), "holder told");
+    const mid = await store.getDay(d, "");
+    assert.ok(!mid.done.stop, "the stop step stays open for the offline account");
+    world.disconnected.delete("m1");
+    await runDay(at(d, 9, 52, 3), at(d, 15, 32));
+  } finally {
+    Date.now = realNow;
+  }
+  assert.deepEqual(sent("m1"), [ENTRY, COVER]);
+  const when = world.places.filter(([a]) => a === "m1")[1][2];
+  const m = util.istNow(when).minute;
+  assert.ok(m >= 9 * 60 + 52 && m < 9 * 60 + 53, util.clock(m)); // right after it came back
+  assert.ok(flat("m1") && flat("owner"));
+  const plan = await store.getDay(d, "");
+  assert.ok(plan.done.stop && plan.done.close);
 });
 
 test("day: a holiday or weekend does nothing at all", async () => {

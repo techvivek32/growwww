@@ -7,9 +7,7 @@ import { isReservedId } from "@/lib/auth";
 import { changePassword, clearBroker } from "@/lib/users";
 import { getMembership, hasDueInvoice } from "@/lib/membership";
 import { eraseAccount } from "@/lib/erase";
-import { liveExposure } from "@/lib/liveTrading/orders";
-import { withAccountLock } from "@/lib/liveTrading/util";
-import { clearErasing, markErasing } from "@/lib/kycHandoff";
+import { eraseIfClear } from "@/lib/liveTrading/orders";
 import { setOptionalConsent, recordConsentChange, OPTIONAL_CONSENTS, type ConsentKey } from "@/lib/consent";
 
 export interface PwState {
@@ -48,22 +46,12 @@ export async function deleteAccountAction(): Promise<void> {
   // live reading), and an unpaid invoice settled — deletion skips neither.
   if ((await getMembership(uid))?.status === "active") redirect("/settings?delete=active");
   if (await hasDueInvoice(uid)) redirect("/settings?delete=due");
-  // Not while MNHA has something live in the account today: nobody would watch it after. Sends to
-  // the account stop first (erasing marked) and the check runs under its lock, so no strategy order
-  // can start between the check and the erasure.
-  markErasing(uid);
-  let exposure: Awaited<ReturnType<typeof liveExposure>>;
-  try {
-    exposure = await withAccountLock(uid, () => liveExposure(uid));
-  } catch (err) {
-    clearErasing(uid); // sends must not stay stopped for an account that is not being deleted
-    throw err;
-  }
-  if (exposure) {
-    clearErasing(uid);
-    redirect(`/settings?delete=${exposure === "open" ? "live" : "unconfirmed"}`);
-  }
-  const failed = await eraseAccount(uid);
+  // Not while MNHA has something live in the account today: nobody would watch it after. The check
+  // runs under the account's lock with its sends stopped (eraseIfClear), so no strategy order can
+  // start between the check and the erasure.
+  const outcome = await eraseIfClear(uid, () => eraseAccount(uid));
+  if ("held" in outcome) redirect(`/settings?delete=${outcome.held === "open" ? "live" : "unconfirmed"}`);
+  const failed = outcome.done;
   if (failed.length) {
     console.error(`[erase] account ${uid} partly erased; failed: ${failed.join(", ")}`);
     // Never pretend: say what could not be erased. Once the account record
