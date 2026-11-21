@@ -124,6 +124,15 @@ const reset = async () => {
 };
 const pos = (symbol, net, product = "MIS", segment = "CASH", exchange = "NSE") => ({ symbol, segment, exchange, product, net, avg: 100 });
 let dayN = 21000;
+/** Move the clock forward to the next 11:00 IST (inside the session), so a test never depends on when it is run. */
+const toSessionTime = () => {
+  const nowMs = Date.now();
+  const d = Math.floor((nowMs / 1000 + 19800) / 86400);
+  let target = (d * 86400 + 11 * 3600 - 19800) * 1000;
+  if (target <= nowMs) target += 86_400_000;
+  advance(target - nowMs);
+};
+const QUIET = 16_000; // just past the quiet period after MNHA's own order on an account
 const freshDay = () => ++dayN;
 
 /* --------------------------------------------------------------- tests */
@@ -619,44 +628,46 @@ test("an exit confirmation closes only what its preview showed, in that directio
 
 test("deletion is held only while MNHA can still see something open — never after a disconnect", async () => {
   await reset();
+  toSessionTime();
   const day = util.istNow().day;
-  const minute = util.istNow().minute;
   world.placeQueue.push({ ok: true, outcome: "placed", orderId: "DX1", status: "EXECUTED", filled: 10, message: null, httpStatus: 200 });
   const e = await orders.openLegIn({ day, action: "entry", leg: "short", accountId: "del1", mode: "live", symbol: "TCS", qty: 10 });
   await store.patchOrder(e.id, { final: true, filled: 10, status: "EXECUTED" });
-  if (minute < 15 * 60 + 35) {
-    world.positions.del1 = { CASH: [pos("TCS", -10)], FNO: [] };
-    assert.equal(await orders.liveExposure("del1"), "open");
-    world.positions.del1 = null; // Groww cannot be read
-    assert.equal(await orders.liveExposure("del1"), "unconfirmed");
-    world.positions.del1 = { CASH: [], FNO: [] }; // closed in the Groww app
-    assert.equal(await orders.liveExposure("del1"), null);
-    world.positions.del1 = { CASH: [pos("TCS", -10)], FNO: [] };
-    world.usersBroken = true; // the users file cannot be read: never waved through
-    assert.equal(await orders.liveExposure("del1"), "unconfirmed");
-    world.usersBroken = false;
-    world.disconnected.add("del1"); // MNHA can no longer watch or close it: nothing to hold for
-    assert.equal(await orders.liveExposure("del1"), null);
-  } else {
-    assert.equal(await orders.liveExposure("del1"), null); // after the session nothing is held
-  }
+  world.positions.del1 = { CASH: [pos("TCS", -10)], FNO: [] };
+  // right after MNHA's own order Groww's reading may not have caught up: never called clear
+  assert.equal(await orders.liveExposure("del1"), "unconfirmed");
+  advance(QUIET);
+  assert.equal(await orders.liveExposure("del1"), "open");
+  world.positions.del1 = null; // Groww cannot be read
+  assert.equal(await orders.liveExposure("del1"), "unconfirmed");
+  world.positions.del1 = { CASH: [], FNO: [] }; // closed in the Groww app
+  assert.equal(await orders.liveExposure("del1"), null);
+  world.positions.del1 = { CASH: [pos("TCS", -10)], FNO: [] };
+  world.usersBroken = true; // the users file cannot be read: never waved through
+  assert.equal(await orders.liveExposure("del1"), "unconfirmed");
+  world.usersBroken = false;
+  world.disconnected.add("del1"); // MNHA can no longer watch or close it: nothing to hold for
+  assert.equal(await orders.liveExposure("del1"), null);
+  world.disconnected.delete("del1");
+  assert.equal(await orders.liveExposure("del1"), "open");
+  advance((4 * 60 + 40) * 60_000); // 15:40: intraday positions are squared off by then
+  assert.equal(await orders.liveExposure("del1"), null);
 });
 
 test("deletion waits for a clear account, and nothing is sent while it runs", async () => {
   await reset();
+  toSessionTime();
   const day = util.istNow().day;
-  const minute = util.istNow().minute;
   world.placeQueue.push({ ok: true, outcome: "placed", orderId: "EC1", status: "EXECUTED", filled: 10, message: null, httpStatus: 200 });
   const e = await orders.openLegIn({ day, action: "entry", leg: "short", accountId: "era1", mode: "live", symbol: "TCS", qty: 10 });
   await store.patchOrder(e.id, { final: true, filled: 10, status: "EXECUTED" });
+  advance(QUIET);
   let ran = 0;
-  if (minute < 15 * 60 + 35) {
-    world.positions.era1 = { CASH: [pos("TCS", -10)], FNO: [] };
-    const h = await orders.eraseIfClear("era1", async () => void ran++);
-    assert.deepEqual(h, { held: "open" });
-    assert.equal(ran, 0);
-    assert.equal(world.erasing.has("era1"), false); // held: the account works as before
-  }
+  world.positions.era1 = { CASH: [pos("TCS", -10)], FNO: [] };
+  const h = await orders.eraseIfClear("era1", async () => void ran++);
+  assert.deepEqual(h, { held: "open" });
+  assert.equal(ran, 0);
+  assert.equal(world.erasing.has("era1"), false); // held: the account works as before
   world.positions.era1 = { CASH: [], FNO: [] };
   const sentBefore = world.places.length;
   const r = await orders.eraseIfClear("era1", async () => {

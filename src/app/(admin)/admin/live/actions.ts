@@ -58,7 +58,7 @@ export async function liveSetBase(_prev: Msg, form: FormData): Promise<Msg> {
   }
   await setBase(base, clientIp(await headers()));
   revalidatePath(PATH);
-  return { ok: `Base value ₹${base.toLocaleString("en-IN")}: each trade, and the free money an account needs. Takes effect from the next 09:20 entry.` };
+  return { ok: `Trade size ₹${base.toLocaleString("en-IN")} per account — an account needs this much free to take part. From the next 09:20 trade.` };
 }
 
 export async function liveExclude(form: FormData): Promise<void> {

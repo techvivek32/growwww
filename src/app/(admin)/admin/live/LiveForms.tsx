@@ -109,7 +109,7 @@ export function BaseForm({ base }: { base: number }) {
   return (
     <form action={action} className="flex flex-wrap items-end gap-2">
       <label className="flex flex-col gap-1">
-        <span className={eyebrow}>Base value (₹ per trade, per account)</span>
+        <span className={eyebrow}>Trade size per account (₹)</span>
         <input name="base" inputMode="numeric" defaultValue={base.toLocaleString("en-IN")} className={`${field} w-44`} />
       </label>
       <Submit label="Save" busy="Saving…" />

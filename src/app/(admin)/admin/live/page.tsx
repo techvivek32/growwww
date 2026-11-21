@@ -5,7 +5,7 @@ import { Card, PageHead, Pill } from "@/components/ui";
 import AutoRefresh from "@/components/AutoRefresh";
 import { liveToday } from "@/lib/research";
 import { checkAccounts, type AccountCheck } from "@/lib/liveTrading/accounts";
-import { ACTION_LABEL, getDay, getSettings, ordersOfDay, recentChanges, type LiveOrder } from "@/lib/liveTrading/store";
+import { ACTION_LABEL, getDay, getSettings, ordersOfDay, type LiveOrder } from "@/lib/liveTrading/store";
 import { executorStatus } from "@/lib/liveTrading/executor";
 import { clock, istMinuteOfEpoch, istNow } from "@/lib/liveTrading/util";
 import { isTradingDate } from "@/lib/market";
@@ -18,50 +18,63 @@ export const metadata: Metadata = { title: "Live trading · Admin · MNHA Financ
 export const dynamic = "force-dynamic";
 
 const IST = "Asia/Kolkata";
-const TIME = new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: IST });
-const DATE_TIME = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: IST });
+const HM = new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: IST });
+const HMS = new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: IST });
 const inr = (v: number) => `₹${Math.round(v).toLocaleString("en-IN")}`;
+const n = (v: number) => v.toLocaleString("en-IN");
 const eyebrow = "font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase";
 const btnLine = "h-8 border border-line2 px-2.5 text-[12px] font-medium text-ink2 transition-colors hover:bg-surfaceh hover:text-ink";
 
-function CardTitle({ title, sub, right }: { title: string; sub?: ReactNode; right?: ReactNode }) {
+type Tone = "up" | "down" | "warn" | "neutral";
+
+function Section({ title, sub, right, children }: { title: string; sub?: ReactNode; right?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
-      <div className="min-w-0">
-        <h2 className="pub-display text-[22px] leading-tight text-ink">{title}</h2>
-        {sub && <p className="mt-1 max-w-3xl text-[12.5px] leading-relaxed text-ink3">{sub}</p>}
+    <Card pad={false}>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
+        <div className="min-w-0">
+          <h2 className="pub-display text-[22px] leading-tight text-ink">{title}</h2>
+          {sub && <p className="mt-1 max-w-3xl text-[12.5px] leading-relaxed text-ink3">{sub}</p>}
+        </div>
+        {right}
       </div>
-      {right}
-    </div>
+      {children}
+    </Card>
   );
 }
 
-const STATE_TONE: Record<string, "up" | "down" | "warn" | "neutral" | "violet"> = {
-  placed: "up",
-  rejected: "down",
-  refused: "down",
-  "not-sent": "neutral",
-  unknown: "warn",
-  sending: "warn",
-  shadow: "violet",
-};
+/** A tool kept folded away until it is needed. */
+function Fold({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
+  return (
+    <Card pad={false}>
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 hover:bg-surfaceh">
+          <span className="min-w-0">
+            <span className="pub-display block text-[20px] leading-tight text-ink">{title}</span>
+            <span className="mt-0.5 block text-[12.5px] text-ink3">{sub}</span>
+          </span>
+          <span className="shrink-0 text-[18px] text-ink3 transition-transform group-open:rotate-45">+</span>
+        </summary>
+        <div className="border-t border-line px-5 py-4">{children}</div>
+      </details>
+    </Card>
+  );
+}
 
-const GROUPS: { key: AccountCheck["group"]; title: string; sub: string }[] = [
-  { key: "eligible", title: "Eligible", sub: "Take every automatic strategy order." },
-  { key: "low", title: "Low balance", sub: "Free money below the base value: no automatic orders until it is topped up." },
-  { key: "blocked", title: "Cannot trade", sub: "Something is missing; the reason is shown." },
-  { key: "reading", title: "Being read", sub: "Groww has not answered for these yet; they appear in their group on the next refresh." },
-  { key: "excluded", title: "Kept out", sub: "Kept out of the automatic strategy by you. Manual orders and exits still reach them." },
+const GROUPS: { key: AccountCheck["group"]; title: string; sub: (base: string) => string }[] = [
+  { key: "eligible", title: "Trading", sub: () => "Get every automatic trade." },
+  { key: "low", title: "Low balance", sub: (base) => `Less than ${base} free — no automatic trades until topped up.` },
+  { key: "blocked", title: "Not ready", sub: () => "Something is missing (shown)." },
+  { key: "reading", title: "Checking", sub: () => "Groww has not answered yet." },
+  { key: "excluded", title: "Kept out", sub: () => "Kept out by you. Manual orders and exits still reach them." },
 ];
 
 export default async function LiveTradingPage({ searchParams }: { searchParams: Promise<{ erase?: string }> }) {
   await requireAdminPage();
   const now = istNow();
   const settings = await getSettings();
-  const [day, orders, changes, today, checks, users, sp] = await Promise.all([
+  const [day, orders, today, checks, users, sp] = await Promise.all([
     getDay(now.day, now.date),
     ordersOfDay(now.day),
-    recentChanges(25),
     liveToday(),
     // A page never waits long on Groww: past 4 s the last reading stands in (see checkAccounts).
     checkAccounts(settings, { maxAgeMs: 60_000, budgetMs: 4_000 }).catch(() => [] as AccountCheck[]),
@@ -69,7 +82,7 @@ export default async function LiveTradingPage({ searchParams }: { searchParams: 
     searchParams,
   ]);
   const exec = executorStatus();
-  // Every account by id — notes and the change log name accounts only by id ({{acct:<id>}}), never by email.
+  // Notes name accounts only by id ({{acct:<id>}}), never by email: named here, when shown.
   const labels = new Map<string, string>([[OWNER_ID, "House account"], ...users.map((u) => [u.id, u.email] as [string, string])]);
   const named = (text: string) => text.replace(/\{\{acct:([^}]+)\}\}/g, (_m, id: string) => labels.get(id) ?? "an erased account");
   const options: AccountOption[] = checks.map((c) => ({ id: c.id, label: c.label, group: c.group, free: c.funds?.free ?? null }));
@@ -77,112 +90,147 @@ export default async function LiveTradingPage({ searchParams }: { searchParams: 
   const tradingDay = isTradingDate(now.date);
   const tradingOff = process.env.TRADING_ENABLED === "false";
   const unsure = orders.filter((o) => o.state === "unknown" || o.state === "sending");
+  const on = settings.mode === "live";
+  const base = inr(day.base ?? settings.base);
+  const eligible = checks.filter((c) => c.group === "eligible").length;
+  const alerts = day.notes.filter((x) => x.tone === "error" || x.tone === "warn");
+
+  const problems: { text: string; tone: "down" | "warn" }[] = [];
+  if (sp.erase === "held") problems.push({ tone: "down", text: "That account was NOT deleted: MNHA has a position or order open in it today. Close it with Exit below, or delete it after 15:35." });
+  if (tradingOff) problems.push({ tone: "down", text: "Orders are switched off on this server (TRADING_ENABLED=false): nothing real can be sent." });
+  if (!exec.started) problems.push({ tone: "down", text: "Automatic trading is not running on the server — restart the website." });
+  if (exec.stalled) problems.push({ tone: "down", text: `Automatic trading is stuck (last run ${exec.lastTickAt ? HMS.format(new Date(exec.lastTickAt)) : "never"}) — restart the website, then check orders and positions.` });
+  if (exec.research && !exec.research.ok) problems.push({ tone: "warn", text: `The research engine did not answer at ${HMS.format(new Date(exec.research.at))}: steps wait for it (the 15:15 close does not).` });
+  if (unsure.length) problems.push({ tone: "warn", text: `${unsure.length} order${unsure.length === 1 ? "" : "s"} being checked with Groww — nothing is sent twice.` });
+  if (problems.length && exec.lastError) problems.push({ tone: "warn", text: `Last error: ${exec.lastError}` });
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-5">
       <AutoRefresh seconds={20} />
       <PageHead
         title="Live trading"
-        sub="Book A of the paper-trading engine, traded in real Groww accounts — every connected account with the base value free. Plus orders and exits for many accounts at once."
-        right={<Pill tone={settings.mode === "live" ? "up" : "neutral"}>{settings.mode === "live" ? "ON · real orders" : "OFF"}</Pill>}
+        sub={`The paper strategy's trades, placed for real in every account with at least ${inr(settings.base)} free.`}
+        right={<Pill tone={on ? "up" : "neutral"}>{on ? "ON" : "OFF"}</Pill>}
       />
 
-      {(sp.erase === "held" || tradingOff || !exec.started || exec.stalled || unsure.length > 0 || (exec.research && !exec.research.ok)) && (
+      {problems.length > 0 && (
         <Card>
           <ul className="space-y-1.5 text-[13px]">
-            {sp.erase === "held" && (
-              <li className="text-down">
-                That account was NOT deleted: MNHA has (or could not confirm it no longer has) a position or an order open in it today. Close it with Exit below, or delete it after 15:35 IST.
+            {problems.map((p, i) => (
+              <li key={i} className={p.tone === "down" ? "text-down" : "text-warn"}>
+                {p.text}
               </li>
-            )}
-            {tradingOff && <li className="text-down">Order placement is switched off on this server (TRADING_ENABLED=false): every real order is refused before it is sent.</li>}
-            {!exec.started && <li className="text-down">The live executor is not running in this server process — restart the website.</li>}
-            {exec.stalled && (
-              <li className="text-down">
-                The live executor is stuck (last finished pass {exec.lastTickAt ? TIME.format(new Date(exec.lastTickAt)) : "never"}) — restart the website, then check the orders and positions.
-              </li>
-            )}
-            {exec.research && !exec.research.ok && <li className="text-warn">The research engine could not be read at {TIME.format(new Date(exec.research.at))}: automatic steps wait for it (the 15:15 close does not).</li>}
-            {unsure.length > 0 && <li className="text-warn">{unsure.length} order{unsure.length === 1 ? "" : "s"} of unknown outcome — being looked up in Groww by reference; nothing is re-sent.</li>}
-            {exec.lastError && <li className="text-warn">Last executor error: {exec.lastError}</li>}
+            ))}
           </ul>
         </Card>
       )}
 
-      <Card pad={false}>
-        <CardTitle
-          title="Automatic trading"
-          sub="One switch. OFF opens nothing new — but a position the strategy already opened that day is still protected and closed (market stop, 10:15 cover, fail-safe, 15:15), never left without its stop. To close everything at once, use Exit below."
-        />
-        <div className="space-y-5 px-5 py-4">
-          <ModeForm on={settings.mode === "live"} />
+      {/* 1. The switch and the size */}
+      <Card>
+        <div className="space-y-4">
+          <ModeForm on={on} />
           <BaseForm base={settings.base} />
-          <p className="text-[12px] leading-relaxed text-ink3">
-            Every trade is the base value ÷ the live price, rounded down (with a 0.3% cushion), the same quantity in every account. An account takes part only with at least the base value free (cash minus margin in use) when the day&apos;s accounts are fixed at 09:20.
-          </p>
         </div>
       </Card>
 
-      <Card pad={false}>
-        <CardTitle
-          title={`Today · ${now.date}`}
-          sub={tradingDay ? "The research engine decides; this site trades it. Times are IST." : "Not a trading day."}
-        />
-        <div className="grid gap-px border-b border-line bg-line sm:grid-cols-4">
-          <Fact label="09:20 pick" value={today?.status ? (today.skip ? "Skip day" : (today.pick ?? "—")) : "Not decided"} sub={today?.decided_at ? `decided ${clock(istMinuteOfEpoch(today.decided_at))}${today.late ? " (late)" : ""}` : undefined} />
-          <Fact
-            label="Market stop"
+      {/* 2. Today */}
+      <Section
+        title="Today"
+        sub={tradingDay ? `${now.date} · ${day.accounts ? `${day.accounts.length} account${day.accounts.length === 1 ? "" : "s"} trading` : `${eligible} account${eligible === 1 ? "" : "s"} ready`} · ${base} each` : `${now.date} · market closed`}
+      >
+        <ol className="divide-y divide-line">
+          <Step
+            time="09:20"
+            title="Sell (short)"
+            done={day.done.entry}
             value={
-              day.signals.mstop?.failsafe
-                ? `Fail-safe ${clock(istMinuteOfEpoch(day.signals.mstop.at))}`
-                : today?.mstop
-                  ? `Hit ${clock(istMinuteOfEpoch(today.mstop.at))}`
-                  : "Not hit"
-            }
-            sub={
-              today?.mstop_check
-                ? `watcher checked ${clock(istMinuteOfEpoch(today.mstop_check.at))}${today.mstop_check.move != null ? ` · average ${today.mstop_check.move >= 0 ? "+" : ""}${(today.mstop_check.move * 100).toFixed(2)}%` : ""}`
-                : "stops at average stock +0.5% since 09:20"
+              !tradingDay
+                ? "Market closed"
+                : today?.skip
+                  ? "Skip day — no trade today"
+                  : day.done.entry
+                    ? day.legs.short
+                      ? `Sold ${n(day.legs.short.qty)} ${day.legs.short.symbol}`
+                      : "No trade (see alerts)"
+                    : today?.pick
+                      ? `${today.pick} — sending…`
+                      : "Waiting for 09:20"
             }
           />
-          <Fact label="10:15 flip" value={today?.flip ? (today.flip.do ? `Buy ${today.flip.symbol}` : "No flip") : "Not yet"} sub={today?.flip ? `decided ${clock(istMinuteOfEpoch(today.flip.at))}` : undefined} />
-          <Fact label="Day's accounts" value={day.accounts ? String(day.accounts.length) : "Not fixed"} sub={day.mode ? `${day.mode} · base ${inr(day.base ?? settings.base)}` : undefined} />
-        </div>
-        <div className="grid gap-px border-b border-line bg-line sm:grid-cols-5">
-          {(["entry", "stop", "flipCover", "flip", "close"] as const).map((k) => (
-            <Fact
-              key={k}
-              label={{ entry: "Entry", stop: "Stop", flipCover: "Flip cover", flip: "Flip buy", close: "15:15 close" }[k]}
-              value={day.done[k] ? `Done ${TIME.format(new Date(day.done[k]!))}` : "Pending"}
-            />
-          ))}
-        </div>
-        {day.notes.length === 0 ? (
-          <p className="px-5 py-4 text-[12.5px] text-ink3">Nothing yet today.</p>
-        ) : (
-          <ul className="max-h-72 space-y-1 overflow-y-auto px-5 py-4 text-[12.5px]">
-            {[...day.notes].reverse().map((n, i) => (
+          <Step
+            time="Stop"
+            title="If the market rises 0.5%, buy back"
+            done={day.done.stop}
+            value={
+              day.done.stop
+                ? day.signals.mstop
+                  ? day.signals.mstop.failsafe
+                    ? `Bought back for safety at ${clock(istMinuteOfEpoch(day.signals.mstop.at))} (the stop check went quiet)`
+                    : `Hit ${clock(istMinuteOfEpoch(day.signals.mstop.at))} — bought back`
+                  : "Done"
+                : day.signals.mstop || today?.mstop
+                  ? "Hit — buying back…"
+                  : day.legs.short
+                    ? "Not hit"
+                    : "—"
+            }
+          />
+          <Step
+            time="10:15"
+            title="Flip"
+            done={day.done.flip}
+            value={
+              day.done.flip
+                ? day.legs.long
+                  ? `Bought ${n(day.legs.long.qty)} ${day.legs.long.symbol}`
+                  : today?.flip && !today.flip.do
+                    ? "No flip — the short is held"
+                    : "No flip buy (see alerts)"
+                : today?.flip
+                  ? today.flip.do
+                    ? `Buying ${today.flip.symbol ?? ""}…`
+                    : "No flip"
+                  : "Waiting for 10:15"
+            }
+          />
+          <Step time="15:15" title="Close everything" done={day.done.close} value={day.done.close ? "Closed" : "Waiting for 15:15"} />
+        </ol>
+        {alerts.length > 0 && (
+          <ul className="space-y-1 border-t border-line px-5 py-3 text-[12.5px]">
+            {[...alerts].reverse().map((x, i) => (
               <li key={i} className="flex gap-3">
-                <span className="tnum shrink-0 text-ink3">{TIME.format(new Date(n.at))}</span>
-                <span className={n.tone === "error" ? "text-down" : n.tone === "warn" ? "text-warn" : "text-ink2"}>{named(n.text)}</span>
+                <span className="tnum shrink-0 text-ink3">{HM.format(new Date(x.at))}</span>
+                <span className={x.tone === "error" ? "text-down" : "text-warn"}>{named(x.text)}</span>
               </li>
             ))}
           </ul>
         )}
-      </Card>
+        {day.notes.length > 0 && (
+          <details className="border-t border-line px-5 py-3">
+            <summary className="cursor-pointer text-[12.5px] text-ink3 hover:text-ink">Full log ({day.notes.length})</summary>
+            <ul className="mt-2 max-h-72 space-y-1 overflow-y-auto text-[12.5px]">
+              {[...day.notes].reverse().map((x, i) => (
+                <li key={i} className="flex gap-3">
+                  <span className="tnum shrink-0 text-ink3">{HMS.format(new Date(x.at))}</span>
+                  <span className={x.tone === "error" ? "text-down" : x.tone === "warn" ? "text-warn" : "text-ink2"}>{named(x.text)}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </Section>
 
-      <Card pad={false}>
-        <CardTitle
-          title="Accounts"
-          sub={`Every account with Groww connected. Eligible: orders can be sent from its address, the agreement is signed, and at least ${inr(settings.base)} is free. Cash is read from Groww (kept a minute).`}
-          right={
-            <form action={liveRefresh}>
-              <button type="submit" className={btnLine}>
-                Read again
-              </button>
-            </form>
-          }
-        />
+      {/* 3. Accounts */}
+      <Section
+        title="Accounts"
+        right={
+          <form action={liveRefresh}>
+            <button type="submit" className={btnLine}>
+              Refresh
+            </button>
+          </form>
+        }
+      >
         {checks.length === 0 ? (
           <p className="px-5 py-6 text-[13px] text-ink3">No account has Groww connected.</p>
         ) : (
@@ -193,149 +241,140 @@ export default async function LiveTradingPage({ searchParams }: { searchParams: 
               <div key={grp.key} className="border-b border-line last:border-0">
                 <p className="px-5 pt-3.5 text-[13px] font-semibold text-ink">
                   {grp.title} <span className="tnum font-mono text-[12px] text-ink3">({rows.length})</span>
-                  <span className="ml-2 text-[12px] font-normal text-ink3">{grp.sub}</span>
+                  <span className="ml-2 text-[12px] font-normal text-ink3">{grp.sub(inr(settings.base))}</span>
                 </p>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[760px] border-collapse text-left text-[12.5px]">
-                    <tbody>
-                      {rows.map((c) => (
-                        <tr key={c.id} className="border-b border-line last:border-0">
-                          <td className="max-w-[260px] truncate px-5 py-2.5 text-ink">{c.label}</td>
-                          <td className="tnum px-3 py-2.5 whitespace-nowrap text-ink2">
-                            {c.funds ? `${inr(c.funds.free)} free` : "cash —"}
-                            {c.funds && c.funds.used > 0 ? <span className="text-ink3"> ({inr(c.funds.cash)} cash, {inr(c.funds.used)} in use)</span> : null}
-                          </td>
-                          <td className="px-3 py-2.5 text-ink3">{c.owner ? "house account" : c.agreement ? `agreement ${c.agreement.split(" ")[0]}` : "—"}</td>
-                          <td className="px-3 py-2.5 text-ink3">{c.reason ?? ""}</td>
-                          <td className="px-5 py-2.5 text-right">
-                            <form action={liveExclude}>
-                              <input type="hidden" name="accountId" value={c.id} />
-                              <input type="hidden" name="exclude" value={c.excluded ? "0" : "1"} />
-                              <button type="submit" className={btnLine}>
-                                {c.excluded ? "Take back in" : "Keep out"}
-                              </button>
-                            </form>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <ul>
+                  {rows.map((c) => (
+                    <li key={c.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line px-5 py-2.5 text-[12.5px] last:border-0">
+                      <span className="min-w-0 flex-1 truncate text-ink">{c.label}</span>
+                      <span className="tnum text-ink2">{c.funds ? `${inr(c.funds.free)} free` : "cash —"}</span>
+                      {c.reason && grp.key !== "low" && grp.key !== "excluded" && <span className="basis-full text-ink3 sm:basis-auto">{c.reason}</span>}
+                      <form action={liveExclude}>
+                        <input type="hidden" name="accountId" value={c.id} />
+                        <input type="hidden" name="exclude" value={c.excluded ? "0" : "1"} />
+                        <button type="submit" className={btnLine}>
+                          {c.excluded ? "Take back in" : "Keep out"}
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
               </div>
             );
           })
         )}
-      </Card>
+      </Section>
 
-      <Card pad={false}>
-        <CardTitle title="Today's orders" sub="Every order live trading sent or simulated today, automatic and yours. An order of unknown outcome is looked up in Groww by its reference, never sent twice." />
+      {/* 4. Today's orders */}
+      <Section title="Today's orders">
         <OrdersTable orders={orders} labels={labels} />
-      </Card>
+      </Section>
 
-      <Card pad={false}>
-        <CardTitle title="Order to many accounts" sub="NSE cash. Preview first: the quantity is worked out from the amount and the live price (or the limit price), the same in every ticked account. Real orders, whatever the mode." />
-        <div className="px-5 py-4">
-          <OrderFlow accounts={options} base={settings.base} />
-        </div>
-      </Card>
-
-      <Card pad={false}>
-        <CardTitle
-          title="Positions and exit"
-          sub="Reads each ticked account's open positions from Groww (cash and F&O). Closing sends the opposite market order for the exact open quantity, with the same product. Shares sold from holdings, and anything Groww reports unclearly, are left alone. A position the strategy holds counts as closed for it."
-        />
-        <div className="px-5 py-4">
-          <ExitFlow accounts={options} suggestions={suggestions} />
-        </div>
-      </Card>
-
-      <Card pad={false}>
-        <CardTitle title="Changes" sub="Every change to live trading's settings, with the admin's IP." />
-        {changes.length === 0 ? (
-          <p className="px-5 py-4 text-[12.5px] text-ink3">No changes yet. Automatic trading starts OFF, with a base value of ₹5,00,000.</p>
-        ) : (
-          <ul className="space-y-1 px-5 py-4 text-[12.5px]">
-            {changes.map((c, i) => (
-              <li key={i} className="flex flex-wrap gap-x-3">
-                <span className="tnum text-ink3">{DATE_TIME.format(new Date(c.at))}</span>
-                <span className="text-ink">{named(c.what)}</span>
-                <span className="font-mono text-[11px] text-ink3">{c.ip}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      {/* 5. Manual tools, folded away */}
+      <Fold title="Send an order" sub="Buy or sell one share in all or chosen accounts — preview first, then send.">
+        <OrderFlow accounts={options} base={settings.base} />
+      </Fold>
+      <Fold title="Close positions (Exit)" sub="Close one share or everything open, in all or chosen accounts.">
+        <ExitFlow accounts={options} suggestions={suggestions} />
+      </Fold>
     </div>
   );
 }
 
-function Fact({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Step({ time, title, value, done }: { time: string; title: string; value: string; done: number | null | undefined }) {
   return (
-    <div className="min-w-0 bg-surface px-5 py-3.5">
-      <p className={eyebrow}>{label}</p>
-      <p className="mt-1.5 truncate text-[15px] font-semibold text-ink">{value}</p>
-      {sub && <p className="mt-0.5 text-[11.5px] text-ink3">{sub}</p>}
-    </div>
+    <li className="flex items-center gap-4 px-5 py-3">
+      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] ${done ? "bg-upsoft text-up" : "border border-line2 text-ink3"}`}>{done ? "✓" : ""}</span>
+      <span className="tnum w-12 shrink-0 font-mono text-[12px] text-ink3">{time}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13.5px] text-ink">{title}</span>
+        <span className={`block text-[12.5px] ${done ? "text-ink2" : "text-ink3"}`}>
+          {value}
+          {done ? ` · ${HM.format(new Date(done))}` : ""}
+        </span>
+      </span>
+    </li>
   );
+}
+
+/** What happened to an order, in plain words. */
+function statusOf(o: LiveOrder): { text: string; tone: Tone } {
+  const filled = o.filled ?? 0;
+  const st = (o.status ?? "").toUpperCase();
+  switch (o.state) {
+    case "placed":
+      if (!o.final) return { text: filled > 0 ? `Filling ${n(filled)}/${n(o.qty)}` : "Working", tone: "warn" };
+      if (filled >= o.qty) return { text: "Filled", tone: "up" };
+      if (filled > 0) return { text: `Part filled ${n(filled)}/${n(o.qty)}`, tone: "warn" };
+      if (st.includes("REJECT") || st.includes("FAIL")) return { text: "Rejected", tone: "down" };
+      if (st.includes("CANCEL")) return { text: "Cancelled", tone: "neutral" };
+      return { text: "Not filled", tone: "neutral" };
+    case "rejected":
+      return { text: "Rejected", tone: "down" };
+    case "refused":
+      return { text: "Not sent", tone: "down" };
+    case "not-sent":
+      return { text: "Did not reach Groww", tone: "neutral" };
+    case "unknown":
+    case "sending":
+      return { text: "Checking with Groww", tone: "warn" };
+    default:
+      return { text: "Practice (not sent)", tone: "neutral" };
+  }
 }
 
 function OrdersTable({ orders, labels }: { orders: LiveOrder[]; labels: Map<string, string> }) {
   if (!orders.length) return <p className="px-5 py-6 text-center text-[13px] text-ink3">No orders today.</p>;
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1000px] border-collapse text-left">
+      <table className="w-full min-w-[720px] border-collapse text-left">
         <thead>
           <tr className={`border-b border-line ${eyebrow}`}>
             <th className="px-4 py-3 font-medium">Time</th>
-            <th className="px-4 py-3 font-medium">Step</th>
             <th className="px-4 py-3 font-medium">Account</th>
             <th className="px-4 py-3 font-medium">Order</th>
-            <th className="px-4 py-3 font-medium">State</th>
-            <th className="px-4 py-3 text-right font-medium">Filled</th>
-            <th className="px-4 py-3 text-right font-medium">Avg ₹</th>
-            <th className="px-4 py-3 font-medium">Groww</th>
+            <th className="px-4 py-3 font-medium">Status</th>
+            <th className="px-4 py-3 text-right font-medium">Price ₹</th>
             <th className="px-4 py-3" />
           </tr>
         </thead>
         <tbody>
-          {[...orders].reverse().map((o) => (
-            <tr key={o.id} className="border-b border-line last:border-0">
-              <td className="tnum px-4 py-2.5 text-[12px] whitespace-nowrap text-ink2">{TIME.format(new Date(o.at))}</td>
-              <td className="px-4 py-2.5 text-[12px] whitespace-nowrap text-ink2">
-                {ACTION_LABEL[o.action]}
-                {o.source === "admin" && <span className="ml-1.5 text-[11px] font-semibold text-warn">admin</span>}
-              </td>
-              <td className="max-w-[200px] truncate px-4 py-2.5 text-[12px] text-ink" title={labels.get(o.accountId) ?? o.accountId}>
-                {labels.get(o.accountId) ?? o.accountId}
-              </td>
-              <td className="tnum px-4 py-2.5 text-[12.5px] whitespace-nowrap">
-                <span className={o.side === "BUY" ? "font-semibold text-up" : "font-semibold text-down"}>{o.side}</span> {o.qty.toLocaleString("en-IN")} {o.symbol}
-                <span className="ml-1 text-[10.5px] text-ink3">
-                  {o.product} {o.type === "LIMIT" && o.price != null ? `@ ${o.price}` : "MKT"}
-                </span>
-              </td>
-              <td className="px-4 py-2.5 whitespace-nowrap">
-                <Pill tone={STATE_TONE[o.state] ?? "neutral"}>{o.state}</Pill>
-                {o.status && o.state !== "shadow" && <span className="ml-1.5 text-[11px] text-ink3">{o.status.toLowerCase()}</span>}
-              </td>
-              <td className="tnum px-4 py-2.5 text-right text-[12px] text-ink2">{o.filled ?? "—"}</td>
-              <td className="tnum px-4 py-2.5 text-right text-[12px] text-ink2">{o.avg != null ? o.avg.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"}</td>
-              <td className="max-w-[260px] truncate px-4 py-2.5 text-[11.5px] text-ink3" title={o.message ?? undefined}>
-                {o.orderId ? <span className="font-mono">{o.orderId} </span> : null}
-                {o.message ?? ""}
-              </td>
-              <td className="px-4 py-2.5 text-right">
-                {o.mode === "live" && o.state === "placed" && !o.final && o.orderId ? (
-                  <form action={liveCancelOrder}>
-                    <input type="hidden" name="id" value={o.id} />
-                    <button type="submit" className={btnLine} title="Ask Groww to cancel what is left of this order">
-                      Cancel
-                    </button>
-                  </form>
-                ) : null}
-              </td>
-            </tr>
-          ))}
+          {[...orders].reverse().map((o) => {
+            const s = statusOf(o);
+            const why = o.state === "rejected" || o.state === "refused" || s.tone === "down" ? o.message : null;
+            return (
+              <tr key={o.id} className="border-b border-line align-top last:border-0">
+                <td className="tnum px-4 py-2.5 text-[12px] whitespace-nowrap text-ink2">{HM.format(new Date(o.at))}</td>
+                <td className="max-w-[200px] truncate px-4 py-2.5 text-[12px] text-ink" title={labels.get(o.accountId) ?? o.accountId}>
+                  {labels.get(o.accountId) ?? o.accountId}
+                </td>
+                <td className="px-4 py-2.5 text-[12.5px]">
+                  <span className="tnum whitespace-nowrap">
+                    <span className={o.side === "BUY" ? "font-semibold text-up" : "font-semibold text-down"}>{o.side}</span> {n(o.qty)} {o.symbol}
+                  </span>
+                  <span className="block text-[11px] text-ink3">
+                    {o.source === "admin" ? "by you" : ACTION_LABEL[o.action]}
+                    {o.type === "LIMIT" && o.price != null ? ` · limit ₹${o.price}` : ""}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5">
+                  <Pill tone={s.tone}>{s.text}</Pill>
+                  {why && <span className="mt-1 block max-w-[260px] text-[11px] text-ink3">{why}</span>}
+                </td>
+                <td className="tnum px-4 py-2.5 text-right text-[12px] text-ink2">{o.avg != null ? o.avg.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"}</td>
+                <td className="px-4 py-2.5 text-right">
+                  {o.mode === "live" && o.state === "placed" && !o.final && o.orderId ? (
+                    <form action={liveCancelOrder}>
+                      <input type="hidden" name="id" value={o.id} />
+                      <button type="submit" className={btnLine} title="Ask Groww to cancel what is left of this order">
+                        Cancel
+                      </button>
+                    </form>
+                  ) : null}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
