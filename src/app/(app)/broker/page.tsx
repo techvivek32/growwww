@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getAccount, getConnectionStatus } from "@/lib/api/broker";
+import { houseRoute } from "@/lib/api/egress";
 import { isOwnerSession } from "@/lib/access";
 import { fmtMoney } from "@/lib/format";
 import { PageHead, Card, CardHead, Pill } from "@/components/ui";
@@ -33,7 +34,7 @@ interface Step {
 }
 
 /** Each row's tick reflects a distinct, verifiable fact — not one boolean. */
-function ownerSteps(status: { credentials: boolean; live: boolean; ipPinned: boolean }): Step[] {
+function ownerSteps(status: { credentials: boolean; live: boolean; ipPinned: boolean }, tunnel: string | null): Step[] {
   return [
     {
       on: status.credentials,
@@ -49,8 +50,9 @@ function ownerSteps(status: { credentials: boolean; live: boolean; ipPinned: boo
     {
       on: status.ipPinned,
       label: "Outbound calls pinned to the registered IP",
-      detail:
-        "SEBI requires order placement from a registered static IP. With GROWW_REGISTERED_IP set, every call binds that source address and fails loudly if it cannot.",
+      detail: tunnel
+        ? `SEBI requires order placement from a registered static IP. Another host owns the address in GROWW_REGISTERED_IP, so every call goes through the tunnel to ${tunnel} — keep that host running, or the house account (and any member on that address) cannot reach Groww.`
+        : "SEBI requires order placement from a registered static IP. With GROWW_REGISTERED_IP set, every call binds that source address and fails loudly if it cannot.",
     },
   ];
 }
@@ -91,7 +93,7 @@ const LIMITS = [
 
 export default async function BrokerPage() {
   const [account, status, isOwner] = await Promise.all([getAccount(), getConnectionStatus(), isOwnerSession()]);
-  const steps = isOwner ? ownerSteps(status) : memberSteps(status);
+  const steps = isOwner ? ownerSteps(status, houseRoute().tunnel) : memberSteps(status);
 
   // "Connected" means a live call succeeded — not that a key exists.
   const pill = status.live

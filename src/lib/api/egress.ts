@@ -45,6 +45,23 @@ function houseProxy(): string | undefined {
   return env("GROWW_HOUSE_PROXY");
 }
 
+/** A tunnel's host and port, for showing it: never any login part of its URL. */
+export function tunnelLabel(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.port ? `${u.hostname}:${u.port}` : u.hostname;
+  } catch {
+    return "(unreadable tunnel URL)";
+  }
+}
+
+/** How the house account's calls reach its address, for the admin's table:
+ *  through a tunnel (another host owns the address) or from this server itself. */
+export function houseRoute(): { tunnel: string | null } {
+  const proxy = houseProxy();
+  return { tunnel: proxy ? tunnelLabel(proxy) : null };
+}
+
 /** How to send from `ip`, or null if this server cannot send from it at all. */
 export async function egressFor(ip: string | null | undefined): Promise<Egress | null> {
   if (!ip) return null;

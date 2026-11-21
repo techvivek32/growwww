@@ -2,6 +2,7 @@ import { loadAdmin } from "@/app/(admin)/admin/sections";
 import { liveSummary } from "@/lib/research";
 import { AGREEMENT_VERSION } from "@/lib/consent";
 import { json, guarded, fail } from "@/lib/mobileApi";
+import { tunnelLabel } from "@/lib/api/egress";
 
 export const dynamic = "force-dynamic";
 
@@ -198,7 +199,8 @@ export async function GET(req: Request) {
 
       case "addresses":
         return json({
-          pool: d.pool,
+          // A tunnel's host and port only: never a login that may be part of its URL.
+          pool: d.pool.map((e) => ({ ...e, proxy: e.proxy ? tunnelLabel(e.proxy) : undefined })),
           house: d.house,
           accounts: d.users
             .filter((u) => u.hasBroker)

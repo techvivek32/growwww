@@ -6,13 +6,12 @@ import { listKyc } from "@/lib/kyc";
 import { listConsents, AGREEMENT_VERSION, isAcceptedVersion, type ConsentRecord } from "@/lib/consent";
 import { listMembers, listInvoices, accrual, type Membership, type InvoiceStatus } from "@/lib/membership";
 import { listOrders, orderStatsByUser, type LedgerStatus } from "@/lib/ledger";
-import { registeredIp } from "@/lib/api/groww";
 import { Card, CardHead, Pill } from "@/components/ui";
 import { adminOpenAccount, adminDisconnectBroker, adminDeleteUser, adminKycDecision, adminScheduleKycCall, adminMarkInvoice, adminAddEgress, adminRemoveEgress } from "./actions";
 import { recentAdminAccess, type AdminAccess } from "@/lib/adminAccess";
 import SettleForm from "./SettleForm";
 import { listEgress } from "@/lib/egressStore";
-import { houseIp } from "@/lib/api/egress";
+import { houseIp, houseRoute, tunnelLabel } from "@/lib/api/egress";
 import { adminEmail, ownerEmail } from "@/lib/auth";
 
 
@@ -149,16 +148,20 @@ export async function loadAdmin() {
 
   // A true funnel: each step counts only users who also passed every earlier
   // step, so the numbers can never rise from one step to the next.
-  const serverIp = registeredIp();
   const fSigned = users.filter((u) => signedNow.has(u.id) || isAcceptedVersion(signedOld.get(u.id)?.agreementVersion ?? ""));
   const fConnected = fSigned.filter((u) => u.hasBroker);
   const fOrdered = fConnected.filter((u) => (orderStats.get(u.id)?.placed ?? 0) > 0);
   const fMembers = fOrdered.filter((u) => memberFor.get(u.id)?.status === "active");
-  const ipOk = fConnected.filter((u) => serverIp !== null && u.brokerStaticIp === serverIp).length;
+  // An order address of their own: one this server can send from, not the house account's, and
+  // held by no other member (an exchange ties one registered address to one client).
+  const usableIps = new Set([...(house ? [house] : []), ...pool.map((e) => e.ip)]);
+  const ipHolders = new Map<string, number>();
+  for (const u of users) if (u.hasBroker && u.brokerStaticIp) ipHolders.set(u.brokerStaticIp, (ipHolders.get(u.brokerStaticIp) ?? 0) + 1);
+  const ownIp = fConnected.filter((u) => u.brokerStaticIp && usableIps.has(u.brokerStaticIp) && u.brokerStaticIp !== house && ipHolders.get(u.brokerStaticIp) === 1).length;
   const funnel = [
     { label: "Signed up", n: users.length },
     { label: "Agreement signed", n: fSigned.length, hint: `${users.filter((u) => signedNow.has(u.id)).length} on v${AGREEMENT_VERSION}` },
-    { label: "Groww connected", n: fConnected.length, hint: serverIp ? `${ipOk} confirmed IP ${serverIp}` : "server IP not set" },
+    { label: "Groww connected", n: fConnected.length, hint: `${ownIp} on an order address of their own` },
     { label: "Placed ≥1 order", n: fOrdered.length },
     { label: "Active members", n: fMembers.length },
   ];
@@ -180,13 +183,20 @@ const D = "const { users, kyc, consents, members, invoices, orders, orderStats, 
 /** Order addresses: the pool of registered egress addresses. */
 export function AddressesSection({ d }: { d: AdminData }) {
   const { users, kyc, consents, members, invoices, orders, orderStats, access, pool, house, reserved, connected, last7, pendingKyc, activeMembers, emailFor, who, hasBrokerFor, signedNow, signedOld, kycFor, memberFor, billsFor, funnel, sumFee, countInv, ordersToday, countStatus, orderLog } = d;
+  const via = houseRoute();
+  const holdersOf = (ip: string) => users.filter((u) => u.hasBroker && u.brokerStaticIp === ip);
+  // The house address is listed once, as the house account's, even if it is in the pool too.
+  const memberPool = pool.filter((e) => e.ip !== house);
+  const houseInPool = memberPool.length !== pool.length;
+  const houseAlso = house ? holdersOf(house) : [];
+  const them = houseAlso.length === 1 ? "them" : "each of them";
   return (
     <>
       <Card pad={false}>
         <CardTitle
           title="Order addresses"
-          count={String(pool.length + (house ? 1 : 0))}
-          sub="An exchange ties one registered address to one Groww account, so each member needs their own. A new sign-up is handed the first address nobody holds; when none is left, the connect page tells them to call us."
+          count={String(memberPool.length + (house ? 1 : 0))}
+          sub="An exchange ties one registered address to one client (family excepted), so each member needs their own. A new sign-up is handed the first pool address nobody holds — never the house account's — and when none is left, the connect page tells them to call us."
         />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] border-collapse text-left">
@@ -202,27 +212,58 @@ export function AddressesSection({ d }: { d: AdminData }) {
               {house && (
                 <tr className="border-b border-line">
                   <td className="px-4 py-3 tnum text-[12.5px] text-ink">{house}</td>
-                  <td className="px-4 py-3 text-[12px] text-ink2">This server</td>
-                  <td className="px-4 py-3 text-[12px]">
-                    {users.find((u) => u.brokerStaticIp === house)?.email ?? <span className="text-up">Free</span>}
+                  <td className="px-4 py-3 text-[12px] text-ink2">
+                    {via.tunnel ? `Tunnel ${via.tunnel}` : "This server's own address"}
+                    <span className="block text-ink3">{via.tunnel ? "another host owns this address — keep it running" : "house account"}</span>
                   </td>
-                  <td className="px-4 py-3 text-right text-[12px] text-ink3">Built in</td>
+                  <td className="px-4 py-3 text-[12px]">
+                    <span className="text-ink">House account (owner)</span>
+                    {houseAlso.length > 0 && (
+                      <span className="block text-warn">
+                        Also on {houseAlso.map((u) => u.email).join(", ")}&apos;s Groww key — one address per client (family excepted). To move {them}: add an address
+                        below, disconnect {them}, and have {them} reconnect — the new address is then given, to register on their Groww key.
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right text-[12px] text-ink3">
+                    {houseInPool ? (
+                      <form action={adminRemoveEgress}>
+                        <input type="hidden" name="ip" value={house} />
+                        <button className="border border-line2 px-2.5 py-1 text-[12px] text-ink2 hover:bg-surfaceh" title="It is also listed in the pool; the house account keeps it either way">
+                          Remove pool copy
+                        </button>
+                      </form>
+                    ) : (
+                      "Built in · not given to new members"
+                    )}
+                  </td>
                 </tr>
               )}
-              {pool.map((e) => {
-                const holder = users.find((u) => u.brokerStaticIp === e.ip);
+              {memberPool.map((e) => {
+                const holders = holdersOf(e.ip);
                 return (
                   <tr key={e.ip} className="border-b border-line last:border-0">
                     <td className="px-4 py-3 tnum text-[12.5px] text-ink">{e.ip}</td>
                     <td className="px-4 py-3 text-[12px] text-ink2">
-                      {e.proxy ? `Tunnel ${e.proxy}` : "Bound on this server"}
+                      {e.proxy ? `Tunnel ${tunnelLabel(e.proxy)}` : "This server's own address"}
                       {e.note ? <span className="block text-ink3">{e.note}</span> : null}
                     </td>
                     <td className="px-4 py-3 text-[12px]">
-                      {holder ? holder.email : <span className="text-up">Free</span>}
+                      {holders.length === 0 ? (
+                        <span className="text-up">Free</span>
+                      ) : (
+                        <>
+                          {holders.map((u) => (
+                            <span key={u.id} className="block">
+                              {u.email}
+                            </span>
+                          ))}
+                          {holders.length > 1 && <span className="block text-warn">Shared by {holders.length} clients — one address per client (family excepted)</span>}
+                        </>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {holder ? (
+                      {holders.length > 0 ? (
                         <span className="text-[12px] text-ink3">In use</span>
                       ) : (
                         <form action={adminRemoveEgress}>

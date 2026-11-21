@@ -41,6 +41,9 @@ export interface User {
     /** Groww's client code (UCC), read live at connect time. */
     ucc?: string | null;
   };
+  /** The order address of the last Groww connection, kept after a disconnect (not a secret),
+   *  so a reconnect can be given it back when no other address is free (see lib/trading). */
+  lastStaticIp?: string;
 }
 
 /** Non-secret facts recorded alongside a broker connection. */
@@ -207,6 +210,7 @@ export async function setBroker(userId: string, apiKey: string, totpSecret: stri
     const user = store.users.find((u) => u.id === userId);
     if (!user) return false;
     const replacing = Boolean(user.broker);
+    delete user.lastStaticIp; // connected again: the address on record is the current one
     user.broker = {
       apiKeyEnc: encrypt(apiKey.trim()),
       totpEnc: encrypt(totpSecret.trim()),
@@ -225,6 +229,7 @@ export async function clearBroker(userId: string): Promise<void> {
     const store = await read();
     const user = store.users.find((u) => u.id === userId);
     if (user) {
+      if (user.broker?.staticIp) user.lastStaticIp = user.broker.staticIp;
       delete user.broker;
       await write(store, true); // the old encrypted keys must not linger in the .bak
     }
@@ -255,6 +260,11 @@ export async function ipsInUse(exceptUserId?: string): Promise<string[]> {
   return store.users
     .filter((u) => u.id !== exceptUserId && u.broker?.staticIp)
     .map((u) => u.broker!.staticIp as string);
+}
+
+/** The order address of this user's last Groww connection, if they disconnected since. */
+export async function lastStaticIp(userId: string): Promise<string | null> {
+  return (await findById(userId))?.lastStaticIp ?? null;
 }
 
 /** Non-secret broker facts for one user — what the trading gate needs to decide. */

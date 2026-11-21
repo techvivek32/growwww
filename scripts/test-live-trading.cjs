@@ -742,6 +742,66 @@ test("a stalled proxy tunnel fails every call within its CONNECT limit — none 
   }
 });
 
+test("order addresses: a new member is never handed the house account's address; one who already holds it is never stranded", async () => {
+  const saved = { GROWW_REGISTERED_IP: process.env.GROWW_REGISTERED_IP, GROWW_HOUSE_PROXY: process.env.GROWW_HOUSE_PROXY };
+  process.env.GROWW_REGISTERED_IP = "10.0.0.1"; // the house account's: registered on the owner's own Groww key
+  delete process.env.GROWW_HOUSE_PROXY;
+  const members = { near: "10.0.0.2" }; // member id -> the address on their Groww key
+  const last = {}; // member id -> the address of their last connection, after a disconnect
+  const pool = [
+    { ip: "10.0.0.1", addedAt: 0 }, // the house address listed in the pool too: still never handed out
+    { ip: "10.0.0.2", addedAt: 1 },
+    { ip: "10.0.0.3", proxy: "http://u:p@10.9.9.9:8888", addedAt: 2 },
+  ];
+  try {
+    const egress = load("src/lib/api/egress.ts", { "server-only": {}, "https-proxy-agent": require("https-proxy-agent"), "../egressStore": { listEgress: async () => pool } });
+    const trading = load("src/lib/trading.ts", {
+      "server-only": {},
+      "./auth": { OWNER_ID: "owner" },
+      "./users": {
+        getUserBrokerMeta: async (id) => (id in members ? { staticIp: members[id], ipConfirmed: true, ucc: null } : null),
+        ipsInUse: async (except) => Object.entries(members).filter(([id]) => id !== except).map(([, ip]) => ip),
+        lastStaticIp: async (id) => last[id] ?? null,
+      },
+      "./api/egress": egress,
+    });
+    // no member holds the house address, yet a new member is handed the next free pool address instead
+    assert.equal(await trading.assignableIp("fresh"), "10.0.0.3");
+    assert.equal(await trading.mayClaimIp("fresh", "10.0.0.1"), false); // the house account's
+    assert.equal(await trading.mayClaimIp("fresh", "10.0.0.2"), false); // another member's
+    assert.equal(await trading.mayClaimIp("fresh", "10.0.0.9"), false); // not one this server can send from
+    assert.equal(await trading.mayClaimIp("fresh", "10.0.0.3"), true);
+    // a member handed the house address before this rule keeps it on a reconnect, and still trades
+    members.old = "10.0.0.1";
+    assert.equal(await trading.assignableIp("old"), "10.0.0.1");
+    assert.equal(await trading.mayClaimIp("old", "10.0.0.1"), true);
+    assert.equal((await trading.tradePermission("old")).allowed, true);
+    assert.equal(await trading.mayClaimIp("fresh", "10.0.0.1"), false);
+    // that member is disconnected: with a pool address free they are moved onto it (how the admin moves them off)
+    delete members.old;
+    last.old = "10.0.0.1";
+    assert.equal(await trading.assignableIp("old"), "10.0.0.3");
+    assert.equal(await trading.mayClaimIp("old", "10.0.0.1"), false);
+    // ...and with none free they get their old address back rather than being unable to connect at all
+    members.fresh = "10.0.0.3";
+    assert.equal(await trading.assignableIp("old"), "10.0.0.1");
+    assert.equal(await trading.mayClaimIp("old", "10.0.0.1"), true);
+    // every address taken: nothing is handed to anyone else (the connect page then says to contact us)
+    assert.equal(await trading.assignableIp("another"), null);
+    assert.equal(await trading.mayClaimIp("another", "10.0.0.1"), false);
+    // the admin's table shows a tunnel's host and port, never a login in its URL
+    assert.equal(egress.tunnelLabel("http://u:p@10.9.9.9:8888"), "10.9.9.9:8888");
+    assert.deepEqual(egress.houseRoute(), { tunnel: null }); // the house address is this server's own
+    process.env.GROWW_HOUSE_PROXY = "http://user:secret@72.60.30.153:8888";
+    assert.deepEqual(egress.houseRoute(), { tunnel: "72.60.30.153:8888" }); // another host owns it
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+});
+
 test("IST clock matches the research engine's", () => {
   const t = Date.UTC(2026, 10, 20, 3, 50, 30); // 09:20:30 IST
   const n = util.istNow(t);

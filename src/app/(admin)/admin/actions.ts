@@ -16,6 +16,7 @@ import { eraseAccount } from "@/lib/erase";
 import { eraseIfClear } from "@/lib/liveTrading/orders";
 import { getNavFor } from "@/lib/api/broker";
 import { addEgress, removeEgress } from "@/lib/egressStore";
+import { houseIp } from "@/lib/api/egress";
 
 /** Every admin action re-checks the caller is the admin login — never trust the UI. */
 async function requireAdmin(): Promise<boolean> {
@@ -186,6 +187,8 @@ export async function adminMarkInvoice(formData: FormData): Promise<void> {
  */
 export async function adminAddEgress(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
+  // The house account's own address is never a pool address (it is not given to members).
+  if (String(formData.get("ip") ?? "").trim() === houseIp()) return;
   await addEgress({
     ip: String(formData.get("ip") ?? ""),
     proxy: String(formData.get("proxy") ?? ""),
