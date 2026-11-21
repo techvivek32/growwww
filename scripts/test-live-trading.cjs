@@ -121,6 +121,8 @@ const reset = async () => {
   world.erasing = new Set();
   world.disconnected = new Set();
   world.usersBroken = false;
+  // Every test starts at 11:00 IST (inside the session), so none depends on the hour it is run at.
+  toSessionTime();
 };
 const pos = (symbol, net, product = "MIS", segment = "CASH", exchange = "NSE") => ({ symbol, segment, exchange, product, net, avg: 100 });
 let dayN = 21000;
@@ -617,7 +619,7 @@ test("an exit confirmation closes only what its preview showed, in that directio
   world.placeQueue.push({ ok: true, outcome: "placed", orderId: "XP1", status: "OPEN", filled: 0, message: null, httpStatus: 200 });
   const r = await orders.exitIn({ batch: "bPICK0001", day, accountId: "p1", symbol: null, picks });
   assert.deepEqual(world.places.map(([, i]) => `${i.side} ${i.qty} ${i.symbol}`), ["SELL 100 RELIANCE"]);
-  assert.match(r.rows.find((x) => x.symbol === "NIFTYCE").skip, /Not in the preview/);
+  assert.match(r.rows.find((x) => x.symbol === "NIFTYCE").skip, /Not in the list you saw/);
   // a position whose direction flipped since the preview is left alone
   await reset();
   world.positions.p2 = { CASH: [pos("RELIANCE", -100)], FNO: [] };
@@ -628,7 +630,6 @@ test("an exit confirmation closes only what its preview showed, in that directio
 
 test("deletion is held only while MNHA can still see something open — never after a disconnect", async () => {
   await reset();
-  toSessionTime();
   const day = util.istNow().day;
   world.placeQueue.push({ ok: true, outcome: "placed", orderId: "DX1", status: "EXECUTED", filled: 10, message: null, httpStatus: 200 });
   const e = await orders.openLegIn({ day, action: "entry", leg: "short", accountId: "del1", mode: "live", symbol: "TCS", qty: 10 });
@@ -656,7 +657,6 @@ test("deletion is held only while MNHA can still see something open — never af
 
 test("deletion waits for a clear account, and nothing is sent while it runs", async () => {
   await reset();
-  toSessionTime();
   const day = util.istNow().day;
   world.placeQueue.push({ ok: true, outcome: "placed", orderId: "EC1", status: "EXECUTED", filled: 10, message: null, httpStatus: 200 });
   const e = await orders.openLegIn({ day, action: "entry", leg: "short", accountId: "era1", mode: "live", symbol: "TCS", qty: 10 });

@@ -996,14 +996,14 @@ export async function exitIn(args: { batch: string; day: number; accountId: stri
         row.skip = "MNHA's resting order on it is being cancelled first — press Exit again in a few seconds.";
         continue;
       }
-      // Only what the admin saw in the preview, in the direction shown there, never more than shown.
+      // Only what the admin saw, in the direction shown there, never more than shown.
       const pick = picks?.find((p) => p.segment === row.segment && p.exchange === row.exchange && p.symbol === row.symbol && p.product === row.product);
       if (picks && !pick) {
-        row.skip = "Not in the preview you confirmed — preview again to include it.";
+        row.skip = "Not in the list you saw — it opened a moment ago; press Exit again.";
         continue;
       }
       if (pick && pick.side !== row.side) {
-        row.skip = "Its direction changed since the preview — preview again.";
+        row.skip = "Its direction changed a moment ago — press Exit again.";
         continue;
       }
       // Never over an MNHA close of this position that is still working at Groww.
@@ -1052,9 +1052,3 @@ export async function exitIn(args: { batch: string; day: number; accountId: stri
   });
 }
 
-/** Every open position in one account, as the exit would treat it (read-only; for the preview). */
-export async function previewExitIn(accountId: string, symbol: string | null): Promise<{ rows: ExitRow[]; error: string | null }> {
-  const [cash, fno] = await Promise.all([positionsAs(accountId, "CASH"), positionsAs(accountId, "FNO")]);
-  if (!cash || !fno) return { rows: [], error: "Groww's positions could not be read." };
-  return { rows: exitRows([...cash, ...fno], symbol), error: null };
-}

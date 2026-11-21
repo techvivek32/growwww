@@ -12,7 +12,7 @@ import { isTradingDate } from "@/lib/market";
 import { listUsers } from "@/lib/users";
 import { OWNER_ID } from "@/lib/auth";
 import { liveCancelOrder, liveExclude, liveRefresh } from "./actions";
-import { BaseForm, ExitFlow, ModeForm, OrderFlow, type AccountOption } from "./LiveForms";
+import { BaseForm, LivePositions, ModeForm, OrderFlow, type AccountOption } from "./LiveForms";
 
 export const metadata: Metadata = { title: "Live trading · Admin · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -86,7 +86,6 @@ export default async function LiveTradingPage({ searchParams }: { searchParams: 
   const labels = new Map<string, string>([[OWNER_ID, "House account"], ...users.map((u) => [u.id, u.email] as [string, string])]);
   const named = (text: string) => text.replace(/\{\{acct:([^}]+)\}\}/g, (_m, id: string) => labels.get(id) ?? "an erased account");
   const options: AccountOption[] = checks.map((c) => ({ id: c.id, label: c.label, group: c.group, free: c.funds?.free ?? null }));
-  const suggestions = [day.legs.short?.symbol, day.legs.long?.symbol, today?.pick, today?.flip?.symbol].filter((s, i, a): s is string => Boolean(s) && a.indexOf(s) === i);
   const tradingDay = isTradingDate(now.date);
   const tradingOff = process.env.TRADING_ENABLED === "false";
   const unsure = orders.filter((o) => o.state === "unknown" || o.state === "sending");
@@ -220,7 +219,14 @@ export default async function LiveTradingPage({ searchParams }: { searchParams: 
         )}
       </Section>
 
-      {/* 3. Accounts */}
+      {/* 3. Open positions, live */}
+      <Section title="Open positions" sub="Every account, read from Groww every 2 seconds.">
+        <div className="px-5 py-4">
+          <LivePositions />
+        </div>
+      </Section>
+
+      {/* 4. Accounts */}
       <Section
         title="Accounts"
         right={
@@ -265,17 +271,14 @@ export default async function LiveTradingPage({ searchParams }: { searchParams: 
         )}
       </Section>
 
-      {/* 4. Today's orders */}
+      {/* 5. Today's orders */}
       <Section title="Today's orders">
         <OrdersTable orders={orders} labels={labels} />
       </Section>
 
-      {/* 5. Manual tools, folded away */}
+      {/* 6. A manual order, folded away */}
       <Fold title="Send an order" sub="Buy or sell one share in all or chosen accounts — preview first, then send.">
         <OrderFlow accounts={options} base={settings.base} />
-      </Fold>
-      <Fold title="Close positions (Exit)" sub="Close one share or everything open, in all or chosen accounts.">
-        <ExitFlow accounts={options} suggestions={suggestions} />
       </Fold>
     </div>
   );

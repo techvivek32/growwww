@@ -1,15 +1,15 @@
 "use client";
 
-import { startTransition, useActionState, useState, type FormEvent } from "react";
+import { startTransition, useActionState, useEffect, useState, type FormEvent } from "react";
 import { useFormStatus } from "react-dom";
 import {
-  liveConfirmExit,
   liveConfirmOrder,
-  livePreviewExit,
+  liveExitAll,
+  liveExitOne,
   livePreviewOrder,
   liveSetBase,
   liveSetMode,
-  type ExitFlowState,
+  type ExitResult,
   type Msg,
   type OrderFlowState,
   type SentRow,
@@ -311,111 +311,195 @@ export function OrderFlow({ accounts, base }: { accounts: AccountOption[]; base:
   );
 }
 
-/* ------------------------------------------------------------------ exits */
+/* ------------------------------------------------------- live positions */
 
-export function ExitFlow({ accounts, suggestions }: { accounts: AccountOption[]; suggestions: string[] }) {
-  const [preview, previewAction, previewing] = useActionState<ExitFlowState, FormData>(livePreviewExit, {});
-  const [sent, sendAction] = useActionState<ExitFlowState, FormData>(liveConfirmExit, {});
-  const [scope, setScope] = useState<"all" | "symbol">("all");
-  const [symbol, setSymbol] = useState("");
-  const plan = preview.plan;
-  const doneHere = sent.done && plan && sent.done.planId === plan.id;
-  const toClose = plan ? plan.accounts.reduce((n, a) => n + a.rows.filter((r) => r.side && !r.skip).length, 0) : 0;
+interface PosRow {
+  symbol: string;
+  segment: "CASH" | "FNO";
+  exchange: "NSE" | "BSE" | null;
+  product: string | null;
+  net: number | null;
+  avg: number | null;
+  side: "BUY" | "SELL" | null;
+  qty: number;
+  skip: string | null;
+}
+
+interface PosAccount {
+  id: string;
+  label: string;
+  canExit: boolean;
+  at: number | null;
+  rows: PosRow[];
+  error: string | null;
+}
+
+const POLL_MS = 2_000;
+const hms = (at: number) => new Date(at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false });
+const kind = (r: PosRow) => `${r.segment === "FNO" ? "F&O · " : ""}${r.product === "MIS" ? "Intraday" : r.product === "CNC" ? "Delivery" : r.product === "NRML" ? "Carry" : "?"}`;
+
+/**
+ * Every account's open positions, read again every 2 seconds while the page is
+ * open (and in view), with one Exit all and an Exit per position. Each close is
+ * sized again from Groww when it is sent, so a list a moment old never closes too much.
+ */
+export function LivePositions() {
+  const [data, setData] = useState<{ at: number; accounts: PosAccount[] } | null>(null);
+  const [stale, setStale] = useState(false);
+  const [msg, setMsg] = useState<ExitResult | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stop = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      const started = Date.now();
+      if (document.visibilityState === "visible") {
+        try {
+          const r = await fetch("/admin/live/positions", { cache: "no-store" });
+          const j = r.ok ? await r.json() : null;
+          if (stop) return;
+          if (j && Array.isArray(j.accounts)) {
+            setData(j);
+            setStale(false);
+          } else setStale(true);
+        } catch {
+          if (!stop) setStale(true);
+        }
+      }
+      // Every 2 s from the start of the last look, never two looks at once.
+      if (!stop) timer = setTimeout(tick, Math.max(300, POLL_MS - (Date.now() - started)));
+    };
+    void tick();
+    return () => {
+      stop = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
+  const accounts = data?.accounts ?? [];
+  const rows = accounts.flatMap((a) => a.rows.map((r) => ({ a, r })));
+  const closable = rows.filter(({ a, r }) => a.canExit && r.side && !r.skip);
+  const inAccounts = new Set(closable.map(({ a }) => a.id)).size;
+  const broken = accounts.filter((a) => a.error);
+  const unreachable = accounts.filter((a) => !a.canExit);
+
+  const run = async (key: string, question: string, act: () => Promise<ExitResult>) => {
+    if (!window.confirm(question)) return;
+    setBusy(key);
+    setMsg(null);
+    try {
+      setMsg(await act());
+    } catch {
+      setMsg({ error: "The exit could not be started — check Today's orders, then try again." });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
-    <div className="space-y-4">
-      <form onSubmit={submitWith(previewAction)} className="space-y-3">
-        <div className="flex flex-wrap items-center gap-4 text-[13px]">
-          <label className="flex items-center gap-2">
-            <input type="radio" name="scope" value="all" checked={scope === "all"} onChange={() => setScope("all")} />
-            Everything open
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="radio" name="scope" value="symbol" checked={scope === "symbol"} onChange={() => setScope("symbol")} />
-            One symbol
-          </label>
-          {scope === "symbol" && (
-            <>
-              <input name="symbol" value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} placeholder="TCS" className={`${field} w-40 uppercase`} />
-              {suggestions.map((s) => (
-                <button key={s} type="button" className={btnLine} onClick={() => setSymbol(s)}>
-                  {s}
-                </button>
-              ))}
-            </>
-          )}
-        </div>
-        <AccountPicker accounts={accounts} defaults={() => true} />
-        <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" disabled={previewing} className={btnBrand}>
-            {previewing ? "Reading Groww…" : "Show positions"}
-          </button>
-          {preview.error && <p role="alert" className="text-[12.5px] text-down">{preview.error}</p>}
-        </div>
-      </form>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="flex items-center gap-2 text-[12.5px] text-ink3">
+          <span className={`h-2 w-2 rounded-full ${data && !stale ? "live-dot bg-up" : "bg-ink3"}`} />
+          {data ? `${rows.length} open · updated ${hms(data.at)}` : "Reading Groww…"}
+          {stale && <span className="text-warn"> · could not refresh</span>}
+        </p>
+        <button
+          type="button"
+          disabled={!closable.length || busy !== null}
+          className={`${btnDanger} h-10 px-5 text-[13.5px]`}
+          onClick={() =>
+            run("all", `Close ALL ${closable.length} open position${closable.length === 1 ? "" : "s"} in ${inAccounts} account${inAccounts === 1 ? "" : "s"} at market?`, () => liveExitAll())
+          }
+        >
+          {busy === "all" ? "Closing…" : `Exit all${closable.length ? ` (${closable.length})` : ""}`}
+        </button>
+      </div>
 
-      {plan && !doneHere && (
-        <div className="space-y-3 border border-ink/70 p-4">
-          <p className="text-[14px] font-semibold text-ink">
-            Close {plan.symbol ? <span className="text-down">{plan.symbol}</span> : <span className="text-down">EVERYTHING open</span>} in {plan.accounts.length} account
-            {plan.accounts.length === 1 ? "" : "s"}:
-          </p>
-          {plan.accounts.map((a) => (
-            <div key={a.id}>
-              <p className="text-[12.5px] font-semibold text-ink">{a.label}</p>
-              {a.error ? (
-                <p className="text-[12px] text-down">{a.error}</p>
-              ) : a.rows.length === 0 ? (
-                <p className="text-[12px] text-ink3">No open position{plan.symbol ? ` in ${plan.symbol}` : ""}.</p>
-              ) : (
-                <ul className="mt-1 space-y-0.5 text-[12px]">
-                  {a.rows.map((r, i) => (
-                    <li key={i} className="tnum flex flex-wrap gap-x-2">
-                      <span className="text-ink">{r.symbol}</span>
-                      <span className="text-ink3">
-                        {r.segment} · {r.product ?? "?"} · {r.exchange ?? "?"} · net {r.net ?? "?"}
-                        {r.avg ? ` @ ₹${r.avg}` : ""}
-                      </span>
-                      {r.side && !r.skip ? (
-                        <span className={r.side === "BUY" ? "font-semibold text-up" : "font-semibold text-down"}>
-                          → {r.side} {r.qty.toLocaleString("en-IN")} at market
-                        </span>
-                      ) : (
-                        <span className="text-warn">left alone: {r.skip}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+      {msg && (
+        <div role="status" className="space-y-1 text-[12.5px]">
+          {msg.error && <p className="text-down">{msg.error}</p>}
+          {msg.ok && <p className="text-up">{msg.ok}</p>}
+          {msg.notes?.map((x, i) => (
+            <p key={i} className="text-warn">
+              {x}
+            </p>
           ))}
-          {plan.refused.length > 0 && <p className="text-[12px] text-warn">Left out (cannot send orders now): {plan.refused.join(", ")}</p>}
-          {toClose > 0 ? (
-            <form action={sendAction} className="flex flex-wrap items-center gap-2">
-              <input type="hidden" name="planId" value={plan.id} />
-              <input name="confirm" autoComplete="off" placeholder="EXIT" className={`${field} w-24`} />
-              <Submit label={`Close ${toClose} position${toClose === 1 ? "" : "s"}`} busy="Closing…" cls={btnDanger} />
-              <span className="text-[12px] text-ink3">Type EXIT. Each close is sized again from Groww at the moment it is sent.</span>
-            </form>
-          ) : (
-            <p className="text-[12.5px] text-ink3">Nothing to close.</p>
-          )}
-          {sent.error && (!sent.errorFor || sent.errorFor === plan.id) && <p role="alert" className="text-[12.5px] text-down">{sent.error}</p>}
         </div>
       )}
 
-      {doneHere && sent.done && (
-        <div className="space-y-3">
-          <p className="text-[13px] font-semibold text-ink">{sent.done.summary}</p>
-          {!sent.done.pending && <SentTable rows={sent.done.accounts.flatMap((a) => a.sent)} />}
-          {sent.done.accounts
-            .filter((a) => a.error || a.skipped.length)
-            .map((a) => (
-              <p key={a.id} className="text-[12px] text-warn">
-                {a.label}: {a.error ?? a.skipped.map((r) => `${r.symbol} left alone (${r.skip})`).join("; ")}
-              </p>
-            ))}
-        </div>
+      {broken.length > 0 && (
+        <p className="text-[12px] text-warn">
+          Not read just now: {broken.map((a) => `${a.label}${a.at ? ` (showing ${hms(a.at)})` : ""}`).join(", ")}
+        </p>
       )}
+
+      {unreachable.length > 0 && (
+        <p className="text-[12px] text-ink3">Not shown — cannot take orders now (close in Groww): {unreachable.map((a) => a.label).join(", ")}</p>
+      )}
+
+      {data && rows.length === 0 ? (
+        <p className="border border-line px-4 py-6 text-center text-[13px] text-ink3">No open positions.</p>
+      ) : rows.length > 0 ? (
+        <div className="overflow-x-auto border border-line">
+          <table className="w-full min-w-[640px] border-collapse text-left text-[12.5px]">
+            <thead>
+              <tr className={`border-b border-line ${eyebrow}`}>
+                <th className="px-3 py-2 font-medium">Account</th>
+                <th className="px-3 py-2 font-medium">Share</th>
+                <th className="px-3 py-2 font-medium">Position</th>
+                <th className="px-3 py-2 text-right font-medium">Avg ₹</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ a, r }) => {
+                const key = `${a.id}|${r.segment}|${r.exchange}|${r.symbol}|${r.product}`;
+                return (
+                  <tr key={key} className="border-b border-line last:border-0">
+                    <td className="max-w-[220px] truncate px-3 py-2 text-ink">{a.label}</td>
+                    <td className="px-3 py-2">
+                      <span className="font-semibold text-ink">{r.symbol}</span>
+                      <span className="ml-1.5 text-[11px] text-ink3">{kind(r)}</span>
+                    </td>
+                    <td className="tnum px-3 py-2 whitespace-nowrap">
+                      {r.net === null ? (
+                        <span className="text-warn">unclear</span>
+                      ) : (
+                        <span className={r.net > 0 ? "font-semibold text-up" : "font-semibold text-down"}>
+                          {r.net > 0 ? "Long" : "Short"} {Math.abs(r.net).toLocaleString("en-IN")}
+                        </span>
+                      )}
+                    </td>
+                    <td className="tnum px-3 py-2 text-right text-ink2">{r.avg ? r.avg.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"}</td>
+                    <td className="px-3 py-2 text-right">
+                      {!a.canExit ? (
+                        <span className="text-[11.5px] text-ink3">close in Groww</span>
+                      ) : r.side && !r.skip ? (
+                        <button
+                          type="button"
+                          disabled={busy !== null}
+                          className={btnLine}
+                          onClick={() =>
+                            run(key, `Close ${r.symbol} (${r.net! > 0 ? "long" : "short"} ${r.qty.toLocaleString("en-IN")}) in ${a.label} at market?`, () =>
+                              liveExitOne(a.id, { segment: r.segment, exchange: r.exchange, symbol: r.symbol, product: r.product }),
+                            )
+                          }
+                        >
+                          {busy === key ? "Closing…" : "Exit"}
+                        </button>
+                      ) : (
+                        <span className="text-[11.5px] text-ink3">{r.skip}</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
     </div>
   );
 }

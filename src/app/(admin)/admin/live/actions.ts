@@ -11,7 +11,8 @@ import { logAdminAccess } from "@/lib/adminAccess";
 import { houseLtp } from "@/lib/api/broker";
 import { canTakeOrders, checkAccounts, forgetReadings, tradingAccounts } from "@/lib/liveTrading/accounts";
 import { getSettings, ordersOfDay, setBase, setExcluded, setMode, MAX_BASE, MIN_BASE, type LiveMode, type LiveOrder } from "@/lib/liveTrading/store";
-import { adminOrderIn, cancelByAdmin, DUPLICATE_MS, exitIn, previewExitIn, recentAdminSame, type ExitPick, type ExitRow } from "@/lib/liveTrading/orders";
+import { adminOrderIn, cancelByAdmin, DUPLICATE_MS, exitIn, recentAdminSame } from "@/lib/liveTrading/orders";
+import { forgetPositions, picksOf, positionsOf } from "@/lib/liveTrading/watch";
 import { clock, istNow, pool, sleep } from "@/lib/liveTrading/util";
 import type { OrderType, Product, Side } from "@/lib/types";
 
@@ -105,11 +106,8 @@ interface OrderSpec {
   price: number | null;
   qty: number;
 }
-type Plan =
-  /** flagged: per account, the ids of the same-kind orders the preview showed as already sent. */
-  | { kind: "order"; at: number; spec: OrderSpec; accounts: string[]; flagged: Record<string, string[]> }
-  /** picks: per account, exactly the positions the preview showed as to be closed. */
-  | { kind: "exit"; at: number; symbol: string | null; accounts: string[]; picks: Record<string, ExitPick[]> };
+/** flagged: per account, the ids of the same-kind orders the preview showed as already sent. */
+type Plan = { kind: "order"; at: number; spec: OrderSpec; accounts: string[]; flagged: Record<string, string[]> };
 
 const PLAN_TTL_MS = 10 * 60_000;
 const gp = globalThis as { __mnhaLivePlans?: Map<string, Plan> };
@@ -342,94 +340,87 @@ export async function liveConfirmOrder(_prev: OrderFlowState, form: FormData): P
 
 /* ------------------------------------------------------------------ exits */
 
-export interface ExitPlanView {
-  id: string;
-  symbol: string | null;
-  accounts: { id: string; label: string; rows: ExitRow[]; error: string | null }[];
-  refused: string[];
-}
-
-export interface ExitFlowState {
+export interface ExitResult {
+  ok?: string;
   error?: string;
-  /** The preview an error belongs to (shown only under that one). */
-  errorFor?: string;
-  plan?: ExitPlanView;
-  done?: { planId: string; summary: string; pending: boolean; accounts: { id: string; label: string; error: string | null; skipped: ExitRow[]; sent: SentRow[] }[] };
+  /** Per account: what was meant to be closed but was not, and why. */
+  notes?: string[];
 }
 
-const EXIT_PREVIEW_WITHIN_MS = 20_000;
-const NOT_READ_IN_TIME = "Groww's positions were not read in time — left out of this exit; preview again to include it.";
+/** Positions read longer ago than this are read again before an exit sends anything. */
+const EXIT_READ_MAX_AGE_MS = 3_000;
 
-export async function livePreviewExit(_prev: ExitFlowState, form: FormData): Promise<ExitFlowState> {
-  if (!(await requireAdmin())) return { error: NOT_ADMIN };
-  if (!rateLimit("live-admin", 40, 60_000).ok) return { error: "Too many requests in a minute. Wait a moment." };
-  const scope = String(form.get("scope") ?? "all");
-  const symbol = scope === "symbol" ? String(form.get("symbol") ?? "").trim().toUpperCase() : null;
-  if (scope === "symbol" && (!symbol || !/^[A-Z0-9&-]{1,40}$/.test(symbol))) return { error: "Enter the symbol to close, exactly as Groww shows it." };
-  const ids = [...new Set(form.getAll("acct").map(String))];
-  if (!ids.length) return { error: "Tick at least one account." };
-  const { ok, refused } = await sendable(ids);
-  if (!ok.size) return { error: "None of the ticked accounts can send orders right now (see Accounts)." };
-  // Up to 16 accounts are read side by side, all under one deadline so the preview answers in time
-  // however many accounts are ticked: an account not read by then is shown so and left out.
-  const endAt = Date.now() + EXIT_PREVIEW_WITHIN_MS;
-  const late = sleep(EXIT_PREVIEW_WITHIN_MS).then(() => ({ rows: [] as ExitRow[], error: NOT_READ_IN_TIME }));
-  const accounts = await pool([...ok.entries()], 16, async ([id, label]) => {
-    if (Date.now() >= endAt) return { id, label, rows: [] as ExitRow[], error: NOT_READ_IN_TIME };
-    const read = previewExitIn(id, symbol).catch(() => ({ rows: [] as ExitRow[], error: "Groww's positions could not be read." }));
-    return { id, label, ...(await Promise.race([read, late])) };
-  });
-  // The confirmation closes only what this preview shows: an account whose positions could not be read is left out.
-  const picks: Record<string, ExitPick[]> = {};
-  for (const a of accounts) {
-    if (a.error) continue;
-    picks[a.id] = a.rows
-      .filter((r) => r.side && !r.skip && r.product && r.exchange)
-      .map((r) => ({ segment: r.segment, exchange: r.exchange as "NSE" | "BSE", symbol: r.symbol, product: r.product!, side: r.side!, qty: r.qty }));
-  }
-  const planId = keepPlan({ kind: "exit", at: Date.now(), symbol, accounts: Object.keys(picks), picks });
-  const names = new Map((await tradingAccounts()).map((a) => [a.id, a.label]));
-  return { plan: { id: planId, symbol, accounts, refused: refused.map((r) => names.get(r) ?? r) } };
+interface ExitTarget {
+  id: string;
+  label: string;
+  /** One position only (its row's Exit button); otherwise everything open. */
+  match?: { segment: string; exchange: string; symbol: string; product: string };
 }
 
-export async function liveConfirmExit(_prev: ExitFlowState, form: FormData): Promise<ExitFlowState> {
+const samePos = (a: { segment: string; exchange: string | null; symbol: string; product: string | null }, b: { segment: string; exchange: string | null; symbol: string; product: string | null }) =>
+  a.segment === b.segment && a.exchange === b.exchange && a.symbol === b.symbol && a.product === b.product;
+
+/**
+ * Close at market what the live view shows open — read again if older than 3 s.
+ * Each close is sized again from Groww inside the account's lock (see exitIn) and
+ * never goes over an MNHA close still working, so pressing Exit twice never closes twice.
+ */
+async function runExit(targets: ExitTarget[], what: string): Promise<ExitResult> {
   const answerBy = Date.now() + ANSWER_WITHIN_MS;
-  if (!(await requireAdmin())) return { error: NOT_ADMIN };
-  const planId = String(form.get("planId") ?? "");
-  if (String(form.get("confirm") ?? "").trim().toUpperCase() !== "EXIT") return { error: "Type EXIT to close these positions.", errorFor: planId };
-  const plan = takePlan(planId, "exit");
-  if (!plan || plan.kind !== "exit") return { error: "This preview has expired or was already sent. Make a new one.", errorFor: planId };
-  const ok = await canTakeOrders(plan.accounts);
+  const batch = `b${randomBytes(8).toString("hex")}`;
   const day = istNow().day;
   const ip = clientIp(await headers());
-  // Sized again from Groww's positions at this moment, inside each account's lock (see exitIn) —
-  // so running it twice never closes twice.
-  const run = pool([...ok.entries()], 4, async ([id, label]) => {
+  const run = pool(targets, 4, async (t) => {
     try {
-      const r = await exitIn({ batch: planId, day, accountId: id, symbol: plan.symbol, picks: plan.picks[id] ?? [] });
+      const snap = await positionsOf(t.id, EXIT_READ_MAX_AGE_MS);
+      if (snap.error || snap.at === null) return { sent: [] as LiveOrder[], note: `${t.label}: Groww's positions could not be read, so nothing was sent.` };
+      const picks = picksOf(snap.rows).filter((p) => !t.match || samePos(p, t.match));
+      if (!picks.length) return { sent: [] as LiveOrder[], note: null };
+      const r = await exitIn({ batch, day, accountId: t.id, symbol: t.match?.symbol ?? null, picks });
       for (const o of r.orders) {
-        await logBulk("bulk-exit", id, `${o.side} ${o.qty} ${o.symbol} ${o.segment} ${o.product} MARKET (exit) · ${o.state}${o.orderId ? ` · ${o.orderId}` : ""}`, ip);
+        await logBulk("bulk-exit", t.id, `${o.side} ${o.qty} ${o.symbol} ${o.segment} ${o.product} MARKET (exit) · ${o.state}${o.orderId ? ` · ${o.orderId}` : ""}`, ip);
       }
-      return { id, label, error: r.error, skipped: r.rows.filter((x) => x.skip), sent: r.orders.map((o) => sentRow(label, o)) };
+      forgetPositions(t.id);
+      const missed = r.rows.filter((x) => x.skip && picks.some((p) => samePos(p, x)));
+      const note = r.error ? `${t.label}: ${r.error}` : missed.length ? `${t.label}: ${missed.map((x) => `${x.symbol} — ${x.skip}`).join("; ")}` : null;
+      return { sent: r.orders, note };
     } catch (err) {
       // One account's failure never stops the others, nor hides what they did.
-      console.error(`[live] exit for ${id} failed:`, err instanceof Error ? err.message : err);
-      return { id, label, error: "Stopped with an error — some closes may have gone out; check Today's orders and its positions.", skipped: [], sent: [] };
+      console.error(`[live] exit for ${t.id} failed:`, err instanceof Error ? err.message : err);
+      forgetPositions(t.id);
+      return { sent: [] as LiveOrder[], note: `${t.label}: stopped with an error — some closes may have gone out; check Today's orders.` };
     }
   });
-  const accounts = await Promise.race([run, sleep(Math.max(0, answerBy - Date.now())).then(() => undefined)]);
+  const done = await Promise.race([run, sleep(Math.max(0, answerBy - Date.now())).then(() => undefined)]);
   revalidatePath(PATH);
-  if (accounts === undefined) {
-    return { done: { planId, summary: `${plan.symbol ? `Exit ${plan.symbol}` : "Exit all"}: still closing in ${ok.size} account${ok.size === 1 ? "" : "s"} — results appear under Today's orders.`, pending: true, accounts: [] } };
-  }
-  const all = accounts.flatMap((a) => a.sent);
-  const by = (st: string) => all.filter((r) => r.state === st).length;
-  return {
-    done: {
-      planId,
-      summary: `${plan.symbol ? `Exit ${plan.symbol}` : "Exit all"}: ${all.length} order${all.length === 1 ? "" : "s"} — ${by("placed")} placed, ${by("rejected")} rejected, ${by("unknown")} unknown, ${by("refused")} refused.`,
-      pending: false,
-      accounts,
-    },
-  };
+  if (done === undefined) return { ok: `${what}: still closing — the results appear under Today's orders.` };
+  const sent = done.flatMap((d) => d.sent);
+  const notes = done.map((d) => d.note).filter((x): x is string => Boolean(x));
+  if (!sent.length) return notes.length ? { error: `${what}: nothing was sent.`, notes } : { ok: `${what}: nothing open to close.` };
+  const by = (st: string) => sent.filter((o) => o.state === st).length;
+  const more = [by("rejected") && `${by("rejected")} rejected`, by("unknown") && `${by("unknown")} being checked`, by("refused") && `${by("refused")} not sent`].filter(Boolean).join(", ");
+  return { ok: `${what}: ${sent.length} closing order${sent.length === 1 ? "" : "s"} sent — ${by("placed")} placed${more ? `, ${more}` : ""}.`, notes };
+}
+
+/** Close everything open in every account that can take orders. */
+export async function liveExitAll(): Promise<ExitResult> {
+  if (!(await requireAdmin())) return { error: NOT_ADMIN };
+  if (!rateLimit("live-admin", 40, 60_000).ok) return { error: "Too many requests in a minute. Wait a moment." };
+  const ok = await canTakeOrders((await tradingAccounts()).map((a) => a.id));
+  if (!ok.size) return { error: "No account can take orders right now." };
+  return runExit([...ok.entries()].map(([id, label]) => ({ id, label })), "Exit all");
+}
+
+/** Close one position in one account (its row's Exit button). */
+export async function liveExitOne(accountId: unknown, pos: unknown): Promise<ExitResult> {
+  if (!(await requireAdmin())) return { error: NOT_ADMIN };
+  if (!rateLimit("live-admin", 40, 60_000).ok) return { error: "Too many requests in a minute. Wait a moment." };
+  const p = (pos ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" && v.length > 0 && v.length <= 80 ? v : null);
+  const [id, segment, exchange, symbol, product] = [str(accountId), str(p.segment), str(p.exchange), str(p.symbol), str(p.product)];
+  if (!id || !segment || !exchange || !symbol || !product) return { error: "That position is not known. Wait for the list to refresh." };
+  const ok = await canTakeOrders([id]);
+  const label = ok.get(id);
+  if (!label) return { error: "This account cannot take orders right now — close it in Groww." };
+  return runExit([{ id, label, match: { segment, exchange, symbol, product } }], `Exit ${symbol}`);
 }
