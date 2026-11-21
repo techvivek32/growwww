@@ -37,20 +37,16 @@ export interface Msg {
 
 export async function liveSetMode(_prev: Msg, form: FormData): Promise<Msg> {
   if (!(await requireAdmin())) return { error: NOT_ADMIN };
+  // One switch: ON (real orders) or OFF. The page asks "are you sure?" before turning it on.
   const mode = String(form.get("mode") ?? "") as LiveMode;
-  if (!["off", "shadow", "live"].includes(mode)) return { error: "Pick Off, Shadow or Live." };
-  if (mode === "live" && String(form.get("confirm") ?? "").trim().toUpperCase() !== "LIVE") {
-    return { error: "Type LIVE to send real orders to clients' accounts." };
-  }
+  if (mode !== "off" && mode !== "live") return { error: "Turn automatic trading ON or OFF." };
   await setMode(mode, clientIp(await headers()));
   revalidatePath(PATH);
   return {
     ok:
       mode === "live"
-        ? "Live: real orders go to every eligible account from the next 09:20 entry (a day already begun in shadow stays simulated)."
-        : mode === "shadow"
-          ? "Shadow: new trades are worked out and recorded, never sent. Positions a live day already opened are still closed for real."
-          : "Off: nothing new is opened. Positions the strategy already opened today are still closed (market stop, 10:15 cover, 15:15).",
+        ? "Automatic trading is ON: real orders go to every eligible account from the strategy's next step."
+        : "Automatic trading is OFF: nothing new is opened. A position the strategy already opened today is still closed (market stop, 10:15, 15:15) — to close everything now, use Exit below.",
   };
 }
 

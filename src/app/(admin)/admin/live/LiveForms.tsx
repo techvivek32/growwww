@@ -62,56 +62,41 @@ function Note({ msg }: { msg: Msg }) {
   return null;
 }
 
-/* ------------------------------------------------------------------ mode */
+/* ---------------------------------------------------------------- switch */
 
-const MODES = [
-  { mode: "off", label: "Off", text: "The kill switch: nothing new is opened. What the strategy opened today is still closed (stop, 10:15, 15:15)." },
-  { mode: "shadow", label: "Shadow", text: "New trades worked out and recorded, never sent. A day begun live is still closed for real." },
-  { mode: "live", label: "Live", text: "Real orders in every eligible account, from the next 09:20 entry." },
-] as const;
+const TURN_ON_CHECK =
+  "Turn automatic trading ON?\n\nReal orders will go to every eligible client's Groww account, with their money, from the strategy's next step.";
 
-export function ModeForm({ mode }: { mode: "off" | "shadow" | "live" }) {
-  const [state, action] = useActionState<Msg, FormData>(liveSetMode, {});
-  const [wantLive, setWantLive] = useState(false);
+/** The one switch: ON, the strategy trades for real in every eligible account; OFF, nothing new is opened. */
+export function ModeForm({ on }: { on: boolean }) {
+  const [state, action, busy] = useActionState<Msg, FormData>(liveSetMode, {});
+  const send = submitWith(action);
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    if (!on && !window.confirm(TURN_ON_CHECK)) {
+      e.preventDefault();
+      return;
+    }
+    send(e);
+  };
   return (
-    <div className="space-y-3">
-      {/* Off and Shadow switch at once; Live has its own form, so Enter in its box can only ever mean Live. */}
-      <form action={action} className="grid gap-px border border-line bg-line sm:grid-cols-3">
-        {MODES.map((m) => {
-          const on = m.mode === mode;
-          return (
-            <div key={m.mode} className={`bg-surface p-3.5 ${on ? "outline-2 -outline-offset-2 outline-ink" : ""}`}>
-              <p className="flex items-center justify-between gap-2">
-                <span className="text-[14px] font-semibold text-ink">{m.label}</span>
-                {on ? (
-                  <span className={`${eyebrow} ${m.mode === "live" ? "text-down" : ""}`}>Current</span>
-                ) : m.mode === "live" ? (
-                  <button type="button" onClick={() => setWantLive(true)} className={btnLine}>
-                    Switch…
-                  </button>
-                ) : (
-                  <Submit label="Switch" busy="…" cls={btnLine} name="mode" value={m.mode} />
-                )}
-              </p>
-              <p className="mt-1 text-[12px] leading-snug text-ink3">{m.text}</p>
-            </div>
-          );
-        })}
-      </form>
-      {wantLive && mode !== "live" && (
-        <form action={action} className="flex flex-wrap items-center gap-2 border border-down/40 bg-downsoft/40 p-3">
-          <input type="hidden" name="mode" value="live" />
-          <p className="basis-full text-[12.5px] text-ink">
-            Live sends real orders to clients&apos; Groww accounts with their money, from the next 09:20 entry (a day already begun in shadow
-            stays simulated). Type <strong>LIVE</strong> to confirm.
+    <div className="space-y-2">
+      <form onSubmit={onSubmit} className={`flex flex-wrap items-center justify-between gap-3 border p-4 ${on ? "border-up/50 bg-upsoft/30" : "border-line bg-surface"}`}>
+        <input type="hidden" name="mode" value={on ? "off" : "live"} />
+        <div>
+          <p className="flex items-center gap-2 text-[15px] font-semibold text-ink">
+            <span className={`h-2.5 w-2.5 rounded-full ${on ? "live-dot bg-up" : "bg-ink3"}`} />
+            Automatic trading is {on ? "ON" : "OFF"}
           </p>
-          <input name="confirm" autoComplete="off" placeholder="LIVE" className={`${field} w-28`} />
-          <Submit label="Switch to Live" busy="Switching…" cls={btnDanger} />
-          <button type="button" onClick={() => setWantLive(false)} className={btnLine}>
-            Cancel
-          </button>
-        </form>
-      )}
+          <p className="mt-1 text-[12.5px] leading-snug text-ink3">
+            {on
+              ? "Real orders go to every eligible account: 09:20 entry, market stop, 10:15 flip, 15:15 close."
+              : "Nothing new is opened. Turn it ON and everything runs by itself."}
+          </p>
+        </div>
+        <button type="submit" disabled={busy} className={on ? btnLine : btnBrand}>
+          {busy ? (on ? "Turning off…" : "Turning on…") : on ? "Turn OFF" : "Turn ON"}
+        </button>
+      </form>
       <Note msg={state} />
     </div>
   );

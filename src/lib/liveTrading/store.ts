@@ -19,6 +19,10 @@ import type { OrderType, Product, Side } from "@/lib/types";
  * corrupt store can never lose the record of what was sent.
  */
 
+/**
+ * The admin panel has one switch: "off" or "live". "shadow" (work every step out and record it,
+ * send nothing) stays in the engine only for its tests; a "shadow" left in an older file reads as "off".
+ */
 export type LiveMode = "off" | "shadow" | "live";
 
 /** Rupees per trade, the same in every account — and the least free money an account needs to take part. */
@@ -180,8 +184,8 @@ const MAX_ORDERS = 4_000;
 
 const fresh = (): Store => ({
   v: 1,
-  // Shadow by default: nothing real is sent until the admin switches to live.
-  settings: { mode: "shadow", base: DEFAULT_BASE, excluded: [], updatedAt: null },
+  // Off by default: nothing is sent until the admin turns automatic trading on.
+  settings: { mode: "off", base: DEFAULT_BASE, excluded: [], updatedAt: null },
   changes: [],
   days: [],
   orders: [],
@@ -210,6 +214,7 @@ async function load(): Promise<Store> {
   if (parsed?.v !== 1 || !parsed.settings || !Array.isArray(parsed.orders) || !Array.isArray(parsed.days) || !Array.isArray(parsed.changes)) {
     throw new Error("live-trading: malformed store");
   }
+  if (parsed.settings.mode === "shadow") parsed.settings.mode = "off"; // the panel no longer offers it
   return (S.cache = parsed);
 }
 

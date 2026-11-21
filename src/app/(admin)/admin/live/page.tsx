@@ -84,7 +84,7 @@ export default async function LiveTradingPage({ searchParams }: { searchParams: 
       <PageHead
         title="Live trading"
         sub="Book A of the paper-trading engine, traded in real Groww accounts — every connected account with the base value free. Plus orders and exits for many accounts at once."
-        right={<Pill tone={settings.mode === "live" ? "down" : settings.mode === "shadow" ? "violet" : "neutral"}>{settings.mode === "live" ? "Live · real orders" : settings.mode === "shadow" ? "Shadow · nothing sent" : "Off"}</Pill>}
+        right={<Pill tone={settings.mode === "live" ? "up" : "neutral"}>{settings.mode === "live" ? "ON · real orders" : "OFF"}</Pill>}
       />
 
       {(sp.erase === "held" || tradingOff || !exec.started || exec.stalled || unsure.length > 0 || (exec.research && !exec.research.ok)) && (
@@ -111,11 +111,11 @@ export default async function LiveTradingPage({ searchParams }: { searchParams: 
 
       <Card pad={false}>
         <CardTitle
-          title="Mode and size"
-          sub="Off opens nothing new — but what the strategy already opened that day is still protected and closed (market stop, 10:15 cover, fail-safe, 15:15). Shadow works new trades out and records them as if filled, sending nothing. Live sends real orders. A day's positions are always looked after in the mode the day began in."
+          title="Automatic trading"
+          sub="One switch. OFF opens nothing new — but a position the strategy already opened that day is still protected and closed (market stop, 10:15 cover, fail-safe, 15:15), never left without its stop. To close everything at once, use Exit below."
         />
         <div className="space-y-5 px-5 py-4">
-          <ModeForm mode={settings.mode} />
+          <ModeForm on={settings.mode === "live"} />
           <BaseForm base={settings.base} />
           <p className="text-[12px] leading-relaxed text-ink3">
             Every trade is the base value ÷ the live price, rounded down (with a 0.3% cushion), the same quantity in every account. An account takes part only with at least the base value free (cash minus margin in use) when the day&apos;s accounts are fixed at 09:20.
@@ -252,7 +252,7 @@ export default async function LiveTradingPage({ searchParams }: { searchParams: 
       <Card pad={false}>
         <CardTitle title="Changes" sub="Every change to live trading's settings, with the admin's IP." />
         {changes.length === 0 ? (
-          <p className="px-5 py-4 text-[12.5px] text-ink3">No changes yet. Live trading starts in Shadow mode with a base value of ₹5,00,000.</p>
+          <p className="px-5 py-4 text-[12.5px] text-ink3">No changes yet. Automatic trading starts OFF, with a base value of ₹5,00,000.</p>
         ) : (
           <ul className="space-y-1 px-5 py-4 text-[12.5px]">
             {changes.map((c, i) => (
