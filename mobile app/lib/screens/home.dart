@@ -99,7 +99,61 @@ class HomeScreen extends StatelessWidget {
                   : 'Orders leave from this address, as registered with Groww.',
               tone: me.orderIp == null ? T.warn : null),
 
-          const SectionTitle('What this app does not do'),
+          // The automatic strategy, in the same words the website uses, from
+        // the same function on the server. This is the only place a member is
+        // told whether their own money is in today's trades, so it sits above
+        // the disclaimers rather than below them.
+        if (me.strategy != null) ...[
+          const SectionTitle('Automatic strategy'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Panel(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    me.strategyTone == 'warn'
+                        ? Icons.error_outline
+                        : me.strategyTone == 'ink'
+                            ? Icons.check_circle_outline
+                            : Icons.info_outline,
+                    size: 18,
+                    color: me.strategyTone == 'warn'
+                        ? T.warn
+                        : me.strategyTone == 'ink'
+                            ? T.up
+                            : Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.45),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      // The server sends one sentence that already begins
+                      // "Automatic strategy: "; the heading above says that,
+                      // so the prefix is dropped rather than repeated.
+                      me.strategy!.replaceFirst('Automatic strategy: ', ''),
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.45,
+                        color: me.strategyTone == 'warn'
+                            ? T.warn
+                            : Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.75),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+
+        const SectionTitle('What this app does not do'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Panel(

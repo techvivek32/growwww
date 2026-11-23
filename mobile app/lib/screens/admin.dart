@@ -10,6 +10,7 @@ import 'shell.dart';
 // card/pill/line helpers below, so it is a part rather than its own library.
 part 'admin_report.dart';
 part 'admin_live.dart';
+part 'admin_scalping.dart';
 
 /// The admin console — the web's `/admin/*`, section for section.
 ///
@@ -63,6 +64,7 @@ const _groups = <String, List<_Section>>{
   'RESEARCH': [
     _Section('paper', 'Paper trading', Icons.trending_up),
     _Section('report', 'Daily report', Icons.description_outlined),
+    _Section('scalping', 'Scalping', Icons.bolt),
   ],
 };
 
@@ -305,6 +307,7 @@ class _BodyState extends State<_Body> {
         'access' => _Access(j),
         'paper' => _Paper(j),
         'report' => _Report(j),
+        'scalping' => _Scalping(j),
         _ => const Empty(
             icon: Icons.help_outline,
             title: 'Unknown section',
@@ -1618,7 +1621,40 @@ class _Addresses extends StatelessWidget {
                     .withValues(alpha: 0.6)),
           ),
         ),
-        if (house != null) entry('$house', 'This server', null, built: true),
+        // The house account's own address, named as such. It is never given
+        // to a member, so it is never "free".
+        if (house != null)
+          _card(
+            context,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _two(
+                  context,
+                  '$house',
+                  j['houseTunnel'] == null
+                      ? "This server's own address"
+                      : 'Tunnel ${j['houseTunnel']}',
+                  right: _pill('house account', T.dInk3),
+                ),
+                const SizedBox(height: 4),
+                _line(context, 'Held by', 'House account (owner)'),
+                if (((j['houseAlso'] ?? const []) as List).isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  // An exchange ties one registered address to one client, so
+                  // a member sharing the house address is a thing to fix, not
+                  // a detail. The web says the same in warn.
+                  Text(
+                    'Also on ${(j['houseAlso'] as List).join(', ')} — one address '
+                    'per client. Add an address below, disconnect them, and have '
+                    'them reconnect to be given the new one.',
+                    style: const TextStyle(
+                        fontSize: 11.5, height: 1.45, color: T.warn),
+                  ),
+                ],
+              ],
+            ),
+          ),
         for (final e in pool)
           entry(
             '${(e as Map)['ip']}',
@@ -1801,6 +1837,8 @@ class _Paper extends StatelessWidget {
     final winRate = r['day_win_rate'] as num?;
     final perMonth = (r['per_month_pct'] ?? const {}) as Map;
     final months = perMonth.keys.map((k) => '$k').toList()..sort();
+    // Lives on the summary itself, beside livex/sl05 — not inside either.
+    final manual = (data['manual'] ?? const []) as List;
 
     return ListView(
       padding: const EdgeInsets.only(top: 14, bottom: 28),
@@ -1889,6 +1927,77 @@ class _Paper extends StatelessWidget {
                       : '${(((sl05['stopped_out_share'] as num) * 100)).toStringAsFixed(0)}%'),
             ]),
           ),
+        ],
+
+        // Manual sell-side trades: the admin's own, outside the tested rule.
+        // Kept visually apart and labelled, because their P&L must never be
+        // read as part of the strategy's record.
+        if (manual.isNotEmpty) ...[
+          const SectionTitle('Sell-side test  ·  manual'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              'Trades the admin asked for by hand, outside the tested rule. '
+              'Paper only, marked at the live price while open. They are not '
+              'part of Book A or Book B.',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  height: 1.45,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.6)),
+            ),
+          ),
+          for (final m in manual)
+            Builder(builder: (ctx) {
+              final t = (m as Map);
+              final closed = t['status'] == 'closed';
+              // A running mark is not a result. It is labelled as running so
+              // an open trade is never read as money already made.
+              final pnl =
+                  (closed ? t['net'] : t['running_pnl']) as num? ?? 0;
+              final short = t['side'] == 'short';
+              return _card(
+                ctx,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _two(
+                      ctx,
+                      '${short ? 'SELL' : 'BUY'} ${t['qty']} ${t['symbol']}',
+                      '${t['day']}',
+                      right: Text(
+                        '${signed(pnl)}${closed ? '' : ' (running)'}',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: pnl >= 0 ? T.up : T.down),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    _line(ctx, 'Entry',
+                        '${money2(t['entry'])}  at ${'${t['entry_time'] ?? ''}'.padRight(5).substring(0, 5).trim()}'),
+                    _line(ctx, 'Stop',
+                        '${money2(t['stop'])}${t['stop_rule'] == null ? '' : '  ·  ${t['stop_rule']}'}'),
+                    _line(
+                      ctx,
+                      closed ? 'Exit' : 'Now',
+                      closed
+                          ? '${money2(t['exit'])}  at ${'${t['exit_time'] ?? ''}'.padRight(5).substring(0, 5).trim()}'
+                          : money2(t['ltp']),
+                    ),
+                    if (closed && t['why'] != null)
+                      _line(ctx, 'Why', '${t['why']}'),
+                    if (closed && t['costs'] != null)
+                      _line(ctx, 'Charges', money2(t['costs'])),
+                    const SizedBox(height: 7),
+                    _pill(closed ? '${t['why'] ?? 'closed'}' : 'open',
+                        closed ? T.dInk3 : T.warn),
+                  ],
+                ),
+              );
+            }),
         ],
 
         if (months.isNotEmpty) ...[

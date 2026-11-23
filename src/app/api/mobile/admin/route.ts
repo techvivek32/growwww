@@ -1,12 +1,13 @@
 import { loadAdmin } from "@/app/(admin)/admin/sections";
-import { liveSummary, dayToIso, liveToday, type Sl05Trade } from "@/lib/research";
+import { liveSummary, dayToIso, liveToday, scalpingReport, type Sl05Trade } from "@/lib/research";
 import { checkAccounts } from "@/lib/liveTrading/accounts";
 import { ACTION_LABEL, getDay, getSettings, ordersOfDay, recentChanges } from "@/lib/liveTrading/store";
 import { executorStatus } from "@/lib/liveTrading/executor";
+import { watchPositions } from "@/lib/liveTrading/watch";
 import { istNow } from "@/lib/liveTrading/util";
 import { AGREEMENT_VERSION } from "@/lib/consent";
 import { json, guarded, fail } from "@/lib/mobileApi";
-import { tunnelLabel } from "@/lib/api/egress";
+import { tunnelLabel, houseRoute } from "@/lib/api/egress";
 import {
   adminDisconnectBroker,
   adminDeleteUser,
@@ -210,15 +211,33 @@ export async function GET(req: Request) {
           },
         });
 
-      case "addresses":
+      case "addresses": {
+        // The house account's address is never handed to a new member, so it
+        // is listed once as the house's and kept out of the member pool. It
+        // used to appear as just another row, which on a phone read as "free
+        // to give away" — the exact opposite of what it is.
+        const holdersOf = (ip: string) =>
+          d.users.filter((u) => u.hasBroker && u.brokerStaticIp === ip).map((u) => u.email);
         return json({
           // A tunnel's host and port only: never a login that may be part of its URL.
-          pool: d.pool.map((e) => ({ ...e, proxy: e.proxy ? tunnelLabel(e.proxy) : undefined })),
+          pool: d.pool
+            .filter((e) => e.ip !== d.house)
+            .map((e) => ({
+              ...e,
+              proxy: e.proxy ? tunnelLabel(e.proxy) : undefined,
+              holders: holdersOf(e.ip),
+            })),
           house: d.house,
+          houseTunnel: houseRoute().tunnel,
+          // Anyone else whose Groww key carries the house address: one
+          // address per client, so this is a problem to be shown, not a
+          // tidy "held by".
+          houseAlso: d.house ? holdersOf(d.house) : [],
           accounts: d.users
             .filter((u) => u.hasBroker)
             .map((u) => ({ id: u.id, email: u.email, ip: u.brokerStaticIp, ucc: u.brokerUcc })),
         });
+      }
 
       case "access":
         return json({ entries: d.access.map((a) => ({ ...a, email: d.who(a.userId) })) });
@@ -235,7 +254,7 @@ export async function GET(req: Request) {
       case "live": {
         const now = istNow();
         const settings = await getSettings();
-        const [day, orders, changes, today, checks] = await Promise.all([
+        const [day, orders, changes, today, checks, positions] = await Promise.all([
           getDay(now.day, now.date),
           ordersOfDay(now.day),
           recentChanges(12),
@@ -243,6 +262,12 @@ export async function GET(req: Request) {
           // Same budget the web page uses: a slow broker must not hold the
           // whole console hostage, and an empty list is handled below.
           checkAccounts(settings, { maxAgeMs: 60_000, budgetMs: 4_000 }).catch(() => []),
+          // The web polls this every 2 s from its own route. A phone cannot
+          // poll like that without eating the battery, so it comes once with
+          // the rest and carries the time it was read — a position list with
+          // no timestamp is the kind of thing that gets acted on long after
+          // it stopped being true.
+          watchPositions().catch(() => []),
         ]);
 
         const name = new Map(checks.map((c) => [c.id, c.label]));
@@ -264,6 +289,11 @@ export async function GET(req: Request) {
             accounts: day.accounts?.length ?? null,
             fixedAt: day.fixedAt,
             legs: day.legs,
+            // The day's four steps and when each finished, so the app can show
+            // the same ordered list the page does rather than a bare count.
+            done: day.done,
+            signals: day.signals,
+            notes: day.notes,
           },
           // The research pick for today, so the orders below have something to
           // be read against.
@@ -291,6 +321,18 @@ export async function GET(req: Request) {
             who: name.get(o.accountId) ?? o.accountId,
             actionLabel: ACTION_LABEL[o.action] ?? o.action,
           })),
+          // Every connected account's open positions, as last read from
+          // Groww. `canExit` and the error are carried as they are: a stale
+          // reading presented as current is how a closed position gets closed
+          // twice.
+          positions: positions.map((p) => ({
+            id: p.id,
+            label: p.label,
+            canExit: p.canExit,
+            at: p.at,
+            error: p.error,
+            rows: p.rows,
+          })),
           // Account ids appear in the change log as {{acct:<id>}} tokens and
           // are named here, exactly as the web page names them — the log
           // itself never stores an email.
@@ -299,6 +341,44 @@ export async function GET(req: Request) {
             ip: c.ip,
             what: c.what.replace(/\{\{acct:([^}]+)\}\}/g, (_m, id: string) => name.get(id) ?? id),
           })),
+        });
+      }
+
+      // The scalping research program — a search over short-hold rules, and
+      // the daily paper results of the 100 it chose.
+      //
+      // Passed through whole rather than flattened. The selection window and
+      // the test months are reported separately by the research box, and they
+      // must stay separate: a rule is CHOSEN on the selection window, so its
+      // number there is the one it was picked for. Collapsing the two into a
+      // single "return" is how a search gets mistaken for a result.
+      case "scalping": {
+        const state = await scalpingReport().catch(() => null);
+        if (!state || state.kind !== "ok") {
+          return json({
+            ok: false,
+            reason:
+              state == null
+                ? "Research box unreachable."
+                : state.kind === "unconfigured"
+                  ? "Research box not configured."
+                  : `Research box unreachable: ${state.message}`,
+          });
+        }
+        return json({
+          ok: true,
+          // Set while the search has not produced anything yet; the page shows
+          // it instead of empty tables.
+          status: state.data.status ?? null,
+          search: state.data.search ?? null,
+          // The phone gets the same 100 the page lists, in rank order.
+          top: state.data.top ?? [],
+          daily: state.data.daily ?? [],
+          // The live scalp book: today's paper positions under the
+          // 11:00-11:15 / trail rule. Passed through whole — the window, the
+          // trail and the rule count are what make the figures readable, and
+          // the app states them rather than implying them.
+          live: state.data.live ?? null,
         });
       }
 

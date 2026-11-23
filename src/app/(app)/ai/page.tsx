@@ -8,7 +8,7 @@ import { marketState } from "@/lib/market";
 import WaveArt from "@/components/public/WaveArt";
 import AutoRefresh from "@/components/AutoRefresh";
 import { getDay, getSettings, ordersOfDay } from "@/lib/liveTrading/store";
-import { modesFor } from "@/lib/liveTrading/executor";
+import { strategyStatus } from "@/lib/liveTrading/memberStatus";
 import { istNow } from "@/lib/liveTrading/util";
 import { isTradingDate } from "@/lib/market";
 import { tradePermission } from "@/lib/trading";
@@ -71,42 +71,24 @@ export default async function HomePage() {
   // (15:32 at the latest), what this account actually got today decides — not a fresh look at cash
   // or the switch: the strategy's margin lowers free cash, and what the day opened is closed in the
   // mode it began in, whatever the switch says now.
-  const inPlay = today?.accounts && !today.done.close && t.minute < 15 * 60 + 32 ? today : null;
-  const mine = todays.filter((o) => o.accountId === uid && o.source === "auto" && o.mode === inPlay?.mode);
-  const traded = mine.some((o) => (o.filled ?? 0) > 0 || ["placed", "unknown", "sending", "shadow"].includes(o.state));
-  const opensNow = inPlay && live ? modesFor(live, inPlay).open === inPlay.mode : false;
-  const mayStill = Boolean(inPlay?.accounts?.includes(uid) && !keptOut && opensNow && (!inPlay.done.entry || !inPlay.done.flip));
-  const shadowDay = inPlay?.mode === "shadow";
-  // Can MNHA send to this account at all right now? (Its order address, its Groww key, the house key.)
-  // A Groww read that failed just now is not counted: that alone does not stop MNHA's orders.
-  const reachable = Boolean(perm?.allowed) && conn.credentials && (!isOwner || houseConfigured());
-  const strategy = inPlay
-    ? !shadowDay && traded && !reachable
-      ? { value: "Automatic strategy: MNHA cannot send orders to your Groww right now — if a strategy position is open, close it in Groww (Groww squares intraday positions off itself near 15:20)", tone: "warn" as const }
-      : !shadowDay && !traded && mayStill && !reachable
-        ? { value: "Automatic strategy: your account cannot take part right now (MNHA cannot send orders to your Groww)", tone: "warn" as const }
-        : keptOut
-      ? { value: traded && !shadowDay ? "Automatic strategy: your account is kept out — what it opened today is still closed by about 15:15" : "Automatic strategy: your account is kept out", tone: "muted" as const }
-      : traded || mayStill
-        ? shadowDay
-          ? { value: "Automatic strategy: today runs in shadow mode — nothing is sent", tone: "muted" as const }
-          : traded
-            ? { value: "Automatic strategy: your account is in today's trades — its positions are closed by about 15:15", tone: "ink" as const }
-            : { value: "Automatic strategy: your account is set to take part today", tone: "ink" as const }
-        : { value: opensNow ? "Automatic strategy: your account is not in today's trades" : "Automatic strategy: not sending orders now", tone: "muted" as const }
-    : !live
-      ? { value: "Automatic strategy: status unavailable", tone: "warn" as const }
-      : keptOut
-        ? { value: "Automatic strategy: your account is kept out", tone: "muted" as const }
-        : live.mode !== "live"
-          ? { value: "Automatic strategy: not sending orders now", tone: "muted" as const }
-          : !perm?.allowed || (isOwner && !houseConfigured())
-            ? { value: "Automatic strategy: on — your account cannot take part (no usable order address on your Groww key)", tone: "warn" as const }
-            : free === null
-              ? { value: "Automatic strategy: on — your Groww cash could not be read just now, so whether your account takes part is not known", tone: "warn" as const }
-              : free < baseRs
-                ? { value: `Automatic strategy: on — your account has less than ${base} free, so it takes no part`, tone: "warn" as const }
-                : { value: "Automatic strategy: on — your account takes part when it has at least that much free shortly before 09:20", tone: "ink" as const };
+  // The whole tree moved to lib/liveTrading/memberStatus.ts so the phone can
+  // say the same sentence about the same account. Two copies of it would
+  // eventually disagree with each other about someone else's open positions.
+  const strategy = strategyStatus({
+    uid,
+    today,
+    todays,
+    live,
+    minute: t.minute,
+    keptOut,
+    isOwner,
+    houseReady: houseConfigured(),
+    addressAllowed: Boolean(perm?.allowed),
+    hasCredentials: conn.credentials,
+    free,
+    baseRs,
+    baseLabel: base,
+  });
 
   return (
     <div className="mx-auto max-w-5xl">

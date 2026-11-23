@@ -228,6 +228,13 @@ class Me {
   /// not the same as zero, and the home screen renders the difference.
   final NavReading? nav;
 
+  /// What today's automatic strategy means for THIS account, in the website's
+  /// own words, and how loudly to say it. Null for the admin console, which
+  /// is not a trading account — null, not a cheerful "off" that would imply
+  /// there were one.
+  final String? strategy;
+  final String? strategyTone;
+
   /// The address this account's orders are sent from, once one is reserved.
   /// Null means orders would be refused by the broker, so the home screen
   /// says so rather than leaving the row blank.
@@ -241,6 +248,8 @@ class Me {
         canTrade = j['canTrade'] == true,
         connected = (j['connection']?['live'] == true),
         nav = j['nav'] == null ? null : NavReading.fromJson(j['nav'] as Map<String, dynamic>),
+        strategy = j['strategy']?['value'] as String?,
+        strategyTone = j['strategy']?['tone'] as String?,
         orderIp = j['connection']?['orderIp'] as String?;
 
   bool get isOwner => role == 'owner';
