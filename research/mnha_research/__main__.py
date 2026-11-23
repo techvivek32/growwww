@@ -166,6 +166,14 @@ def main(argv: list[str] | None = None) -> int:
 
             bars = tuple(int(x) for x in (a.bars or "").split(",") if x) or None
             out = scalp_live.session(bars)
+        elif cmd == "scalp-fast":
+            from . import scalp_fast
+
+            out = scalp_fast.session()
+        elif cmd == "scalp-fast-report":
+            from . import scalp_fast
+
+            out = scalp_fast.report()
         elif cmd == "scalp-live-report":
             from . import scalp_live
 

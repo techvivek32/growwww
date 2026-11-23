@@ -347,12 +347,46 @@ export interface ScalpLive {
   days?: ScalpLiveDay[];
 }
 
+export interface ScalpFastTrade {
+  symbol: string;
+  entry: number;
+  qty: number;
+  entered_at: number;
+  exited_at: number;
+  exit: number;
+  why: string;
+  net_rs: number;
+  move_pct?: number;
+  secs?: number;
+}
+
+export interface ScalpFastBook {
+  rule: number;
+  name: string;
+  side: number;
+  status?: string;
+  position?: { symbol: string; entry: number; qty: number; entered_at: number; ltp: number; pnl_rs: number; move_pct?: number; stop_px: number; target_px: number } | null;
+  trades?: ScalpFastTrade[];
+  net_rs: number;
+  n: number;
+  wins: number;
+}
+
+export interface ScalpFast {
+  error?: string;
+  rules?: { rule: number; name: string }[];
+  universe?: number;
+  today?: { day: string; status: string; updated_at?: number; books: ScalpFastBook[]; summary?: { total_rs: number; realised_rs: number; trades: number; open: number } } | null;
+  days?: { day: string; status?: string; total_rs?: number; realised_rs?: number; trades?: number; books: ScalpFastBook[] }[];
+}
+
 export interface ScalpReport {
   status?: string;
   search?: ScalpSearch;
   top?: ScalpStrategy[];
   daily?: ScalpDay[];
   live?: ScalpLive;
+  fast?: ScalpFast;
 }
 
 export type ScalpState = { kind: "ok"; data: ScalpReport } | { kind: "unconfigured" } | { kind: "error"; message: string };

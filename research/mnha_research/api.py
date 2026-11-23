@@ -232,6 +232,12 @@ def scalping(authorization: str | None = Header(default=None)) -> dict:
         out["live"] = scalp_live.report()
     except Exception as e:  # noqa: BLE001  the search results are still served
         out["live"] = {"error": str(e)}
+    try:
+        from . import scalp_fast
+
+        out["fast"] = scalp_fast.report()
+    except Exception as e:  # noqa: BLE001
+        out["fast"] = {"error": str(e)}
     return out
 
 

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { requireAdminPage } from "@/lib/access";
-import { scalpingReport, type ScalpDay, type ScalpLive, type ScalpLivePosition, type ScalpSearch, type ScalpStrategy } from "@/lib/research";
+import { scalpingReport, type ScalpDay, type ScalpFast, type ScalpLive, type ScalpLivePosition, type ScalpSearch, type ScalpStrategy } from "@/lib/research";
 import { Card, CardHead, Pill, StatTile } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Scalping · Admin · MNHA Financials" };
@@ -34,6 +34,7 @@ export default async function ScalpingPage() {
         <Card><CardHead title={state.kind === "unconfigured" ? "Not connected" : "Research box unreachable"} sub={state.kind === "error" ? state.message : "Set RESEARCH_API_URL and RESEARCH_API_TOKEN."} /></Card>
       )}
       {state.kind === "ok" && state.data.status && <Card><CardHead title="No search yet" sub={state.data.status} /></Card>}
+      {state.kind === "ok" && state.data.fast && <FastBook fast={state.data.fast} />}
       {state.kind === "ok" && state.data.live && <LiveBook live={state.data.live} />}
       {state.kind === "ok" && state.data.search && <Body top={state.data.top ?? []} search={state.data.search} daily={state.data.daily ?? []} />}
     </div>
@@ -41,6 +42,102 @@ export default async function ScalpingPage() {
 }
 
 const istTime = (t: number) => new Date(t * 1000).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+
+/** The fast scalp book: tick-level buy-sell-buy-sell on the LTP feed, six rules, each re-entering all day. */
+function FastBook({ fast }: { fast: ScalpFast }) {
+  const t = fast.today;
+  const s = t?.summary;
+  const books = t?.books ?? [];
+  const lastTrades = books.flatMap((b) => (b.trades ?? []).map((x) => ({ ...x, rule: b.rule, name: b.name, side: b.side }))).sort((a, b) => b.exited_at - a.exited_at).slice(0, 30);
+  return (
+    <Card pad={false}>
+      <div className="p-4 sm:p-5 pb-0 sm:pb-0">
+        <CardHead
+          title="Fast scalp book (paper, tick level)"
+          sub={`Six rules watch the ${fast.universe ?? 100} most liquid names on the price feed every 5 seconds and trade with ₹5 lakh: momentum (go with a 0.25–0.5% move within 1–2 minutes) and fade (go against it), targets 0.3–0.5%, stops 0.2–0.3%, 5–10 minute limits, re-entering all day until 15:15. Groww costs and slippage on every trade (about ₹523 a round trip). No orders are placed.`}
+          right={t ? <Pill tone={t.status === "done" ? "neutral" : "up"}>{t.status}{t.updated_at ? ` · ${istTime(t.updated_at)}` : ""}</Pill> : <Pill tone="neutral">next session 09:14</Pill>}
+        />
+      </div>
+      {fast.error && <p className="px-5 pb-4 text-[12.5px] text-down">{fast.error}</p>}
+      {s && (
+        <div className="grid grid-cols-2 gap-3 px-4 pb-4 sm:px-5 lg:grid-cols-4">
+          <StatTile label="Today, all six" value={inr(s.total_rs)} tone={s.total_rs >= 0 ? "up" : "down"} sub={`${t?.day ?? ""} · incl. open`} />
+          <StatTile label="Realised" value={inr(s.realised_rs)} tone={s.realised_rs >= 0 ? "up" : "down"} sub={`${s.trades} trades closed`} />
+          <StatTile label="Open now" value={String(s.open)} sub="positions across the six rules" />
+          <StatTile label="Cost paid" value={inr(books.reduce((a, b) => a + ((b as { cost_rs?: number }).cost_rs ?? 0), 0))} tone="down" sub="brokerage, taxes, slippage" />
+        </div>
+      )}
+      {books.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full border-t border-line">
+            <thead>
+              <tr className="border-b border-line">
+                <th className={th}>Rule</th><th className={`${th} text-right`}>Trades</th><th className={`${th} text-right`}>Wins</th><th className={`${th} text-right`}>Realised</th>
+                <th className={th}>Open position</th><th className={`${th} text-right`}>Entry</th><th className={`${th} text-right`}>LTP</th><th className={`${th} text-right`}>P&amp;L</th>
+              </tr>
+            </thead>
+            <tbody>
+              {books.map((b) => (
+                <tr key={b.rule} className="border-b border-line last:border-0">
+                  <td className={td}><span className={`font-semibold ${b.side > 0 ? "text-up" : "text-down"}`}>{b.side > 0 ? "BUY" : "SELL"}</span> {b.name}</td>
+                  <td className={`${td} tnum text-right`}>{b.n}</td>
+                  <td className={`${td} tnum text-right`}>{b.n ? `${Math.round((b.wins / b.n) * 100)}%` : "—"}</td>
+                  <td className={`${td} tnum text-right font-semibold ${tone(b.net_rs)}`}>{inr(b.net_rs)}</td>
+                  <td className={`${td} font-semibold`}>{b.position ? `${b.position.symbol} (${b.position.move_pct ?? 0 > 0 ? "+" : ""}${b.position.move_pct ?? 0}% · ${istTime(b.position.entered_at)})` : <span className="font-normal text-ink3">flat</span>}</td>
+                  <td className={`${td} tnum text-right`}>{b.position ? `₹${b.position.entry.toLocaleString("en-IN")}` : "—"}</td>
+                  <td className={`${td} tnum text-right`}>{b.position ? `₹${b.position.ltp.toLocaleString("en-IN")}` : "—"}</td>
+                  <td className={`${td} tnum text-right font-semibold ${b.position ? tone(b.position.pnl_rs) : "text-ink3"}`}>{b.position ? inr(b.position.pnl_rs) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {lastTrades.length > 0 && (
+        <div className="overflow-x-auto border-t border-line">
+          <p className="px-4 pt-3 font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase sm:px-5">Last trades</p>
+          <table className="w-full">
+            <thead><tr className="border-b border-line"><th className={th}>Time</th><th className={th}>Rule</th><th className={th}>Stock</th><th className={`${th} text-right`}>Entry → exit</th><th className={`${th} text-right`}>Held</th><th className={th}>Why</th><th className={`${th} text-right`}>Net</th></tr></thead>
+            <tbody>
+              {lastTrades.map((x, i) => (
+                <tr key={`${x.rule}-${x.exited_at}-${i}`} className="border-b border-line last:border-0">
+                  <td className={`${td} tnum`}>{istTime(x.entered_at)}</td>
+                  <td className={td}><span className={`font-semibold ${x.side > 0 ? "text-up" : "text-down"}`}>{x.side > 0 ? "BUY" : "SELL"}</span> {x.rule}</td>
+                  <td className={`${td} font-semibold`}>{x.symbol}</td>
+                  <td className={`${td} tnum text-right`}>₹{x.entry.toLocaleString("en-IN")} → ₹{x.exit.toLocaleString("en-IN")}</td>
+                  <td className={`${td} tnum text-right`}>{x.secs != null ? `${Math.round(x.secs / 60)}m` : "—"}</td>
+                  <td className={`${td} text-ink2`}>{x.why}</td>
+                  <td className={`${td} tnum text-right font-semibold ${tone(x.net_rs)}`}>{inr(x.net_rs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {(fast.days ?? []).length > 1 && (
+        <div className="border-t border-line">
+          <table className="w-full">
+            <thead><tr className="border-b border-line"><th className={th}>Day</th><th className={`${th} text-right`}>Net, all six</th><th className={`${th} text-right`}>Trades</th><th className={th}>Best rule</th><th className={th}>Status</th></tr></thead>
+            <tbody>
+              {[...(fast.days ?? [])].reverse().map((d) => {
+                const best = [...d.books].sort((a, b) => b.net_rs - a.net_rs)[0];
+                return (
+                  <tr key={d.day} className="border-b border-line last:border-0">
+                    <td className={td}>{d.day}</td>
+                    <td className={`${td} tnum text-right font-semibold ${tone(d.total_rs ?? 0)}`}>{inr(d.total_rs ?? 0)}</td>
+                    <td className={`${td} tnum text-right`}>{d.trades ?? 0}</td>
+                    <td className={`${td} text-ink2`}>{best ? `${best.name} ${inr(best.net_rs)}` : "—"}</td>
+                    <td className={`${td} text-ink2`}>{d.status}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 /** The live scalp book: paper positions taken today by the strategies that were positive in both windows of the search. */
 function LiveBook({ live }: { live: ScalpLive }) {
