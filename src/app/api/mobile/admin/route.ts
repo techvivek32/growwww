@@ -1,5 +1,5 @@
 import { loadAdmin } from "@/app/(admin)/admin/sections";
-import { liveSummary, dayToIso, liveToday, scalpingReport, type Sl05Trade } from "@/lib/research";
+import { liveSummary, dayToIso, liveToday, type Sl05Trade } from "@/lib/research";
 import { checkAccounts } from "@/lib/liveTrading/accounts";
 import { ACTION_LABEL, getDay, getSettings, ordersOfDay, recentChanges } from "@/lib/liveTrading/store";
 import { executorStatus } from "@/lib/liveTrading/executor";
@@ -344,43 +344,10 @@ export async function GET(req: Request) {
         });
       }
 
-      // The scalping research program — a search over short-hold rules, and
-      // the daily paper results of the 100 it chose.
-      //
-      // Passed through whole rather than flattened. The selection window and
-      // the test months are reported separately by the research box, and they
-      // must stay separate: a rule is CHOSEN on the selection window, so its
-      // number there is the one it was picked for. Collapsing the two into a
-      // single "return" is how a search gets mistaken for a result.
-      case "scalping": {
-        const state = await scalpingReport().catch(() => null);
-        if (!state || state.kind !== "ok") {
-          return json({
-            ok: false,
-            reason:
-              state == null
-                ? "Research box unreachable."
-                : state.kind === "unconfigured"
-                  ? "Research box not configured."
-                  : `Research box unreachable: ${state.message}`,
-          });
-        }
-        return json({
-          ok: true,
-          // Set while the search has not produced anything yet; the page shows
-          // it instead of empty tables.
-          status: state.data.status ?? null,
-          search: state.data.search ?? null,
-          // The phone gets the same 100 the page lists, in rank order.
-          top: state.data.top ?? [],
-          daily: state.data.daily ?? [],
-          // The live scalp book: today's paper positions under the
-          // 11:00-11:15 / trail rule. Passed through whole — the window, the
-          // trail and the rule count are what make the figures readable, and
-          // the app states them rather than implying them.
-          live: state.data.live ?? null,
-        });
-      }
+      // The scalping program was removed on 23 Nov 2026 at the admin's request
+      // (no profitable rule after costs). The app's screen gets a plain reason.
+      case "scalping":
+        return json({ ok: false, reason: "The scalping program has been removed." });
 
       case "paper":
         return json({ live: await liveSummary().catch(() => null) });

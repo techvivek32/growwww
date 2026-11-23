@@ -1,9 +1,0 @@
-[Unit]
-Description=MNHA NSE-context scalp book session (09:16 IST, Mon-Fri)
-
-[Timer]
-OnCalendar=Mon..Fri *-*-* 03:46:00 UTC
-Persistent=false
-
-[Install]
-WantedBy=timers.target

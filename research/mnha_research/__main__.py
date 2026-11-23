@@ -27,8 +27,6 @@
   live-report   paper results per book so far
   live-parity   replay past sessions through the live code and compare with the backtest (--days)
   livex-session  the whole paper day in one process (09:12-15:30 IST): decide, 5-second stop checks, flip, settle
-  scalp-search [--total N] / scalp-daily / scalp-report   the separate scalping research program (scalp.py)
-  scalp-live / scalp-live-report   the live scalp book: 11:00-11:15 entries, ₹1,000 trail (paper, no orders)
   livex-train / livex-decide / livex-flip / livex-mark / livex-settle / livex-report / livex-replay (--days)
                 the 2026 strategy: ENS3 one-stock short, regime skip, 0.5% market stop, 10:15 flip (paper, no orders)
   all         universe → probe → ingest → quality → research → alpha
@@ -59,7 +57,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--year", type=int, help="model year (live-train)")
     p.add_argument("--if-missing", action="store_true", help="live-train / livex-train: keep a year already frozen")
     p.add_argument("--no-wait", action="store_true", help="live-decide: do not wait for 09:21")
-    p.add_argument("--bars", help="scalp-live: comma-separated entry bar indexes (bar b closes at 09:20 + 5b min)")
     a = p.parse_args(argv)
     db.migrate()
 
@@ -149,47 +146,6 @@ def main(argv: list[str] | None = None) -> int:
             p.print_help()
             return 2
         print(json.dumps(out, default=str, indent=1))
-    elif cmd.startswith("scalp-"):
-        from . import scalp
-
-        if cmd == "scalp-search":
-            out = scalp.search(a.total or 100_000)
-        elif cmd == "scalp-daily":
-            import datetime as dt
-
-            days = [(dt.date.fromisoformat(x) - dt.date(1970, 1, 1)).days for x in (a.days or "").split(",") if x]
-            out = [scalp.daily(d) for d in days] if days else scalp.daily()
-        elif cmd == "scalp-report":
-            out = scalp.report()
-        elif cmd == "scalp-live":
-            from . import scalp_live
-
-            bars = tuple(int(x) for x in (a.bars or "").split(",") if x) or None
-            out = scalp_live.session(bars)
-        elif cmd == "scalp-fast":
-            from . import scalp_fast
-
-            out = scalp_fast.session()
-        elif cmd == "scalp-fast-report":
-            from . import scalp_fast
-
-            out = scalp_fast.report()
-        elif cmd == "scalp-nse":
-            from . import scalp_nse
-
-            out = scalp_nse.session()
-        elif cmd == "scalp-nse-report":
-            from . import scalp_nse
-
-            out = scalp_nse.report()
-        elif cmd == "scalp-live-report":
-            from . import scalp_live
-
-            out = scalp_live.report()
-        else:
-            p.print_help()
-            return 2
-        print(json.dumps(out, default=str, indent=1)[:4000])
     elif cmd.startswith("livex-"):
         import datetime as dt
 

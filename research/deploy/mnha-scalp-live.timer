@@ -1,9 +1,0 @@
-[Unit]
-Description=MNHA live scalp book session (09:18 IST, Mon-Fri)
-
-[Timer]
-OnCalendar=Mon..Fri *-*-* 03:48:00 UTC
-Persistent=false
-
-[Install]
-WantedBy=timers.target

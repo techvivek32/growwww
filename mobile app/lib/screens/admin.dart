@@ -10,7 +10,6 @@ import 'shell.dart';
 // card/pill/line helpers below, so it is a part rather than its own library.
 part 'admin_report.dart';
 part 'admin_live.dart';
-part 'admin_scalping.dart';
 
 /// The admin console — the web's `/admin/*`, section for section.
 ///
@@ -64,7 +63,6 @@ const _groups = <String, List<_Section>>{
   'RESEARCH': [
     _Section('paper', 'Paper trading', Icons.trending_up),
     _Section('report', 'Daily report', Icons.description_outlined),
-    _Section('scalping', 'Scalping', Icons.bolt),
   ],
 };
 
@@ -307,7 +305,6 @@ class _BodyState extends State<_Body> {
         'access' => _Access(j),
         'paper' => _Paper(j),
         'report' => _Report(j),
-        'scalping' => _Scalping(j),
         _ => const Empty(
             icon: Icons.help_outline,
             title: 'Unknown section',

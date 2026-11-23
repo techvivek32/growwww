@@ -1,9 +1,0 @@
-[Unit]
-Description=MNHA scalping daily paper results (15:40 IST, Mon-Fri)
-
-[Timer]
-OnCalendar=Mon..Fri *-*-* 10:10:00 UTC
-Persistent=true
-
-[Install]
-WantedBy=timers.target
