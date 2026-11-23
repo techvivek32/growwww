@@ -27,6 +27,7 @@
   live-report   paper results per book so far
   live-parity   replay past sessions through the live code and compare with the backtest (--days)
   livex-session  the whole paper day in one process (09:12-15:30 IST): decide, 5-second stop checks, flip, settle
+  scalp-search [--total N] / scalp-daily / scalp-report   the separate scalping research program (scalp.py)
   livex-train / livex-decide / livex-flip / livex-mark / livex-settle / livex-report / livex-replay (--days)
                 the 2026 strategy: ENS3 one-stock short, regime skip, 0.5% market stop, 10:15 flip (paper, no orders)
   all         universe → probe → ingest → quality → research → alpha
@@ -146,6 +147,22 @@ def main(argv: list[str] | None = None) -> int:
             p.print_help()
             return 2
         print(json.dumps(out, default=str, indent=1))
+    elif cmd.startswith("scalp-"):
+        from . import scalp
+
+        if cmd == "scalp-search":
+            out = scalp.search(a.total or 100_000)
+        elif cmd == "scalp-daily":
+            import datetime as dt
+
+            days = [(dt.date.fromisoformat(x) - dt.date(1970, 1, 1)).days for x in (a.days or "").split(",") if x]
+            out = [scalp.daily(d) for d in days] if days else scalp.daily()
+        elif cmd == "scalp-report":
+            out = scalp.report()
+        else:
+            p.print_help()
+            return 2
+        print(json.dumps(out, default=str, indent=1)[:4000])
     elif cmd.startswith("livex-"):
         import datetime as dt
 

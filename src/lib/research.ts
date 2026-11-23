@@ -248,3 +248,71 @@ export async function liveToday(): Promise<LiveToday | null> {
 export function dayToIso(day: number): string {
   return new Date(day * 86_400_000).toISOString().slice(0, 10);
 }
+
+/* ------------------------------------------------------------ scalping (separate research program) */
+export interface ScalpStats {
+  days: number;
+  net_rs: number;
+  per_day_rs: number;
+  per_month_pct: number;
+  day_win_rate: number;
+  trades_per_day: number;
+  sharpe: number | null;
+}
+
+export interface ScalpStrategy {
+  rank: number;
+  id: number;
+  signal: string;
+  side: "long" | "short";
+  universe: string;
+  window: string;
+  stop_pct: number;
+  target_pct: number;
+  max_hold_min: number;
+  trades_per_day: number;
+  selection_2024_01_to_2026_04: ScalpStats;
+  test_2026_05_on: ScalpStats;
+  paper?: { days: number; net_rs: number; positive_days: number };
+}
+
+export interface ScalpSearch {
+  generated_at: number;
+  panel: string;
+  strategies: number;
+  profitable_in_selection: number;
+  profitable_in_selection_pct: number;
+  selection_per_month_pct_quantiles: Record<string, number>;
+  test_summary: { top100_mean_per_month_pct_test: number; top100_share_positive_in_test: number };
+  elapsed_s: number;
+}
+
+export interface ScalpDay {
+  day: string;
+  mean_net_rs: number;
+  positive: number;
+  best: { rank: number; net_rs: number };
+  worst: { rank: number; net_rs: number };
+}
+
+export interface ScalpReport {
+  status?: string;
+  search?: ScalpSearch;
+  top?: ScalpStrategy[];
+  daily?: ScalpDay[];
+}
+
+export type ScalpState = { kind: "ok"; data: ScalpReport } | { kind: "unconfigured" } | { kind: "error"; message: string };
+
+export async function scalpingReport(): Promise<ScalpState> {
+  const url = process.env.RESEARCH_API_URL;
+  const token = process.env.RESEARCH_API_TOKEN;
+  if (!url || !token) return { kind: "unconfigured" };
+  try {
+    const r = await fetch(`${url.replace(/\/$/, "")}/scalping`, { headers: { Authorization: `Bearer ${token}` }, next: { revalidate: 120 }, signal: AbortSignal.timeout(15000) });
+    if (!r.ok) return { kind: "error", message: `research box answered ${r.status}` };
+    return { kind: "ok", data: (await r.json()) as ScalpReport };
+  } catch (e) {
+    return { kind: "error", message: e instanceof Error ? e.message : String(e) };
+  }
+}

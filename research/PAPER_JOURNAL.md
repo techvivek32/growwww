@@ -69,3 +69,9 @@ walk-forward); the live book trades the tested rule, not yesterday's hindsight.
   lose −11 bps after 09:20. Worth a proper walk-forward test as a LONG rule; not live.
 - Wider universe (Nifty 500, top-500 by turnover): base model K=3 9.38%/month vs 3.14% on the 150 F&O names. Needs
   liquidity slippage, the full rule and leak tests before any change to the live book.
+- Scalping program (separate from both books, `scalp.py`): 1,00,000 short-hold rules (breakouts, VWAP crosses, bursts,
+  fades; holds 5–60 min; stops 0.2–1%; targets 0.2–1.5%; 1–5 trades/day) on the 500-stock panel, ₹5 lakh per trade,
+  Groww costs + slippage (₹523 per round trip, 0.105%). Result: 0 of 1,00,000 profitable on 2024-01→2026-04; the median
+  loses 4.7%/month, the best loses 0.4%/month; the 100 least-bad average −5%/month in the test months. The cost per
+  trade is larger than the gross edge of any mechanical 5-minute scalp we tried. The 100 are paper-tracked daily
+  (`/admin/scalping`) so the conclusion is checked live rather than argued.

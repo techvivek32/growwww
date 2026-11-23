@@ -1,0 +1,13 @@
+[Unit]
+Description=MNHA scalping research: daily paper results of the 100 chosen strategies (no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/mnha-research.env
+WorkingDirectory=/opt/mnha-research
+ExecStart=/opt/mnha-research/.venv/bin/python -m mnha_research scalp-daily
+StandardOutput=append:/opt/mnha-research/data/scalp.log
+StandardError=append:/opt/mnha-research/data/scalp.log
+TimeoutStartSec=1h
