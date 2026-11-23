@@ -59,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--year", type=int, help="model year (live-train)")
     p.add_argument("--if-missing", action="store_true", help="live-train / livex-train: keep a year already frozen")
     p.add_argument("--no-wait", action="store_true", help="live-decide: do not wait for 09:21")
+    p.add_argument("--bars", help="scalp-live: comma-separated entry bar indexes (bar b closes at 09:20 + 5b min)")
     a = p.parse_args(argv)
     db.migrate()
 
@@ -163,7 +164,8 @@ def main(argv: list[str] | None = None) -> int:
         elif cmd == "scalp-live":
             from . import scalp_live
 
-            out = scalp_live.session()
+            bars = tuple(int(x) for x in (a.bars or "").split(",") if x) or None
+            out = scalp_live.session(bars)
         elif cmd == "scalp-live-report":
             from . import scalp_live
 

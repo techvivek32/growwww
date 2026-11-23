@@ -1,5 +1,5 @@
 [Unit]
-Description=MNHA scalping research: live scalp book 11:00-11:15, ₹1,000 trail (no orders)
+Description=MNHA scalping research: live scalp book: strategies positive in both windows, own stops and targets (no orders)
 After=network-online.target
 Wants=network-online.target
 

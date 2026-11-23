@@ -79,4 +79,10 @@ walk-forward); the live book trades the tested rule, not yesterday's hindsight.
   signal+universe rules; entries only at the 11:05/11:10/11:15 bar closes, ₹5 lakh each, exit ₹1,000 below the
   position's peak (so −₹1,000 hard stop) or 15:15. Note for later: "positive on one day" is a one-day selection, so
   this is a test of the user's idea, not a tested rule. `scalp_live.py`, timer mnha-scalp-live 10:58 IST.
+- Live scalp book, 23 Nov result of the admin's rule: −₹8,778 in five minutes, 7 of 7 positions stopped by the
+  ₹1,000 (0.2%) trail on noise; three "rules" were the same stock twice over. Replaced the same day: the search space
+  was widened (entries from 09:25, holds to 4 h, targets to 5%, stops to 2%) → 104 of 1,00,000 profitable in
+  selection, 24 distinct ones positive in both selection and test (0.3–2%/month each; mostly "short the morning
+  burst-down in a top-100 name, 2% stop, 3–5% target, hold 4 h"). Those 24 run live from Tue 24 Nov, each with its
+  own rule. Said to the user: 10%/month from scalping is not in the data; these are small, and still a selection.
 

@@ -55,10 +55,10 @@ for k in (1.5, 2.5):
     SIGNALS.append((f"burst_down_{k}", "burst_down", k, -1))
     SIGNALS.append((f"burst_down_{k}_fade", "burst_down", k, 1))
 UNIVERSES = (100, 200, 500)
-WINDOWS = ((2, 21), (2, 44), (9, 44), (21, 56), (9, 68), (2, 68))  # (first bar, last bar) an entry may be taken
-STOPS = (0.002, 0.003, 0.005, 0.0075, 0.01)
-TARGETS = (0.002, 0.003, 0.005, 0.0075, 0.01, 0.015)
-HOLDS = (1, 2, 3, 6, 12)
+WINDOWS = ((2, 21), (2, 44), (9, 44), (21, 56), (9, 68), (2, 68), (1, 3), (1, 12))  # (first bar, last bar) an entry may be taken
+STOPS = (0.002, 0.003, 0.005, 0.0075, 0.01, 0.015, 0.02)
+TARGETS = (0.002, 0.003, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03, 0.05)
+HOLDS = (1, 2, 3, 6, 12, 24, 36, 48)
 PER_DAY = (1, 2, 3, 5)
 SPACE = (len(SIGNALS), len(UNIVERSES), len(WINDOWS), len(STOPS), len(TARGETS), len(HOLDS), len(PER_DAY))
 
@@ -174,10 +174,10 @@ def _run_one(v, days, first, last, O, H, Lw, C, masks, sides, liq_rank, slip_bps
     candidate is the most liquid name firing on that bar."""
     sig = v[0]
     umax = (100, 200, 500)[v[1]]
-    w0, w1 = ((2, 21), (2, 44), (9, 44), (21, 56), (9, 68), (2, 68))[v[2]]
-    stop = (0.002, 0.003, 0.005, 0.0075, 0.01)[v[3]]
-    target = (0.002, 0.003, 0.005, 0.0075, 0.01, 0.015)[v[4]]
-    hold = (1, 2, 3, 6, 12)[v[5]]
+    w0, w1 = ((2, 21), (2, 44), (9, 44), (21, 56), (9, 68), (2, 68), (1, 3), (1, 12))[v[2]]
+    stop = (0.002, 0.003, 0.005, 0.0075, 0.01, 0.015, 0.02)[v[3]]
+    target = (0.002, 0.003, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03, 0.05)[v[4]]
+    hold = (1, 2, 3, 6, 12, 24, 36, 48)[v[5]]
     per_day = (1, 2, 3, 5)[v[6]]
     side = sides[sig]
     base = slip_bps / 1e4

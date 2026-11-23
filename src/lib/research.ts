@@ -297,7 +297,17 @@ export interface ScalpDay {
 
 export interface ScalpLivePosition {
   rule: number;
-  ranks: number[];
+  rank?: number;
+  ranks?: number[];
+  window?: string;
+  stop_pct?: number;
+  target_pct?: number;
+  max_hold_min?: number;
+  selection_per_month_pct?: number;
+  test_per_month_pct?: number;
+  stop_px?: number;
+  target_px?: number;
+  exit_by?: string;
   signal: string;
   side: "long" | "short";
   universe: string;
@@ -321,6 +331,8 @@ export interface ScalpLiveDay {
   open?: number;
   closed?: number;
   no_signal?: number;
+  rules?: number;
+  version?: number;
   realised_rs?: number;
   unrealised_rs?: number;
   total_rs?: number;
@@ -328,10 +340,10 @@ export interface ScalpLiveDay {
 
 export interface ScalpLive {
   error?: string;
-  rules?: { rule: number; signal: string; side: "long" | "short"; universe: string; ranks: number[] }[];
+  rules?: { rule: number; rank?: number; signal: string; side: "long" | "short"; universe: string; window?: string; stop_pct?: number; target_pct?: number; max_hold_min?: number; selection_per_month_pct?: number; test_per_month_pct?: number }[];
   trail_rs?: number;
   window?: string;
-  today?: { day: string; status: string; updated_at?: number; positions: ScalpLivePosition[]; summary?: ScalpLiveDay; events?: { at: number; what: string }[] } | null;
+  today?: { day: string; status: string; rules?: number; updated_at?: number; positions: ScalpLivePosition[]; summary?: ScalpLiveDay; events?: { at: number; what: string }[] } | null;
   days?: ScalpLiveDay[];
 }
 
