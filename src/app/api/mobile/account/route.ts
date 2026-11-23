@@ -65,6 +65,14 @@ export async function GET() {
         signedVersion: signed?.agreementVersion ?? null,
         updateOffered: signed ? INVITE_TO_SIGN.includes(signed.agreementVersion) : false,
       },
+      // The two consents a member may switch off at will, as they stand NOW —
+      // `current` once changed, otherwise as signed. Without these the app
+      // could offer the switches but never show which way they are set, and a
+      // consent control that cannot report its own state is worse than none.
+      optionalConsents: {
+        marketing: (signed?.current ?? signed?.consents)?.marketing ?? false,
+        analytics: (signed?.current ?? signed?.consents)?.analytics ?? false,
+      },
       unread,
       market: marketState(),
     });

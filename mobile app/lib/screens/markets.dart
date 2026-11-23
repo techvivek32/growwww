@@ -112,6 +112,23 @@ class _IndexCard extends StatelessWidget {
                   '${q.change >= 0 ? '+' : ''}${num_(q.change)}   ${pct(q.changePct)}',
                   style: kNum.copyWith(fontSize: 12.5, color: c, fontWeight: FontWeight.w500),
                 ),
+                // The day's range and the previous close, which the payload
+                // already carried and this card was dropping. The web shows
+                // them beside the level, and they are what says whether a
+                // move is near the top of the day or the bottom of it.
+                if (q.dayHigh != null || q.dayLow != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    'H ${num_(q.dayHigh)}   L ${num_(q.dayLow)}   prev ${num_(q.last - q.change)}',
+                    style: kNum.copyWith(
+                      fontSize: 10.5,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.5),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

@@ -108,6 +108,29 @@ class Api {
     }
   }
 
+  /// The raw bytes of a stored file — a consent selfie, an ID photo, a KYC
+  /// document. These endpoints answer with the file itself rather than JSON,
+  /// so they cannot go through [_get].
+  ///
+  /// The web console links straight to these URLs because the browser already
+  /// holds the session cookie. A phone cannot do that: handing the URL to the
+  /// device browser would send a request with no session and show the admin a
+  /// redirect to the login page instead of the document. So the app fetches
+  /// the bytes on the session it already has and renders them itself.
+  Future<Uint8List> fileBytes(String path) async {
+    final r = await http
+        .get(Uri.parse('$base$path'), headers: _headers)
+        .timeout(const Duration(seconds: 45));
+    if (r.statusCode == 307 || r.statusCode == 302) {
+      throw ApiError('Your session has expired. Please sign in again.', 401);
+    }
+    if (r.statusCode == 404) {
+      throw ApiError('That file is no longer stored.', 404);
+    }
+    if (r.statusCode != 200) _raise(r);
+    return r.bodyBytes;
+  }
+
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
     final r = await http
         .post(Uri.parse('$base$path'), headers: _headers, body: jsonEncode(body))
@@ -186,6 +209,30 @@ class Api {
 
   /// Admin console: overview | members | fees | orders | access.
   /// Answers 403 for any non-admin session — the server is the boundary.
+  /// Run one of the admin console's write actions.
+  ///
+  /// The server hands these to the very same server actions the website's
+  /// forms post to, so an act done from the phone and the same act done from
+  /// a desk are not two code paths that can disagree.
+  ///
+  /// Those actions return nothing and simply decline a request that fails
+  /// their own checks, so this cannot report success on its own. The caller
+  /// reloads the section afterwards and shows whatever the record now says.
+  Future<void> adminAction(Map<String, dynamic> body) async {
+    await _post('/api/mobile/admin', body);
+  }
+
+  /// One of the member's own account controls.
+  ///
+  /// Returns the path the server wants the app to go to next, or null when
+  /// there is nowhere to go. Two of these answer by redirecting on the web —
+  /// disconnecting lands on /connect-broker, and a refused deletion comes
+  /// back with a reason — so that destination IS the result, not decoration.
+  Future<String?> settingsAction(Map<String, dynamic> body) async {
+    final j = await _post('/api/mobile/settings', body);
+    return j['next'] as String?;
+  }
+
   Future<Map<String, dynamic>> admin(String view) async =>
       _get('/api/mobile/admin?view=$view');
 

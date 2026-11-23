@@ -306,11 +306,43 @@ class ErrorState extends StatelessWidget {
 /// "4m ago" for an epoch-ms stamp. Null or zero reads as "never", which is a
 /// different statement from "a long time ago" — an engine that has never run
 /// and one that ran last week should not look the same.
+/// An absolute timestamp in IST, matching the admin console's `fmtDate`
+/// ("19 Nov 26, 04:58 pm").
+///
+/// Pinned to IST rather than the phone's own zone deliberately. The console is
+/// the record of an Indian market business, and a signature must not appear to
+/// have happened at a different hour because the admin opened the app from
+/// another country. `ago()` answers "how long since"; this answers "when",
+/// and an audit row needs both.
+String fmtStamp(int? ms) {
+  if (ms == null || ms == 0) return 'unknown';
+  final t = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true)
+      .add(const Duration(hours: 5, minutes: 30));
+  const mon = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
+  final ampm = t.hour < 12 ? 'am' : 'pm';
+  return '${t.day} ${mon[t.month - 1]} ${t.year % 100}, '
+      '${h.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')} $ampm';
+}
+
 String ago(int? at) {
   if (at == null || at == 0) return 'never';
-  final secs = (DateTime.now().millisecondsSinceEpoch - at) ~/ 1000;
-  if (secs < 60) return '${secs}s ago';
-  if (secs < 3600) return '${secs ~/ 60}m ago';
-  if (secs < 86400) return '${secs ~/ 3600}h ago';
-  return '${secs ~/ 86400}d ago';
+  final ms = DateTime.now().millisecondsSinceEpoch - at;
+  // Not every timestamp is in the past. A member's period END, a scheduled
+  // verification call and a settlement date are all ahead of now, and the
+  // subtraction simply went negative for them: an active member's card read
+  // "period ends -2591817s ago", which is not even wrong in a useful way.
+  final ahead = ms < 0;
+  final secs = ms.abs() ~/ 1000;
+  final span = secs < 60
+      ? '${secs}s'
+      : secs < 3600
+          ? '${secs ~/ 60}m'
+          : secs < 86400
+              ? '${secs ~/ 3600}h'
+              : '${secs ~/ 86400}d';
+  return ahead ? 'in $span' : '$span ago';
 }

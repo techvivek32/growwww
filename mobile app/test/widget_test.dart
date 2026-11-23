@@ -79,4 +79,16 @@ void main() {
     expect(find.text('No holdings'), findsOneWidget);
     expect(find.text('Nothing to show.'), findsOneWidget);
   });
+
+  test('ago reads forwards as well as backwards', () {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // A member's period end, a booked verification call and a settlement date
+    // are all ahead of now. Subtracting them used to go negative and print a
+    // raw second count: "period ends -2591817s ago".
+    expect(ago(now + 30 * 86400000), startsWith('in '));
+    expect(ago(now + 30 * 86400000), isNot(contains('-')));
+    expect(ago(now - 30 * 86400000), endsWith(' ago'));
+    expect(ago(null), 'never');
+    expect(ago(0), 'never');
+  });
 }

@@ -186,12 +186,44 @@ class _HoldingRow extends StatelessWidget {
               children: [
                 Text(h.symbol,
                     style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+                // The company name is in the payload and was being thrown
+                // away. A ticker alone is not an answer to "what do I hold":
+                // the web Stock column prints both.
+                if (h.company.isNotEmpty && h.company != h.symbol) ...[
+                  const SizedBox(height: 1),
+                  Text(
+                    h.company,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.5),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 3),
                 Text(
                   '${h.qty} × ${num_(h.avg)}',
                   style: kNum.copyWith(
                     fontSize: 11.5,
                     color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+                  ),
+                ),
+                // Invested and, once a price is known, what it is worth now —
+                // the web's Avg cost and Value columns.
+                Text(
+                  h.ltp == null
+                      ? 'invested ${money2(h.qty * h.avg)}'
+                      : 'invested ${money2(h.qty * h.avg)}  ·  now ${money2(h.qty * h.ltp!)}',
+                  style: kNum.copyWith(
+                    fontSize: 10.5,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.45),
                   ),
                 ),
               ],
@@ -217,6 +249,17 @@ class _HoldingRow extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
+                // The day's move on the stock itself — the web's Day column.
+                // Distinct from the P&L above, which is against YOUR average
+                // cost; a holding can be up on the day and still down overall.
+                if (h.dayPct != null)
+                  Text(
+                    'day ${pct(h.dayPct)}',
+                    style: kNum.copyWith(
+                      fontSize: 10.5,
+                      color: T.move(h.dayPct, dark: dark),
+                    ),
+                  ),
               ],
             ),
           ),

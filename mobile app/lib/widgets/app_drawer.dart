@@ -98,9 +98,12 @@ class AppDrawer extends StatelessWidget {
             _push(
               context,
               DrawerDest.research,
-              // A member gets the option chain only; the owner gets the
-              // scanner, the strategy board and linked accounts too.
-              me.isOwner ? 'Scanner, strategies, chain' : 'Option chain',
+              // A member gets the option chain only; the owner also gets the
+              // scanner and the linked accounts. The label names the tabs that
+              // are actually there: it used to promise "strategies", a board
+              // that was removed with the signals engine upstream, and left
+              // out Linked, which is there.
+              me.isOwner ? 'Scanner, chain, linked' : 'Option chain',
               Icons.science_outlined,
             ),
 

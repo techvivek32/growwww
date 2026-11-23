@@ -419,6 +419,12 @@ class AccountInfo {
   final bool agreementUpdateOffered;
   final String currentAgreement;
 
+  /// The two consents a member may switch off at will, as they stand now.
+  /// A control that cannot show which way it is set is worse than none, so
+  /// these travel with the account rather than being assumed.
+  final bool marketingOn;
+  final bool analyticsOn;
+
   AccountInfo.fromJson(Map<String, dynamic> j)
       : account = Account.fromJson(j['account'] as Map<String, dynamic>),
         role = (j['role'] ?? 'member') as String,
@@ -437,7 +443,9 @@ class AccountInfo {
         market = MarketState.fromJson(j['market'] as Map<String, dynamic>),
         signedAgreement = j['agreement']?['signedVersion'] as String?,
         agreementUpdateOffered = j['agreement']?['updateOffered'] == true,
-        currentAgreement = (j['agreement']?['current'] ?? '') as String;
+        currentAgreement = (j['agreement']?['current'] ?? '') as String,
+        marketingOn = j['optionalConsents']?['marketing'] == true,
+        analyticsOn = j['optionalConsents']?['analytics'] == true;
 }
 
 /// A price series for the chart. `points` is close-only — the web chart draws

@@ -216,27 +216,49 @@ class AccountScreen extends StatelessWidget {
         _row(context, 'IST clock', a.market.clock),
         _row(context, 'Date', a.market.date),
 
+        // Everything the website's Settings page lets a member do to their
+        // own account. Two of these are rights rather than conveniences —
+        // withdrawing an optional consent, and erasing the account — so the
+        // app offering only Sign out was a real gap, not a cosmetic one.
+        _Controls(a: a, onSignOut: onSignOut),
+
         const SectionTitle('Not in this app'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Panel(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                _Note(
+              children: [
+                const _Note(
                   'Placing orders',
                   'Since April 2026 an order must originate from an IP '
                       'registered with the broker. A phone has no fixed address, '
                       'so orders are placed from the desk, never here.',
                 ),
-                SizedBox(height: 13),
-                _Note(
+                // Owner only: the Terminal is the one page in the web nav with
+                // no screen here. Everything it shows does have one — the
+                // chart, the chain and the working orders each have their own
+                // — so what is absent is its docked order ticket, for the
+                // reason just given above.
+                if (me.role == 'owner') ...[
+                  const SizedBox(height: 13),
+                  const _Note(
+                    'The Terminal',
+                    'Its chart, option chain and working orders are all here, '
+                        'on their own screens. What the Terminal adds is the '
+                        'order ticket docked beside them, and that cannot be '
+                        'used from a phone — so the page itself stays on the '
+                        'desk.',
+                  ),
+                ],
+                const SizedBox(height: 13),
+                const _Note(
                   'KYC and the agreement',
                   'Both capture camera video and documents, and run on the '
                       'website so there is one record of what was signed.',
                 ),
-                SizedBox(height: 13),
-                _Note(
+                const SizedBox(height: 13),
+                const _Note(
                   'Option chain',
                   'The chain stays empty until Groww provides an Indian option '
                       'chain — Yahoo carries none, and modelling strikes locally '
@@ -372,4 +394,284 @@ class _Note extends StatelessWidget {
               )),
         ],
       );
+}
+
+
+/// The member's own account controls — the website's Settings page.
+///
+/// Self-contained so the Account screen stays a simple read: this holds the
+/// switch positions it has changed, and asks before anything that cannot be
+/// taken back.
+class _Controls extends StatefulWidget {
+  final AccountInfo a;
+  final VoidCallback onSignOut;
+  const _Controls({required this.a, required this.onSignOut});
+
+  @override
+  State<_Controls> createState() => _ControlsState();
+}
+
+class _ControlsState extends State<_Controls> {
+  late bool _marketing = widget.a.marketingOn;
+  late bool _analytics = widget.a.analyticsOn;
+  bool _busy = false;
+
+  /// Runs a control and says plainly whether it worked.
+  ///
+  /// A bare `String?` could not: these actions answer with null on success as
+  /// well as on failure, so a switch had no way to tell "the server accepted
+  /// this" from "the server refused" — and a consent switch that guesses is
+  /// exactly the thing that must not exist.
+  Future<({bool ok, String? next})> _send(Map<String, dynamic> body) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      final next = await api.settingsAction(body);
+      return (ok: true, next: next);
+    } on ApiError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      return (ok: false, next: null);
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not reach the server.')),
+      );
+      return (ok: false, next: null);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _toggle(String key, bool on) async {
+    // The switch moves once the server has accepted it, not before: a control
+    // that flips and then silently reverts is how someone comes to believe a
+    // consent is off when it is not.
+    final r = await _send({
+      'action': 'optional-consent',
+      'key': key,
+      'value': on ? 'on' : 'off',
+    });
+    // Only move the switch once the server has actually taken it. A control
+    // that flips first and reverts quietly is how someone comes to believe a
+    // consent is off when it is still on.
+    if (!r.ok || !mounted) return;
+    setState(() {
+      if (key == 'marketing') {
+        _marketing = on;
+      } else {
+        _analytics = on;
+      }
+    });
+  }
+
+  Future<void> _disconnect() async {
+    // Captured before the confirm dialog: that dialog is an await, and the
+    // messenger must not be reached for through a context afterwards.
+    final messenger = ScaffoldMessenger.of(context);
+    if (!await _ask(
+      'Disconnect Groww?',
+      'MNHA stops reading your account and can place nothing. Your money and '
+          'your holdings stay exactly where they are, with your broker. You '
+          'can connect again whenever you like.',
+      'Disconnect',
+    )) {
+      return;
+    }
+    final r = await _send({'action': 'disconnect-broker'});
+    if (r.ok) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Groww disconnected.')),
+      );
+    }
+  }
+
+  Future<void> _delete() async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (!await _ask(
+      'Delete your account?',
+      'Erases your account and the data held with it. This cannot be undone. '
+          'An active membership period must be closed and any unpaid bill '
+          'settled first — the server checks both.',
+      'Delete my account',
+      danger: true,
+    )) {
+      return;
+    }
+    final r = await _send({'action': 'delete-account'});
+    if (!r.ok) return;
+    // The server says what happened by WHERE it sends you: back to settings
+    // with a reason means it refused, anywhere else means the account is gone.
+    final next = r.next ?? '';
+    if (next.contains('delete=active')) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Close your membership period first, then delete.'),
+      ));
+    } else if (next.contains('delete=due')) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Settle the unpaid bill first, then delete.'),
+      ));
+    } else {
+      widget.onSignOut();
+    }
+  }
+
+  Future<void> _changePassword() async {
+    final cur = TextEditingController();
+    final next = TextEditingController();
+    final confirm = TextEditingController();
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Change your password', style: TextStyle(fontSize: 17)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: cur,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Current password'),
+            ),
+            TextField(
+              controller: next,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'New password'),
+            ),
+            TextField(
+              controller: confirm,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Repeat the new one'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Change',
+                  style: TextStyle(fontWeight: FontWeight.w600))),
+        ],
+      ),
+    );
+    if (go == true && mounted) {
+      final messenger = ScaffoldMessenger.of(context);
+      final r = await _send({
+        'action': 'change-password',
+        'current': cur.text,
+        'next': next.text,
+        'confirm': confirm.text,
+      });
+      // On failure the server's own wording is already on screen — "that
+      // password is wrong" is more use than anything this could add.
+      if (r.ok) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Password changed.')),
+        );
+      }
+    }
+    for (final c in [cur, next, confirm]) {
+      c.dispose();
+    }
+  }
+
+  Future<bool> _ask(String title, String body, String confirmLabel,
+      {bool danger = false}) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title, style: const TextStyle(fontSize: 17)),
+        content: Text(body, style: const TextStyle(fontSize: 13.5, height: 1.45)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(confirmLabel,
+                style: TextStyle(
+                    color: danger ? T.down : T.mark,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // An env login has no stored password and no record to erase, so these
+    // controls would be offered only to be refused by the server.
+    final reserved = widget.a.role != 'member';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionTitle('Privacy & consents'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Panel(
+            child: Column(
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: _marketing,
+                  onChanged: _busy || reserved
+                      ? null
+                      : (v) => _toggle('marketing', v),
+                  title: const Text('Marketing', style: TextStyle(fontSize: 14)),
+                  subtitle: const Text('Optional. Switch off at any time.',
+                      style: TextStyle(fontSize: 11.5)),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: _analytics,
+                  onChanged: _busy || reserved
+                      ? null
+                      : (v) => _toggle('analytics', v),
+                  title: const Text('Analytics', style: TextStyle(fontSize: 14)),
+                  subtitle: const Text('Optional. Switch off at any time.',
+                      style: TextStyle(fontSize: 11.5)),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        if (!reserved) ...[
+          const SectionTitle('Your account'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                OutlinedButton(
+                  onPressed: _busy ? null : _changePassword,
+                  child: const Text('Change your password'),
+                ),
+                if (widget.a.connected) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: _busy ? null : _disconnect,
+                    child: const Text('Disconnect Groww'),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: _busy ? null : _delete,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: T.down,
+                    side: const BorderSide(color: T.down),
+                  ),
+                  child: const Text('Delete my account'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }
