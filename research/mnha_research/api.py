@@ -188,6 +188,22 @@ def live_summary(authorization: str | None = Header(default=None)) -> dict:
             out["sl05"]["today"] = [dict(x) for x in con.execute("SELECT * FROM livex_fast WHERE day=? AND book='sl05'", (live.today_ist(),))]
     except Exception as e:  # noqa: BLE001
         out["sl05_error"] = str(e)[:200]
+    try:  # manual paper trades the user asked for (outside the tested rule), marked at the live price when open
+        import json as _json
+        from . import config
+
+        p = config.DATA / "manual_trades.json"
+        manual = _json.loads(p.read_text()) if p.exists() else []
+        open_syms = sorted({m["symbol"] for m in manual if m.get("status") == "open"})
+        quotes = live.ltp(open_syms)[0] if open_syms else {}
+        for m in manual:
+            if m.get("status") == "open" and m["symbol"] in quotes:
+                ltp = quotes[m["symbol"]]
+                m["ltp"] = ltp
+                m["running_pnl"] = round((m["entry"] - ltp) * m["qty"] if m["side"] == "short" else (ltp - m["entry"]) * m["qty"], 2)
+        out["manual"] = manual
+    except Exception as e:  # noqa: BLE001
+        out["manual_error"] = str(e)[:200]
     try:
         out["live"] = live.report()
     except Exception as e:  # noqa: BLE001

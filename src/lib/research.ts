@@ -107,9 +107,34 @@ export interface Sl05Report {
   today?: { leg: string; symbol: string; side: number; qty: number; entry: number; entry_at: number; exit: number | null; exit_at: number | null; why: string | null; costs?: number | null; net: number | null }[];
 }
 
+/** A manual paper trade the admin asked for, outside the tested rule; marked at the live price while open. */
+export interface ManualTrade {
+  day: string;
+  book: string;
+  side: "short" | "long";
+  symbol: string;
+  entry_time: string;
+  ltp_at_entry: number;
+  entry: number;
+  qty: number;
+  notional: number;
+  stop: number;
+  stop_rule: string;
+  status: "open" | "closed";
+  ltp?: number;
+  running_pnl?: number;
+  exit?: number;
+  exit_time?: string;
+  why?: string;
+  gross?: number;
+  costs?: number;
+  net?: number;
+}
+
 export interface LiveSummary {
   as_of: number;
   book: number;
+  manual?: ManualTrade[];
   livex: LivexReport | null;
   livex_error?: string;
   sl05?: Sl05Report;

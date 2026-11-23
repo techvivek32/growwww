@@ -203,6 +203,42 @@ function Body({ data }: { data: LiveSummary }) {
         )}
       </Card>
 
+      {data.manual && data.manual.length > 0 && (
+        <Card className="border-warn/40">
+          <CardHead
+            title="Sell-side test (manual paper trades)"
+            sub="Trades the admin asked for by hand, outside the tested rule. Paper only; marked at the live price while open. They are not part of Book A or Book B."
+            right={<Pill tone="warn">manual</Pill>}
+          />
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-line">
+                  <th className={th}>Day</th><th className={th}>Trade</th><th className={`${th} text-right`}>Entry</th><th className={`${th} text-right`}>Stop</th>
+                  <th className={`${th} text-right`}>Now / Exit</th><th className={th}>Status</th><th className={`${th} text-right`}>P&L</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.manual.map((m) => {
+                  const pnl = m.status === "closed" ? (m.net ?? 0) : (m.running_pnl ?? 0);
+                  return (
+                    <tr key={`${m.day}-${m.symbol}-${m.entry_time}`} className="border-b border-line last:border-0">
+                      <td className={td}>{m.day}</td>
+                      <td className={td}><span className={`font-semibold ${m.side === "short" ? "text-down" : "text-up"}`}>{m.side === "short" ? "SELL" : "BUY"}</span> {m.qty} {m.symbol}</td>
+                      <td className={`${td} tnum text-right`}>{m.entry.toFixed(2)} <span className="text-ink3">{m.entry_time.slice(0, 5)}</span></td>
+                      <td className={`${td} tnum text-right`}>{m.stop.toFixed(2)}</td>
+                      <td className={`${td} tnum text-right`}>{m.status === "closed" ? `${m.exit?.toFixed(2)} ${m.exit_time?.slice(0, 5) ?? ""}` : (m.ltp?.toFixed(2) ?? "—")}</td>
+                      <td className={td}><Pill tone={m.status === "closed" ? "neutral" : "warn"}>{m.status === "closed" ? (m.why ?? "closed") : "open"}</Pill></td>
+                      <td className={`${td} tnum text-right font-semibold ${pnl >= 0 ? "text-up" : "text-down"}`}>{inr(pnl)}{m.status === "open" ? " (running)" : ""}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
       <Card>
         <CardHead
           title="Book B: fixed 0.5% stop"
