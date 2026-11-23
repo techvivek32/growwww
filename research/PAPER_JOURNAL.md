@@ -59,3 +59,13 @@ walk-forward); the live book trades the tested rule, not yesterday's hindsight.
   Lesson 5 again: the tight stop exits exactly where the trend is about to start.
 - Week 1: Book A +₹49,088 (+9.8%), 5/5 days; Book B +₹10,228 (+2.0%). Far above the backtest's average week; do not
   extrapolate (lesson 7).
+
+### Mon 23 Nov · skipped (regime: Monday + top-20% NIFTY gap) · ₹0 both books
+- NIFTY gapped up to 25,929 and sold off all morning. The skipped pick (TATASTEEL, −4.42) fell 1.8% by 10:00: today the
+  filter cost a likely gain. Over 2023–26 the filter leaves the per-month figure unchanged (8.75% vs 8.71%) and cuts the
+  worst month from −17.5% to −12.5%; judged over months, not days. Kalyan Jewellers, the #3 short candidate, rose 3.8%.
+- Idea from the user (NSE top gainers/losers): on the 500-stock panel, yesterday's top-20 gainers continue +42 bps
+  09:20→15:15 the next day (44% win, skewed by big winners); today's top gap-ups fade −20 bps; first-5-min top gainers
+  lose −11 bps after 09:20. Worth a proper walk-forward test as a LONG rule; not live.
+- Wider universe (Nifty 500, top-500 by turnover): base model K=3 9.38%/month vs 3.14% on the 150 F&O names. Needs
+  liquidity slippage, the full rule and leak tests before any change to the live book.
