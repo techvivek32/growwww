@@ -10,7 +10,7 @@ import os
 import secrets
 import time
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi import Body, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from . import db
@@ -219,6 +219,31 @@ def live_today(authorization: str | None = Header(default=None)) -> dict:
     from . import livex
 
     return livex.today_state()
+
+
+@app.post("/live/manual/exit")
+def manual_exit(body: dict = Body(...), authorization: str | None = Header(default=None)) -> dict:
+    """Close an open manual paper trade at the live price (the admin's Exit button). Local only; paper only."""
+    _authorised(authorization)
+    from . import manual
+
+    try:
+        return {"ok": True, "trade": manual.close_trade(str(body.get("symbol", "")), str(body.get("why") or "admin exit"), body.get("entry_time"))}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/live/manual/open")
+def manual_open(body: dict = Body(...), authorization: str | None = Header(default=None)) -> dict:
+    """Open a manual paper trade at the live price (₹5 lakh, 1% stop by default). Local only; paper only."""
+    _authorised(authorization)
+    from . import manual
+
+    try:
+        return {"ok": True, "trade": manual.open_trade(str(body.get("symbol", "")), str(body.get("side", "short")), str(body.get("note") or ""),
+                                                       float(body.get("stop_pct") or 0.01))}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.get("/paper")

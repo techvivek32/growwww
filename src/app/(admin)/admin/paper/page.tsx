@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import ManualExit from "./ManualExit";
 import Link from "next/link";
 import { requireAdminPage } from "@/lib/access";
 import { liveSummary, dayToIso, type LiveSummary, type LivexDay, type LivexLeg, type LivexMark, type LivexReport } from "@/lib/research";
@@ -206,8 +207,8 @@ function Body({ data }: { data: LiveSummary }) {
       {data.manual && data.manual.length > 0 && (
         <Card className="border-warn/40">
           <CardHead
-            title="Sell-side test (manual paper trades)"
-            sub="Trades the admin asked for by hand, outside the tested rule. Paper only; marked at the live price while open. They are not part of Book A or Book B."
+            title="Manual paper trades"
+            sub="Trades the admin asked for by hand, outside the tested rule. Paper only; marked at the live price while open; Exit closes one at the live price. They are not part of Book A or Book B."
             right={<Pill tone="warn">manual</Pill>}
           />
           <div className="overflow-x-auto">
@@ -215,7 +216,7 @@ function Body({ data }: { data: LiveSummary }) {
               <thead>
                 <tr className="border-b border-line">
                   <th className={th}>Day</th><th className={th}>Trade</th><th className={`${th} text-right`}>Entry</th><th className={`${th} text-right`}>Stop</th>
-                  <th className={`${th} text-right`}>Now / Exit</th><th className={th}>Status</th><th className={`${th} text-right`}>P&L</th>
+                  <th className={`${th} text-right`}>Now / Exit</th><th className={th}>Status</th><th className={`${th} text-right`}>P&L</th><th className={th}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -230,6 +231,7 @@ function Body({ data }: { data: LiveSummary }) {
                       <td className={`${td} tnum text-right`}>{m.status === "closed" ? `${m.exit?.toFixed(2)} ${m.exit_time?.slice(0, 5) ?? ""}` : (m.ltp?.toFixed(2) ?? "—")}</td>
                       <td className={td}><Pill tone={m.status === "closed" ? "neutral" : "warn"}>{m.status === "closed" ? (m.why ?? "closed") : "open"}</Pill></td>
                       <td className={`${td} tnum text-right font-semibold ${pnl >= 0 ? "text-up" : "text-down"}`}>{inr(pnl)}{m.status === "open" ? " (running)" : ""}</td>
+                      <td className={td}>{m.status === "open" ? <ManualExit symbol={m.symbol} entryTime={m.entry_time} /> : null}</td>
                     </tr>
                   );
                 })}

@@ -1,0 +1,11 @@
+[Unit]
+Description=MNHA manual paper trade watcher: stop / market / 15:15 exits for the admin's manual paper trades (no orders)
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/mnha-research.env
+WorkingDirectory=/opt/mnha-research
+ExecStart=/opt/mnha-research/.venv/bin/python tools_watch_manual.py
+StandardOutput=append:/opt/mnha-research/data/manual.log
+StandardError=append:/opt/mnha-research/data/manual.log
