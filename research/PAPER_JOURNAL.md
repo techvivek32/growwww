@@ -69,26 +69,3 @@ walk-forward); the live book trades the tested rule, not yesterday's hindsight.
   lose −11 bps after 09:20. Worth a proper walk-forward test as a LONG rule; not live.
 - Wider universe (Nifty 500, top-500 by turnover): base model K=3 9.38%/month vs 3.14% on the 150 F&O names. Needs
   liquidity slippage, the full rule and leak tests before any change to the live book.
-- Scalping program (separate from both books, `scalp.py`): 1,00,000 short-hold rules (breakouts, VWAP crosses, bursts,
-  fades; holds 5–60 min; stops 0.2–1%; targets 0.2–1.5%; 1–5 trades/day) on the 500-stock panel, ₹5 lakh per trade,
-  Groww costs + slippage (₹523 per round trip, 0.105%). Result: 0 of 1,00,000 profitable on 2024-01→2026-04; the median
-  loses 4.7%/month, the best loses 0.4%/month; the 100 least-bad average −5%/month in the test months. The cost per
-  trade is larger than the gross edge of any mechanical 5-minute scalp we tried. The 100 are paper-tracked daily
-  (`/admin/scalping`) so the conclusion is checked live rather than argued.
-- Live scalp book (user's rule, paper, from Tue 24 Nov): the 52 strategies positive on 20 Nov = 11 distinct
-  signal+universe rules; entries only at the 11:05/11:10/11:15 bar closes, ₹5 lakh each, exit ₹1,000 below the
-  position's peak (so −₹1,000 hard stop) or 15:15. Note for later: "positive on one day" is a one-day selection, so
-  this is a test of the user's idea, not a tested rule. `scalp_live.py`, timer mnha-scalp-live 10:58 IST.
-- Live scalp book, 23 Nov result of the admin's rule: −₹8,778 in five minutes, 7 of 7 positions stopped by the
-  ₹1,000 (0.2%) trail on noise; three "rules" were the same stock twice over. Replaced the same day: the search space
-  was widened (entries from 09:25, holds to 4 h, targets to 5%, stops to 2%) → 104 of 1,00,000 profitable in
-  selection, 24 distinct ones positive in both selection and test (0.3–2%/month each; mostly "short the morning
-  burst-down in a top-100 name, 2% stop, 3–5% target, hold 4 h"). Those 24 run live from Tue 24 Nov, each with its
-  own rule. Said to the user: 10%/month from scalping is not in the data; these are small, and still a selection.
-- Scalping inputs the user asked to keep (23 Nov): NSE top gainers/losers (https://www.nseindia.in/market-data/top-gainers-losers)
-  and NSE live equity market (https://www.nseindia.in/market-data/live-equity-market). The gainers/losers JSON is readable
-  from the server (20+20 names, with nearWKH/nearWKL = distance from the 52-week high/low, turnover); the index-wide
-  live-equity JSON is blocked for servers. `scalp_nse.py` uses them: four selective rules, max 2 trades/day each
-  ("wait for your turn"), live from 23 Nov 12:05. Also `scalp_fast.py` (six tick-level buy-sell rules, the user's
-  "buy sell buy sell" ask) runs beside it so the two styles can be compared on the same days.
-

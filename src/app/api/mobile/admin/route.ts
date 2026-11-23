@@ -344,11 +344,6 @@ export async function GET(req: Request) {
         });
       }
 
-      // The scalping program was removed on 23 Nov 2026 at the admin's request
-      // (no profitable rule after costs). The app's screen gets a plain reason.
-      case "scalping":
-        return json({ ok: false, reason: "The scalping program has been removed." });
-
       case "paper":
         return json({ live: await liveSummary().catch(() => null) });
 
