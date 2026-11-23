@@ -85,4 +85,10 @@ walk-forward); the live book trades the tested rule, not yesterday's hindsight.
   selection, 24 distinct ones positive in both selection and test (0.3–2%/month each; mostly "short the morning
   burst-down in a top-100 name, 2% stop, 3–5% target, hold 4 h"). Those 24 run live from Tue 24 Nov, each with its
   own rule. Said to the user: 10%/month from scalping is not in the data; these are small, and still a selection.
+- Scalping inputs the user asked to keep (23 Nov): NSE top gainers/losers (https://www.nseindia.in/market-data/top-gainers-losers)
+  and NSE live equity market (https://www.nseindia.in/market-data/live-equity-market). The gainers/losers JSON is readable
+  from the server (20+20 names, with nearWKH/nearWKL = distance from the 52-week high/low, turnover); the index-wide
+  live-equity JSON is blocked for servers. `scalp_nse.py` uses them: four selective rules, max 2 trades/day each
+  ("wait for your turn"), live from 23 Nov 12:05. Also `scalp_fast.py` (six tick-level buy-sell rules, the user's
+  "buy sell buy sell" ask) runs beside it so the two styles can be compared on the same days.
 

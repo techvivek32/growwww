@@ -380,6 +380,32 @@ export interface ScalpFast {
   days?: { day: string; status?: string; total_rs?: number; realised_rs?: number; trades?: number; books: ScalpFastBook[] }[];
 }
 
+export interface ScalpNseMover {
+  symbol: string;
+  kind: "gainer" | "loser";
+  pct: number;
+  ltp: number;
+  high: number;
+  low: number;
+  near_wkh: number;
+  near_wkl: number;
+  turnover: number;
+}
+
+export interface ScalpNseBook extends ScalpFastBook {
+  target?: number;
+  stop?: number;
+  hold?: number;
+}
+
+export interface ScalpNse {
+  error?: string;
+  rules?: { rule: number; name: string; side: number }[];
+  max_trades?: number;
+  today?: { day: string; status: string; updated_at?: number; books: ScalpNseBook[]; movers?: ScalpNseMover[]; watch?: number; events?: { at: number; what: string }[]; summary?: { total_rs: number; realised_rs: number; trades: number; open: number } } | null;
+  days?: { day: string; status?: string; total_rs?: number; realised_rs?: number; trades?: number; books: ScalpFastBook[] }[];
+}
+
 export interface ScalpReport {
   status?: string;
   search?: ScalpSearch;
@@ -387,6 +413,7 @@ export interface ScalpReport {
   daily?: ScalpDay[];
   live?: ScalpLive;
   fast?: ScalpFast;
+  nse?: ScalpNse;
 }
 
 export type ScalpState = { kind: "ok"; data: ScalpReport } | { kind: "unconfigured" } | { kind: "error"; message: string };

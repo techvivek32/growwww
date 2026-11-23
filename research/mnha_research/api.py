@@ -238,6 +238,12 @@ def scalping(authorization: str | None = Header(default=None)) -> dict:
         out["fast"] = scalp_fast.report()
     except Exception as e:  # noqa: BLE001
         out["fast"] = {"error": str(e)}
+    try:
+        from . import scalp_nse
+
+        out["nse"] = scalp_nse.report()
+    except Exception as e:  # noqa: BLE001
+        out["nse"] = {"error": str(e)}
     return out
 
 

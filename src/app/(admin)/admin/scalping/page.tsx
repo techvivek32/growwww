@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireAdminPage } from "@/lib/access";
-import { scalpingReport, type ScalpDay, type ScalpFast, type ScalpLive, type ScalpLivePosition, type ScalpSearch, type ScalpStrategy } from "@/lib/research";
+import { scalpingReport, type ScalpDay, type ScalpFast, type ScalpLive, type ScalpLivePosition, type ScalpNse, type ScalpSearch, type ScalpStrategy } from "@/lib/research";
+import AutoRefresh from "./AutoRefresh";
 import { Card, CardHead, Pill, StatTile } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Scalping · Admin · MNHA Financials" };
@@ -25,7 +26,10 @@ export default async function ScalpingPage() {
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
         <p className="font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">Admin · Research</p>
-        <h1 className="pub-display mt-1 text-[28px] leading-tight text-ink">Scalping</h1>
+        <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
+          <h1 className="pub-display text-[28px] leading-tight text-ink">Scalping</h1>
+          <AutoRefresh every={5000} />
+        </div>
         <p className="mt-1 max-w-[72ch] text-[13px] leading-snug text-ink3">
           A separate program from the paper books: 1,00,000 short-hold rules on 5-minute bars (breakouts, VWAP crosses, momentum bursts and their fades; holds of 5–60 minutes; stops 0.2–1%; targets 0.2–1.5%), each with the full ₹5 lakh per trade and Groww intraday costs. The 100 below were chosen on 2024-01 → 2026-04 only; what they did from May 2026 on, and in daily paper trading, is reported beside that.
         </p>
@@ -34,6 +38,7 @@ export default async function ScalpingPage() {
         <Card><CardHead title={state.kind === "unconfigured" ? "Not connected" : "Research box unreachable"} sub={state.kind === "error" ? state.message : "Set RESEARCH_API_URL and RESEARCH_API_TOKEN."} /></Card>
       )}
       {state.kind === "ok" && state.data.status && <Card><CardHead title="No search yet" sub={state.data.status} /></Card>}
+      {state.kind === "ok" && state.data.nse && <NseBook nse={state.data.nse} />}
       {state.kind === "ok" && state.data.fast && <FastBook fast={state.data.fast} />}
       {state.kind === "ok" && state.data.live && <LiveBook live={state.data.live} />}
       {state.kind === "ok" && state.data.search && <Body top={state.data.top ?? []} search={state.data.search} daily={state.data.daily ?? []} />}
@@ -42,6 +47,103 @@ export default async function ScalpingPage() {
 }
 
 const istTime = (t: number) => new Date(t * 1000).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+
+/** The NSE-context scalp book: the admin's two NSE pages (top gainers/losers, 52-week distance) as the input, four selective rules. */
+function NseBook({ nse }: { nse: ScalpNse }) {
+  const t = nse.today;
+  const s = t?.summary;
+  const books = t?.books ?? [];
+  const movers = t?.movers ?? [];
+  const lastTrades = books.flatMap((b) => (b.trades ?? []).map((x) => ({ ...x, rule: b.rule, name: b.name, side: b.side }))).sort((a, b) => b.exited_at - a.exited_at).slice(0, 20);
+  return (
+    <Card pad={false}>
+      <div className="p-4 sm:p-5 pb-0 sm:pb-0">
+        <CardHead
+          title="NSE movers scalp book (paper)"
+          sub={`Input: NSE's top gainers / losers page (refreshed every minute; liquid names only, ₹5 crore+ traded) with each name's distance from its 52-week high and low, as on NSE's live equity market page. Four selective rules, at most ${nse.max_trades ?? 2} trades a day each, ₹5 lakh a trade, entries 09:30–14:30, squared off 15:15: (1) gainer continuation BUY after a pullback and a new 2-minute high, (2) loser continuation SELL after a bounce and a new 2-minute low, (3) 52-week-high breakout BUY, (4) exhausted gainer fade SELL. Targets 1%, stops 0.5–0.6%, 30–45 minute limits. No orders are placed.`}
+          right={t ? <Pill tone={t.status === "done" ? "neutral" : "up"}>{t.status}{t.updated_at ? ` · ${istTime(t.updated_at)}` : ""}</Pill> : <Pill tone="neutral">next session 09:16</Pill>}
+        />
+      </div>
+      {nse.error && <p className="px-5 pb-4 text-[12.5px] text-down">{nse.error}</p>}
+      {s && (
+        <div className="grid grid-cols-2 gap-3 px-4 pb-4 sm:px-5 lg:grid-cols-4">
+          <StatTile label="Today, all four" value={inr(s.total_rs)} tone={s.total_rs >= 0 ? "up" : "down"} sub={`${t?.day ?? ""} · incl. open`} />
+          <StatTile label="Realised" value={inr(s.realised_rs)} tone={s.realised_rs >= 0 ? "up" : "down"} sub={`${s.trades} trades closed`} />
+          <StatTile label="Open now" value={String(s.open)} sub="positions across the four rules" />
+          <StatTile label="On watch" value={String(t?.watch ?? 0)} sub="NSE gainers + losers, liquid" />
+        </div>
+      )}
+      {books.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full border-t border-line">
+            <thead>
+              <tr className="border-b border-line">
+                <th className={th}>Rule</th><th className={`${th} text-right`}>Trades</th><th className={`${th} text-right`}>Realised</th>
+                <th className={th}>Open position</th><th className={`${th} text-right`}>Entry</th><th className={`${th} text-right`}>LTP</th><th className={`${th} text-right`}>P&amp;L</th><th className={th}>Why</th>
+              </tr>
+            </thead>
+            <tbody>
+              {books.map((b) => (
+                <tr key={b.rule} className="border-b border-line last:border-0">
+                  <td className={td}><span className={`font-semibold ${b.side > 0 ? "text-up" : "text-down"}`}>{b.side > 0 ? "BUY" : "SELL"}</span> {b.name}</td>
+                  <td className={`${td} tnum text-right`}>{b.n} / {nse.max_trades ?? 2}{b.n ? <span className="text-ink3"> · {b.wins} won</span> : null}</td>
+                  <td className={`${td} tnum text-right font-semibold ${tone(b.net_rs)}`}>{inr(b.net_rs)}</td>
+                  <td className={`${td} font-semibold`}>{b.position ? `${b.position.symbol} ${istTime(b.position.entered_at)}` : <span className="font-normal text-ink3">waiting for its turn</span>}</td>
+                  <td className={`${td} tnum text-right`}>{b.position ? `₹${b.position.entry.toLocaleString("en-IN")}` : "—"}</td>
+                  <td className={`${td} tnum text-right`}>{b.position ? `₹${b.position.ltp.toLocaleString("en-IN")}` : "—"}</td>
+                  <td className={`${td} tnum text-right font-semibold ${b.position ? tone(b.position.pnl_rs) : "text-ink3"}`}>{b.position ? inr(b.position.pnl_rs) : "—"}</td>
+                  <td className={`${td} text-ink2`}>{b.position ? (b.position as { why_in?: string }).why_in : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {lastTrades.length > 0 && (
+        <div className="overflow-x-auto border-t border-line">
+          <p className="px-4 pt-3 font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase sm:px-5">Trades today</p>
+          <table className="w-full">
+            <thead><tr className="border-b border-line"><th className={th}>Time</th><th className={th}>Rule</th><th className={th}>Stock</th><th className={`${th} text-right`}>Entry → exit</th><th className={`${th} text-right`}>Held</th><th className={th}>Exit</th><th className={`${th} text-right`}>Net</th></tr></thead>
+            <tbody>
+              {lastTrades.map((x, i) => (
+                <tr key={`${x.rule}-${x.exited_at}-${i}`} className="border-b border-line last:border-0">
+                  <td className={`${td} tnum`}>{istTime(x.entered_at)}</td>
+                  <td className={td}><span className={`font-semibold ${x.side > 0 ? "text-up" : "text-down"}`}>{x.side > 0 ? "BUY" : "SELL"}</span> {x.rule}</td>
+                  <td className={`${td} font-semibold`}>{x.symbol}</td>
+                  <td className={`${td} tnum text-right`}>₹{x.entry.toLocaleString("en-IN")} → ₹{x.exit.toLocaleString("en-IN")}</td>
+                  <td className={`${td} tnum text-right`}>{x.secs != null ? `${Math.round(x.secs / 60)}m` : "—"}</td>
+                  <td className={`${td} text-ink2`}>{x.why}</td>
+                  <td className={`${td} tnum text-right font-semibold ${tone(x.net_rs)}`}>{inr(x.net_rs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {movers.length > 0 && (
+        <div className="overflow-x-auto border-t border-line">
+          <p className="px-4 pt-3 font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase sm:px-5">NSE movers on watch (from the two NSE pages)</p>
+          <table className="w-full">
+            <thead><tr className="border-b border-line"><th className={th}>Stock</th><th className={`${th} text-right`}>Today</th><th className={`${th} text-right`}>LTP</th><th className={`${th} text-right`}>Day high / low</th><th className={`${th} text-right`}>From 52W high</th><th className={`${th} text-right`}>From 52W low</th><th className={`${th} text-right`}>Turnover</th></tr></thead>
+            <tbody>
+              {movers.slice(0, 24).map((m) => (
+                <tr key={m.symbol} className="border-b border-line last:border-0">
+                  <td className={`${td} font-semibold`}>{m.symbol} <span className={`font-normal ${m.kind === "gainer" ? "text-up" : "text-down"}`}>{m.kind}</span></td>
+                  <td className={`${td} tnum text-right font-semibold ${tone(m.pct)}`}>{pct(m.pct)}</td>
+                  <td className={`${td} tnum text-right`}>₹{m.ltp.toLocaleString("en-IN")}</td>
+                  <td className={`${td} tnum text-right text-ink2`}>{m.high.toLocaleString("en-IN")} / {m.low.toLocaleString("en-IN")}</td>
+                  <td className={`${td} tnum text-right text-ink2`}>{m.near_wkh < 900 ? `${m.near_wkh.toFixed(1)}% below` : "—"}</td>
+                  <td className={`${td} tnum text-right text-ink2`}>{m.near_wkl > -900 ? `${Math.abs(m.near_wkl).toFixed(1)}% above` : "—"}</td>
+                  <td className={`${td} tnum text-right text-ink2`}>₹{(m.turnover / 1e7).toFixed(1)} Cr</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 /** The fast scalp book: tick-level buy-sell-buy-sell on the LTP feed, six rules, each re-entering all day. */
 function FastBook({ fast }: { fast: ScalpFast }) {

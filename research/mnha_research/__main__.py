@@ -174,6 +174,14 @@ def main(argv: list[str] | None = None) -> int:
             from . import scalp_fast
 
             out = scalp_fast.report()
+        elif cmd == "scalp-nse":
+            from . import scalp_nse
+
+            out = scalp_nse.session()
+        elif cmd == "scalp-nse-report":
+            from . import scalp_nse
+
+            out = scalp_nse.report()
         elif cmd == "scalp-live-report":
             from . import scalp_live
 
