@@ -225,9 +225,14 @@ def live_today(authorization: str | None = Header(default=None)) -> dict:
 def scalping(authorization: str | None = Header(default=None)) -> dict:
     """The separate scalping research program: the 100 strategies chosen by the search and their daily paper results."""
     _authorised(authorization)
-    from . import scalp
+    from . import scalp, scalp_live
 
-    return scalp.report()
+    out = scalp.report()
+    try:
+        out["live"] = scalp_live.report()
+    except Exception as e:  # noqa: BLE001  the search results are still served
+        out["live"] = {"error": str(e)}
+    return out
 
 
 @app.get("/paper")

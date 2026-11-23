@@ -75,3 +75,8 @@ walk-forward); the live book trades the tested rule, not yesterday's hindsight.
   loses 4.7%/month, the best loses 0.4%/month; the 100 least-bad average −5%/month in the test months. The cost per
   trade is larger than the gross edge of any mechanical 5-minute scalp we tried. The 100 are paper-tracked daily
   (`/admin/scalping`) so the conclusion is checked live rather than argued.
+- Live scalp book (user's rule, paper, from Tue 24 Nov): the 52 strategies positive on 20 Nov = 11 distinct
+  signal+universe rules; entries only at the 11:05/11:10/11:15 bar closes, ₹5 lakh each, exit ₹1,000 below the
+  position's peak (so −₹1,000 hard stop) or 15:15. Note for later: "positive on one day" is a one-day selection, so
+  this is a test of the user's idea, not a tested rule. `scalp_live.py`, timer mnha-scalp-live 10:58 IST.
+

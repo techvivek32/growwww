@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { requireAdminPage } from "@/lib/access";
-import { scalpingReport, type ScalpDay, type ScalpSearch, type ScalpStrategy } from "@/lib/research";
+import { scalpingReport, type ScalpDay, type ScalpLive, type ScalpSearch, type ScalpStrategy } from "@/lib/research";
 import { Card, CardHead, Pill, StatTile } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Scalping · Admin · MNHA Financials" };
@@ -34,8 +34,88 @@ export default async function ScalpingPage() {
         <Card><CardHead title={state.kind === "unconfigured" ? "Not connected" : "Research box unreachable"} sub={state.kind === "error" ? state.message : "Set RESEARCH_API_URL and RESEARCH_API_TOKEN."} /></Card>
       )}
       {state.kind === "ok" && state.data.status && <Card><CardHead title="No search yet" sub={state.data.status} /></Card>}
+      {state.kind === "ok" && state.data.live && <LiveBook live={state.data.live} />}
       {state.kind === "ok" && state.data.search && <Body top={state.data.top ?? []} search={state.data.search} daily={state.data.daily ?? []} />}
     </div>
+  );
+}
+
+const istTime = (t: number) => new Date(t * 1000).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+
+/** The admin's live scalp book: paper positions taken today under the 11:00–11:15 / ₹1,000-trail rule. */
+function LiveBook({ live }: { live: ScalpLive }) {
+  const t = live.today;
+  const s = t?.summary;
+  const rules = live.rules ?? [];
+  const covered = rules.reduce((n, r) => n + r.ranks.length, 0);
+  return (
+    <Card pad={false}>
+      <div className="p-4 sm:p-5 pb-0 sm:pb-0">
+        <CardHead
+          title="Live scalp book (paper)"
+          sub={`Entries only at the ${live.window ?? "11:05, 11:10, 11:15 bar closes"}; one position per rule, ₹5 lakh each, the most liquid stock firing. Exit when ₹${(live.trail_rs ?? 1000).toLocaleString("en-IN")} below the position's best point (a fresh position stops at a ₹${(live.trail_rs ?? 1000).toLocaleString("en-IN")} loss; a winner gives back at most that), or at 15:15. ${rules.length} distinct rules from the ${covered} strategies that were positive on 20 Nov. Starts 10:58 IST every session; no orders are placed.`}
+          right={t ? <Pill tone={t.status === "done" ? "neutral" : "up"}>{t.status}{t.updated_at ? ` · ${istTime(t.updated_at)}` : ""}</Pill> : <Pill tone="neutral">next session 10:58</Pill>}
+        />
+      </div>
+      {live.error && <p className="px-5 pb-4 text-[12.5px] text-down">{live.error}</p>}
+      {s && (
+        <div className="grid grid-cols-2 gap-3 px-4 pb-4 sm:px-5 lg:grid-cols-5">
+          <StatTile label="Today, total" value={inr(s.total_rs ?? 0)} tone={(s.total_rs ?? 0) >= 0 ? "up" : "down"} sub={`${t?.day ?? ""}`} />
+          <StatTile label="Realised" value={inr(s.realised_rs ?? 0)} tone={(s.realised_rs ?? 0) >= 0 ? "up" : "down"} sub={`${s.closed ?? 0} closed`} />
+          <StatTile label="Unrealised" value={inr(s.unrealised_rs ?? 0)} tone={(s.unrealised_rs ?? 0) >= 0 ? "up" : "down"} sub={`${s.open ?? 0} open`} />
+          <StatTile label="No signal" value={String(s.no_signal ?? 0)} sub="rules that did not fire in the window" />
+          <StatTile label="Rules" value={String(rules.length)} sub={`${covered} strategies covered`} />
+        </div>
+      )}
+      {t && (
+        <div className="overflow-x-auto">
+          <table className="w-full border-t border-line">
+            <thead>
+              <tr className="border-b border-line">
+                <th className={th}>Rule</th><th className={th}>Signal</th><th className={th}>Stock</th><th className={`${th} text-right`}>Entry</th><th className={`${th} text-right`}>Qty</th>
+                <th className={`${th} text-right`}>LTP / exit</th><th className={`${th} text-right`}>P&amp;L</th><th className={`${th} text-right`}>Peak</th><th className={th}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {t.positions.map((p) => {
+                const pnl = p.status === "closed" ? (p.net_rs ?? 0) : (p.pnl_rs ?? 0);
+                return (
+                  <tr key={p.rule} className="border-b border-line last:border-0">
+                    <td className={`${td} tnum`}>{p.rule} <span className="text-ink3">(#{p.ranks.join(", #")})</span></td>
+                    <td className={td}><span className={`font-semibold ${p.side === "long" ? "text-up" : "text-down"}`}>{p.side === "long" ? "BUY" : "SELL"}</span> {p.signal.replace(/_/g, " ")} <span className="text-ink3">· {p.universe.replace(" by turnover", "")}</span></td>
+                    <td className={`${td} font-semibold`}>{p.symbol ?? "—"}{p.entry_bar ? <span className="font-normal text-ink3"> {p.entry_bar}</span> : null}</td>
+                    <td className={`${td} tnum text-right`}>{p.entry ? `₹${p.entry.toLocaleString("en-IN")}` : "—"}</td>
+                    <td className={`${td} tnum text-right`}>{p.qty ?? "—"}</td>
+                    <td className={`${td} tnum text-right`}>{p.status === "closed" ? `₹${(p.exit ?? 0).toLocaleString("en-IN")}` : p.ltp ? `₹${p.ltp.toLocaleString("en-IN")}` : "—"}</td>
+                    <td className={`${td} tnum text-right font-semibold ${p.symbol ? tone(pnl) : "text-ink3"}`}>{p.symbol ? inr(pnl) : "—"}</td>
+                    <td className={`${td} tnum text-right text-ink2`}>{p.symbol ? inr(p.peak_rs ?? 0) : "—"}</td>
+                    <td className={`${td} text-ink2`}>{p.status === "closed" ? p.why : p.status}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {(live.days ?? []).length > 0 && (
+        <div className="border-t border-line">
+          <table className="w-full">
+            <thead><tr className="border-b border-line"><th className={th}>Day</th><th className={`${th} text-right`}>Net</th><th className={`${th} text-right`}>Closed</th><th className={`${th} text-right`}>No signal</th><th className={th}>Status</th></tr></thead>
+            <tbody>
+              {[...(live.days ?? [])].reverse().map((d) => (
+                <tr key={d.day} className="border-b border-line last:border-0">
+                  <td className={td}>{d.day}</td>
+                  <td className={`${td} tnum text-right font-semibold ${tone(d.total_rs ?? 0)}`}>{inr(d.total_rs ?? 0)}</td>
+                  <td className={`${td} tnum text-right`}>{d.closed ?? 0}</td>
+                  <td className={`${td} tnum text-right`}>{d.no_signal ?? 0}</td>
+                  <td className={`${td} text-ink2`}>{d.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   );
 }
 

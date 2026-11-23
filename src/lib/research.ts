@@ -295,11 +295,52 @@ export interface ScalpDay {
   worst: { rank: number; net_rs: number };
 }
 
+export interface ScalpLivePosition {
+  rule: number;
+  ranks: number[];
+  signal: string;
+  side: "long" | "short";
+  universe: string;
+  status: "waiting" | "open" | "closed" | "no signal";
+  symbol: string | null;
+  entry_bar?: string;
+  entry?: number;
+  qty?: number;
+  ltp?: number;
+  pnl_rs?: number;
+  peak_rs?: number;
+  exit?: number;
+  why?: string;
+  net_rs?: number;
+  cost_rs?: number;
+}
+
+export interface ScalpLiveDay {
+  day: string;
+  status?: string;
+  open?: number;
+  closed?: number;
+  no_signal?: number;
+  realised_rs?: number;
+  unrealised_rs?: number;
+  total_rs?: number;
+}
+
+export interface ScalpLive {
+  error?: string;
+  rules?: { rule: number; signal: string; side: "long" | "short"; universe: string; ranks: number[] }[];
+  trail_rs?: number;
+  window?: string;
+  today?: { day: string; status: string; updated_at?: number; positions: ScalpLivePosition[]; summary?: ScalpLiveDay; events?: { at: number; what: string }[] } | null;
+  days?: ScalpLiveDay[];
+}
+
 export interface ScalpReport {
   status?: string;
   search?: ScalpSearch;
   top?: ScalpStrategy[];
   daily?: ScalpDay[];
+  live?: ScalpLive;
 }
 
 export type ScalpState = { kind: "ok"; data: ScalpReport } | { kind: "unconfigured" } | { kind: "error"; message: string };
@@ -309,7 +350,7 @@ export async function scalpingReport(): Promise<ScalpState> {
   const token = process.env.RESEARCH_API_TOKEN;
   if (!url || !token) return { kind: "unconfigured" };
   try {
-    const r = await fetch(`${url.replace(/\/$/, "")}/scalping`, { headers: { Authorization: `Bearer ${token}` }, next: { revalidate: 120 }, signal: AbortSignal.timeout(15000) });
+    const r = await fetch(`${url.replace(/\/$/, "")}/scalping`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!r.ok) return { kind: "error", message: `research box answered ${r.status}` };
     return { kind: "ok", data: (await r.json()) as ScalpReport };
   } catch (e) {
