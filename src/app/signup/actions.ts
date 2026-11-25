@@ -7,7 +7,7 @@ import { createVerifiedUser, findByEmail, hashForSignup, normalizeEmail, validat
 import { isReservedEmail } from "@/lib/auth";
 import { setSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
-import { notify } from "@/lib/notifications";
+import { notify, notifyAdmin } from "@/lib/notifications";
 import { mailConfigured } from "@/lib/mailer";
 import { sendAlreadyRegistered, sendSignupCode } from "@/lib/signupMail";
 import { CODE_TTL_MS, dropPending, pendingEmail, resendCode, startPending, verifyCode } from "@/lib/signupOtp";
@@ -106,6 +106,15 @@ async function verify(form: FormData): Promise<FormState> {
     title: "Welcome to MNHA Financials",
     body: "Your email is verified. Connect your Groww account to see it here. Section 4 of the agreement explains how MNHA's automatic intraday strategy trades connected accounts.",
     key: "welcome",
+  });
+  // A new account is the start of work for the admin — agreement, then
+  // verification, then a broker connection — and nothing used to say so.
+  await notifyAdmin({
+    tone: "up",
+    route: "admin:accounts",
+    title: "New account created",
+    body: `${res.email} verified their email and signed up. They have not signed the agreement yet.`,
+    key: `signup-${created.user.id}`,
   });
   await setSession(created.user.id);
   // First stop: read and sign the user agreement.

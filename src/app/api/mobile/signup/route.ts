@@ -13,6 +13,7 @@ import { sendSignupCode, sendAlreadyRegistered } from "@/lib/signupMail";
 import { mailConfigured } from "@/lib/mailer";
 import { maskEmail } from "@/lib/signupFlow";
 import { rateLimit } from "@/lib/ratelimit";
+import { notify, notifyAdmin } from "@/lib/notifications";
 import { json, fail, roleOf } from "@/lib/mobileApi";
 
 export const dynamic = "force-dynamic";
@@ -125,6 +126,28 @@ export async function POST(req: NextRequest) {
     const created = await createVerifiedUser(r.email, r.passwordHash);
     await dropPending(token);
     if (!created.user) return fail(created.error ?? "Could not create the account.", 400);
+
+    // The same two notices the web's signup action writes. Without these,
+    // signing up ON THE PHONE produced an account with an empty notification
+    // feed and told the admin nothing — the one path where a new client could
+    // appear with no trace anywhere a person looks. This route is meant to be
+    // a thin projection of the web flow; it was missing this half of it.
+    await notify(created.user.id, {
+      kind: "account",
+      tone: "up",
+      title: "Welcome to MNHA Financials",
+      body:
+        "Your email is verified. Connect your Groww account to see it here. Section 4 of the " +
+        "agreement explains how MNHA's automatic intraday strategy trades connected accounts.",
+      key: "welcome",
+    });
+    await notifyAdmin({
+      tone: "up",
+      route: "admin:accounts",
+      title: "New account created",
+      body: `${r.email} verified their email and signed up. They have not signed the agreement yet.`,
+      key: `signup-${created.user.id}`,
+    });
 
     const sessionToken = await issueToken(created.user.id);
     const res = json({

@@ -394,12 +394,28 @@ class Notif {
   final int createdAt;
   final bool read;
 
+  /// `order` | `broker` | `account` | `system` — drives the icon.
+  final String kind;
+
+  /// `up` | `down` | `neutral` | `warn` — drives the colour.
+  final String tone;
+
+  /// Where tapping should go, e.g. `orders` or `admin:kyc`.
+  ///
+  /// Defaults to the feed itself. Rows written before routing existed have no
+  /// route at all, and a server can add a destination this build has never
+  /// heard of — both must open something rather than nothing.
+  final String route;
+
   Notif.fromJson(Map<String, dynamic> j)
       : id = (j['id'] ?? '') as String,
         title = (j['title'] ?? '') as String,
         body = (j['body'] ?? '') as String,
         createdAt = _i(j['createdAt']),
-        read = j['read'] == true;
+        read = j['read'] == true,
+        kind = (j['kind'] ?? 'system') as String,
+        tone = (j['tone'] ?? 'neutral') as String,
+        route = (j['route'] ?? 'notifications') as String;
 }
 
 /// Account, broker, membership and the KYC/consent gates in one read — what

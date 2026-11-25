@@ -7,7 +7,7 @@ import { isReservedId } from "@/lib/auth";
 import { getNavStrict } from "@/lib/api/broker";
 import { getBroker } from "@/lib/users";
 import { enroll, leave, settlementNotice } from "@/lib/membership";
-import { notify } from "@/lib/notifications";
+import { notify, notifyAdmin } from "@/lib/notifications";
 
 export interface MemberState {
   error?: string;
@@ -33,6 +33,13 @@ export async function enrollAction(_prev: MemberState, _form: FormData): Promise
     body: `Your performance period has begun at ₹${Math.round(nav.nav).toLocaleString("en-IN")}. A fee applies only to profit above this level — losses are your own.`,
     key: `member-${Date.now()}`,
   });
+  await notifyAdmin({
+    tone: "up",
+    route: "admin:members",
+    title: "New member enrolled",
+    body: `A client started a performance period at ₹${Math.round(nav.nav).toLocaleString("en-IN")}.`,
+    key: `member-admin-${uid}-${Date.now()}`,
+  });
   revalidatePath("/membership");
   return {};
 }
@@ -50,6 +57,18 @@ export async function leaveAction(): Promise<void> {
   const invoice = await leave(uid, Math.max(0, nav.nav));
   if (invoice) {
     await notify(uid, { kind: "account", tone: "neutral", ...settlementNotice(invoice, { ended: true }), key: `settle-${invoice.id}` });
+    // A member leaving closes their period there and then. If that left a fee
+    // due, it is collected out of band by a person — who has to know it exists.
+    await notifyAdmin({
+      tone: invoice.feeDue > 0 ? "warn" : "neutral",
+      route: "admin:fees",
+      title: invoice.feeDue > 0 ? "A member left — fee due" : "A member left — no fee",
+      body:
+        invoice.feeDue > 0
+          ? `Their period was settled on the way out. ₹${Math.round(invoice.feeDue).toLocaleString("en-IN")} is due and is collected separately.`
+          : "Their period was settled on the way out with no profit above the previous peak, so there is nothing to collect.",
+      key: `settle-admin-${invoice.id}`,
+    });
   }
   revalidatePath("/membership");
   redirect("/membership");

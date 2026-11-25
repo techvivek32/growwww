@@ -44,6 +44,18 @@ class _Report extends StatelessWidget {
 
   static Color _tone(num? net) => ((net ?? 0) >= 0) ? T.up : T.down;
 
+  /// Book A's leg names, kept word-for-word with the website's paper page so
+  /// the same trade is never called two different things. The previous
+  /// "flip_long, else short" test silently mislabelled every leg added after
+  /// it — admin_long, the reversal long, read as "short".
+  static String _legName(String leg) => switch (leg) {
+        'flip_long' => 'flip long',
+        'admin_long' => 'admin long (reversal)',
+        'admin_short' => 'admin short (re-opened)',
+        'short' => 'short',
+        _ => leg.replaceAll('_', ' '),
+      };
+
   Widget _legA(BuildContext ctx, Map t) => _card(
         ctx,
         child: Column(
@@ -52,7 +64,7 @@ class _Report extends StatelessWidget {
             _two(
               ctx,
               '${t['symbol']}',
-              '${t['leg'] == 'flip_long' ? 'flip long' : 'short'}'
+              '${_legName('${t['leg']}')}'
                   '  ·  qty ${t['qty']}',
               right: Text(
                 signed(t['net'] as num?),

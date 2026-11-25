@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../api/client.dart';
+import '../push.dart';
 import '../api/models.dart';
 import '../theme.dart';
 import '../widgets/app_drawer.dart';
@@ -48,6 +49,53 @@ class _ShellState extends State<Shell> {
   void initState() {
     super.initState();
     _load();
+    // A notification tap can land before this shell exists — the app may have
+    // been launched BY the tap — so the pending value is consumed here as
+    // well as listened for.
+    Push.routeRequests.addListener(_onPushRoute);
+    _onPushRoute();
+  }
+
+  @override
+  void dispose() {
+    Push.routeRequests.removeListener(_onPushRoute);
+    super.dispose();
+  }
+
+  void _onPushRoute() {
+    final route = Push.takeRoute();
+    if (route == null) return;
+    // After the frame: a tap that launched the app fires while this widget is
+    // still building, and pushing a route mid-build throws.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _goTo(route);
+    });
+  }
+
+  /// Send a notification's route to the screen it names.
+  ///
+  /// An unknown route — including every `admin:*` one, which a member has no
+  /// business opening — falls through to the notification list rather than
+  /// doing nothing. Tapping an alert must always produce a visible result,
+  /// and the list is where the alert itself can be read in full.
+  void _goTo(String route) {
+    const tabs = {'home': 0, 'markets': 1, 'watchlist': 2, 'portfolio': 3, 'orders': 4};
+    final tab = tabs[route];
+    if (tab != null) {
+      // Drop anything stacked over the shell, or the new tab is selected
+      // underneath a screen the user is still looking at.
+      Navigator.of(context).popUntil((r) => r.isFirst);
+      setState(() => _tab = tab);
+      return;
+    }
+    final me = _me;
+    if (me == null) return; // still loading; the feed is one tap away anyway
+    final page = switch (route) {
+      'account' => AccountScreen(me: me, onSignOut: _signOut, landing: widget.landing),
+      'analysis' => const AnalysisScreen(),
+      _ => const NotificationsScreen(),
+    };
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
   }
 
   Future<void> _load() async {
@@ -94,6 +142,10 @@ class _ShellState extends State<Shell> {
   }
 
   Future<void> _signOut() async {
+    // Before dropping the session, not after: revoking the device is an
+    // authenticated call, and a phone that is still registered would keep
+    // receiving this account's order and settlement notices.
+    await Push.forget();
     await api.signOut();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(

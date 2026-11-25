@@ -1,0 +1,24 @@
+<!-- The MNHA mark as a status-bar icon: four ascending bars.
+
+     Deliberately a solid white silhouette. Android throws away every channel
+     but alpha when it draws a small icon, so a coloured or photographic icon
+     arrives as a featureless grey block. The accent colour is applied by the
+     system from default_notification_color instead. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,15h3v5H3z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M8.5,11h3v9h-3z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M14,7.5h3V20h-3z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M19.5,4h3v16h-3z" />
+</vector>

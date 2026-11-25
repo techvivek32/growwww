@@ -1,7 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
 import { appendOrder, type LedgerStatus } from "@/lib/ledger";
-import { notify, type NotifTone } from "@/lib/notifications";
+import { notify, notifyAdmin, type NotifTone } from "@/lib/notifications";
 import { cancelOrderAs, houseConfigured, orderBookAs, orderByRefAs, placeOrderAs, positionsAs, type PlacedOrder } from "@/lib/api/broker";
 import { getBroker } from "@/lib/users";
 import { OWNER_ID } from "@/lib/auth";
@@ -118,6 +118,23 @@ async function bookkeep(o: LiveOrder): Promise<void> {
   const tone: NotifTone = status === "placed" ? "up" : status === "rejected" ? "down" : "warn";
   const why = status === "rejected" && o.message ? ` · ${o.message}` : status === "unknown" ? " · being checked with Groww" : "";
   await tell(o.accountId, { tone, title, body: `${describe(o)} — ${ACTION_LABEL[o.action]}, sent by ${byWhom(o)}${why}`, key: `lt-${o.ref}` });
+
+  // A rejection is the admin's problem, not only the holder's: it usually
+  // means an unregistered order address, a dead key or no margin, and the
+  // client cannot fix any of those. A placed order needs no console alert.
+  if (status !== "placed") {
+    try {
+      await notifyAdmin({
+        tone: status === "rejected" ? "down" : "warn",
+        route: "admin:orders",
+        title: status === "rejected" ? "An order was rejected" : "An order's status is unknown",
+        body: `${describe(o)} — ${ACTION_LABEL[o.action]} in a client account${why}`,
+        key: `lt-admin-${o.ref}`,
+      });
+    } catch (err) {
+      console.error("[live] admin notice failed:", err instanceof Error ? err.message : err);
+    }
+  }
 }
 
 async function tell(userId: string, n: { tone: NotifTone; title: string; body: string; key: string }): Promise<void> {

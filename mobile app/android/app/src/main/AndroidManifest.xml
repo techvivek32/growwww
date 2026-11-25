@@ -6,6 +6,13 @@
          and does nothing offline, so this is not optional. -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- Android 13 (API 33) and up refuse to show a notification until the
+         user grants this at runtime, and the system only ever asks ONCE per
+         install. The app therefore checks with the server that push is even
+         configured before prompting — being denied here is close to permanent,
+         so the prompt is not spent on an app that has nothing to deliver. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
     <!-- Transport rules live in network_security_config.xml: HTTPS for every
          real host, cleartext only for the emulator/loopback addresses used by
          the local build. A blanket usesCleartextTraffic="true" would have
@@ -37,7 +44,35 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Tapping a notification that the SYSTEM drew (app backgrounded
+                 or dead) is delivered as this action, not as a plain launch.
+                 Without a filter for it the intent resolves to nothing: the
+                 notification arrives, looks right, and does nothing at all
+                 when tapped, with "result code=-91" in the system log as the
+                 only trace. The LAUNCHER filter above does not cover it. -->
+            <intent-filter>
+                <action android:name="FLUTTER_NOTIFICATION_CLICK"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
         </activity>
+        <!-- The channel a pushed notification lands in when the app is in the
+             background or dead. It must match CHANNEL_ID in the server's
+             push/fcm.ts and the channel the Dart side creates — Android 8+
+             silently drops a notification whose channel does not exist, which
+             presents as "push just doesn't work" with nothing in any log. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="mnha_alerts" />
+        <!-- A white-on-transparent silhouette. Without this Android falls back
+             to the launcher icon and renders it as a flat grey square, because
+             the status bar only keeps the alpha channel. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/mnha_notification" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

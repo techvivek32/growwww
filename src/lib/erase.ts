@@ -6,6 +6,7 @@ import { deleteConsentMedia } from "@/lib/consentMedia";
 import { deleteMembership } from "@/lib/membership";
 import { deleteOrders } from "@/lib/ledger";
 import { deleteNotifications } from "@/lib/notifications";
+import { deleteDevices } from "@/lib/push/devices";
 import { scrubAdminAccessDetails } from "@/lib/adminAccess";
 import { forgetAccount } from "@/lib/liveTrading/store";
 import { withAccountLock } from "@/lib/liveTrading/util";
@@ -32,6 +33,10 @@ export async function eraseAccount(userId: string): Promise<string[]> {
     ["agreement media", deleteConsentMedia],
     ["membership", deleteMembership],
     ["order log", deleteOrders],
+    // Before the notifications themselves: an erased account must stop being
+    // pushed to on a phone it never signed out of, and a device left
+    // registered would keep receiving anything emitted during the erasure.
+    ["push devices", deleteDevices],
     ["notifications", deleteNotifications],
     ["admin log details", scrubAdminAccessDetails],
     ["account", deleteUser],

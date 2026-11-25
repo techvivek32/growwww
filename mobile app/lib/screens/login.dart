@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../api/client.dart';
+import '../push.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'admin.dart';
@@ -13,7 +16,14 @@ import 'shell.dart';
 /// never written to storage — only the returned token is, and that expires in
 /// eight hours regardless of what the app does.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.notice});
+
+  /// Shown in the same banner a failed sign-in uses. Set when the launch
+  /// check could not reach the server: without it this screen is indis-
+  /// tinguishable from being signed out, and the held session goes unused
+  /// because nobody thinks to relaunch.
+  final String? notice;
+
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -25,6 +35,12 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _busy = false;
   bool _show = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _error = widget.notice;
+  }
 
   @override
   void dispose() {
@@ -41,6 +57,10 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       final next = await api.login(_email.text.trim(), _password.text);
+      // Bind this device to the account that just signed in. Not awaited: it
+      // prompts for permission, and nobody should watch a dialog before their
+      // own desk appears.
+      unawaited(Push.register());
       if (!mounted) return;
       // The admin login is a console, not a trading account — it opens the
       // admin pages and nothing else. Sending it into the member shell would

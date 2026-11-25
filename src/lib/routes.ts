@@ -36,6 +36,14 @@ const ADMIN_MAY_OPEN = [
   // login screen. The route returns only the admin's identity and the market
   // clock — it makes no broker call for a reserved id.
   "/api/mobile/me",
+  // The admin has its own notification feed now (a verification waiting, an
+  // order rejected, a period due to settle), and its own device to push to.
+  // Both are scoped to the caller's id by the route itself, so listing them
+  // grants the admin nothing but its own alerts — and without them the
+  // console's Alerts section answers 307 and reads as an expired session,
+  // exactly as /api/mobile/me did before it was added above.
+  "/api/mobile/notifications",
+  "/api/mobile/push",
 ];
 
 export const OWNER_HOME = "/ai";

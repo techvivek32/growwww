@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { currentUserId, ADMIN_VIEW_REFUSAL, inAdminView } from "@/lib/session";
 import { isReservedId } from "@/lib/auth";
 import { replaceKycPhotos, submitKyc } from "@/lib/kyc";
-import { notify } from "@/lib/notifications";
+import { notify, notifyAdmin } from "@/lib/notifications";
 import { rateLimit } from "@/lib/ratelimit";
 import { hasConsented, SIGN_FIRST } from "@/lib/consent";
 
@@ -65,6 +65,15 @@ export async function submitKycAction(_prev: KycState, form: FormData): Promise<
     title: "Verification submitted",
     body: "Your details are in review. We'll schedule a short live video call to confirm your identity.",
     key: "kyc-submitted",
+  });
+  // Nobody is verified until a person looks at the photos, so the admin is
+  // told the moment there is something to look at rather than on next login.
+  await notifyAdmin({
+    tone: "warn",
+    route: "admin:kyc",
+    title: "Verification waiting for review",
+    body: "A client submitted their identity documents. Review them and schedule the video call.",
+    key: `kyc-submitted-${uid}`,
   });
   revalidatePath("/kyc");
   return { ok: true };

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The accent Android tints a pushed notification's small icon with.
+
+     Same vermilion as T.mark in lib/theme.dart (the website's c-mark token).
+     It is repeated here rather than shared because the system draws the tray
+     notification before any Dart has run, so it can only read a resource. -->
+<resources>
+    <color name="mnha_notification">#D9471F</color>
+</resources>

@@ -11,7 +11,7 @@ import { runWithCreds, runWithEgress } from "@/lib/api/credctx";
 import { egressFor } from "@/lib/api/egress";
 import { assignableIp, mayClaimIp } from "@/lib/trading";
 import { rateLimit } from "@/lib/ratelimit";
-import { notify } from "@/lib/notifications";
+import { notify, notifyAdmin } from "@/lib/notifications";
 import { currentConsent, hasConsented, recordConsentChange, SIGN_FIRST } from "@/lib/consent";
 import { probeConnection, type ProbeStage } from "@/lib/api/groww";
 import { classify } from "./parse";
@@ -141,5 +141,16 @@ export async function connectBroker(_prev: FormState, formData: FormData): Promi
     body: "Your Groww account is linked. Your keys are encrypted and used only for your account.",
     key: "broker-connected",
   });
+  // Not when the admin did it themselves — they already know, and a console
+  // that buzzes at its own operator is noise that gets the whole channel muted.
+  if (!byAdmin) {
+    await notifyAdmin({
+      tone: "up",
+      route: "admin:accounts",
+      title: "A client connected Groww",
+      body: "A client linked their Groww account. Check their order address is registered before the strategy can trade it.",
+      key: `broker-connected-${userId}`,
+    });
+  }
   redirect(MEMBER_HOME);
 }

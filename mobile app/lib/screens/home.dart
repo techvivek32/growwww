@@ -41,13 +41,7 @@ class HomeScreen extends StatelessWidget {
             ? null
             : IconButton(icon: const Icon(Icons.menu), onPressed: onMenu),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none),
-            tooltip: 'Notifications',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-            ),
-          ),
+          const NotificationBell(),
           IconButton(
             icon: const Icon(Icons.person_outline),
             tooltip: 'Account',

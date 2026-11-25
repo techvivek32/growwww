@@ -9,4 +9,9 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   const { startLiveExecutor } = await import("@/lib/liveTrading/executor");
   startLiveExecutor();
+  // The time-based alerts (a period closing, a call tomorrow, a verification
+  // nobody has reviewed). Its own slow hourly loop rather than a job inside
+  // the executor, so a filesystem read here can never delay a square-off.
+  const { startAlertSweep } = await import("@/lib/push/sweep");
+  startAlertSweep();
 }

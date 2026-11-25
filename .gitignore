@@ -51,3 +51,10 @@ yarn-error.log*
 /research/CODE_VERSION
 __pycache__/
 .pytest_cache/
+
+# Push notifications. The Firebase service account is a send-anything
+# credential for the project, and the device registry is a list of which
+# phone belongs to which account — neither belongs in the repository.
+mobile app/android/app/google-services.json
+**/fcm-service-account*.json
+data/push-devices.json*

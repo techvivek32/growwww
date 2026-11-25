@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../api/client.dart';
+import '../push.dart';
 import '../theme.dart';
 import 'file_view.dart';
+import 'notifications.dart';
 import '../widgets/common.dart';
 import 'login.dart';
 import 'shell.dart';
@@ -46,7 +48,14 @@ class _Section {
 
 /// Mirrors the web sidebar, including its group headings and order.
 const _groups = <String, List<_Section>>{
-  '': [_Section('overview', 'Dashboard', Icons.dashboard_outlined)],
+  '': [
+    _Section('overview', 'Dashboard', Icons.dashboard_outlined),
+    // The console's own feed. The admin signs in as a reserved id, so the
+    // same per-user notification endpoint serves it — the things that need a
+    // human (a verification waiting, a rejected order, a period due to
+    // settle) now arrive here instead of being noticed on the next visit.
+    _Section('alerts', 'Alerts', Icons.notifications_outlined),
+  ],
   'CLIENTS': [
     _Section('accounts', 'Accounts', Icons.people_outline),
     _Section('kyc', 'Identity verification', Icons.verified_user_outlined),
@@ -87,6 +96,52 @@ class _AdminScreenState extends State<AdminScreen> {
   _Section _current = _groups['']!.first;
   final _scaffold = GlobalKey<ScaffoldState>();
 
+  @override
+  void initState() {
+    super.initState();
+    // As in the member shell: a tap can arrive before this console exists,
+    // because the tap is what launched the app.
+    Push.routeRequests.addListener(_onPushRoute);
+    _onPushRoute();
+  }
+
+  @override
+  void dispose() {
+    Push.routeRequests.removeListener(_onPushRoute);
+    super.dispose();
+  }
+
+  void _onPushRoute() {
+    final route = Push.takeRoute();
+    if (route == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _goTo(route);
+    });
+  }
+
+  /// Open the section a notification names.
+  ///
+  /// `admin:kyc` and friends carry the view name after the colon, so the map
+  /// is just "strip the prefix" — but it is still checked against the real
+  /// section list, so a route naming a section this build does not have lands
+  /// on Alerts rather than on an empty unknown-section screen. A member route
+  /// (`orders`, `account`) arriving at the admin console means the wrong
+  /// account is signed in on this device, and it goes to Alerts too, where
+  /// the notification can at least be read.
+  void _goTo(String route) {
+    final want = route.startsWith('admin:') ? route.substring(6) : (route == 'admin' ? 'overview' : null);
+    final all = _groups.values.expand((g) => g);
+    final section = want == null
+        ? null
+        : all.where((s) => s.view == want).firstOrNull;
+    setState(() {
+      _current = section ?? all.firstWhere((s) => s.view == 'alerts');
+    });
+    // Anything stacked over the console (a file view, a dialog's route) would
+    // otherwise hide the section that was just selected.
+    Navigator.of(context).popUntil((r) => r.isFirst);
+  }
+
   /// The bottom bar highlights a quick slot only when that section is open;
   /// viewing a drawer-only section selects "More" rather than leaving a stale
   /// slot lit.
@@ -102,6 +157,10 @@ class _AdminScreenState extends State<AdminScreen> {
   /// that closed over LoginScreen's context — already disposed by
   /// `pushReplacement` — so the mounted guard swallowed the whole action.
   Future<void> _signOut() async {
+    // Before the session goes: revoking this device is an authenticated call,
+    // and an admin console left registered would keep alerting a handed-back
+    // phone about clients it no longer has any business seeing.
+    await Push.forget();
     await api.signOut();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -119,6 +178,10 @@ class _AdminScreenState extends State<AdminScreen> {
           children: [Text(_current.title), const SizedBox(width: 8), const EnvBadge()],
         ),
         actions: [
+          // Same bell as the member app bar. The console is where a waiting
+          // verification or a rejected order has to be acted on, so the
+          // unread count belongs in front of the admin, not behind a drawer.
+          const NotificationBell(),
           if (widget.isRoot)
             IconButton(
               icon: const Icon(Icons.logout, size: 20),
@@ -289,6 +352,10 @@ class _BodyState extends State<_Body> {
   @override
   Widget build(BuildContext context) {
     final view = widget.section.view;
+    // Alerts reads the per-user notification feed, not an admin view, so it
+    // does not go through api.admin() at all — and it owns its own loading
+    // and refresh, which is why it short-circuits before the Load below.
+    if (view == 'alerts') return const NotificationList();
     return Load<Map<String, dynamic>>(
       key: ValueKey('$view-$_gen'),
       load: () => api.admin(view),
@@ -1930,13 +1997,16 @@ class _Paper extends StatelessWidget {
         // Kept visually apart and labelled, because their P&L must never be
         // read as part of the strategy's record.
         if (manual.isNotEmpty) ...[
-          const SectionTitle('Sell-side test  ·  manual'),
+          const SectionTitle('Sell-side test  ·  active & manual'),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Text(
-              'Trades the admin asked for by hand, outside the tested rule. '
-              'Paper only, marked at the live price while open. They are not '
-              'part of Book A or Book B.',
+              'Active: the all-day scan-and-rotate book — one position at a '
+              'time, trailing 0.8% stop, out on a VWAP cross or when the '
+              'market turns, at most 4 trades a day. Not backtested. '
+              'Manual: trades the admin asked for by hand. Paper only, marked '
+              'at the live price while open. Neither is part of Book A or '
+              'Book B.',
               style: TextStyle(
                   fontSize: 11.5,
                   height: 1.45,
@@ -1962,7 +2032,8 @@ class _Paper extends StatelessWidget {
                   children: [
                     _two(
                       ctx,
-                      '${short ? 'SELL' : 'BUY'} ${t['qty']} ${t['symbol']}',
+                      '${t['book'] == 'active' ? 'ACTIVE' : 'MANUAL'}  '
+                          '${short ? 'SELL' : 'BUY'} ${t['qty']} ${t['symbol']}',
                       '${t['day']}',
                       right: Text(
                         '${signed(pnl)}${closed ? '' : ' (running)'}',

@@ -4,7 +4,7 @@ import { liveToday, type LiveToday } from "@/lib/research";
 import { houseLtp } from "@/lib/api/broker";
 import { checkAccounts } from "./accounts";
 import { tradePermission } from "@/lib/trading";
-import { notify } from "@/lib/notifications";
+import { notify, notifyAdmin } from "@/lib/notifications";
 import { currentConsent } from "@/lib/consent";
 import { OWNER_ID } from "@/lib/auth";
 import { ACTION_LABEL, acctToken, addNote, getDay, getSettings, ordersOfDay, updateDay, type DaySignals, type DayState, type LegPlan, type LiveSettings, type OrderAction, type Leg } from "./store";
@@ -533,9 +533,20 @@ async function tellHolder(now: IstNow, accountId: string, why: string, symbol: s
     await notify(accountId, {
       kind: "order",
       tone: "warn",
+      // The position, not the order log, is what the holder has to act on.
+      route: "portfolio",
       title: "MNHA could not close a strategy position",
       body: `${symbol}: ${reason}. Please close it in Groww — Groww squares intraday positions off itself near 15:20.`,
       key: `lt-hold-${now.day}-${why}`,
+    });
+    // The admin has to know too: an account left holding past the close is
+    // the one failure here nobody else is watching for.
+    await notifyAdmin({
+      tone: "warn",
+      route: "admin:live",
+      title: "A strategy position could not be closed",
+      body: `${symbol} is still open in a client account — ${reason}.`,
+      key: `lt-hold-admin-${now.day}-${why}`,
     });
   } catch (err) {
     console.error("[live] holder notice failed:", err instanceof Error ? err.message : err);

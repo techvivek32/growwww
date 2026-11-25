@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
+
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'api/client.dart';
+import 'push.dart';
 import 'screens/admin.dart';
 import 'screens/login.dart';
 import 'screens/shell.dart';
 import 'theme.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Portrait only, matching the web app's phone layout. A rotating trading
   // screen is not a feature anybody asked for.
@@ -14,6 +18,21 @@ void main() {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  // Push, if this build has it. Awaited rather than fired off, because the
+  // background handler below has to be registered before the first frame or
+  // a notification that launched the app is lost — but init() swallows its
+  // own failures, so a build without Firebase waits on nothing and starts
+  // exactly as it always did.
+  await Push.init();
+  if (Push.ready) {
+    try {
+      FirebaseMessaging.onBackgroundMessage(pushBackgroundHandler);
+    } catch (e) {
+      logd('push: background handler not registered ($e)');
+    }
+  }
+
   runApp(const MnhaApp());
 }
 
@@ -51,6 +70,10 @@ class _GateState extends State<_Gate> {
   bool _checking = true;
   bool _signedIn = false;
   bool _isAdmin = false;
+  /// The launch check failed on the network rather than on the session, so
+  /// the stored token was kept. Surfaced so the sign-in screen can say why
+  /// it is showing.
+  bool _offline = false;
   final String _landing = '/ai';
 
   @override
@@ -64,6 +87,10 @@ class _GateState extends State<_Gate> {
     if (had) {
       try {
         final me = await api.me();
+        // The session is good, so this device may receive that account's
+        // alerts. Not awaited: it makes two network calls and shows a
+        // permission dialog, none of which should hold up the first screen.
+        unawaited(Push.register());
         if (mounted) {
           setState(() {
             _signedIn = true;
@@ -84,6 +111,7 @@ class _GateState extends State<_Gate> {
         // discarded — but there is nothing to show until the network is back,
         // so the user signs in when it is.
         logd('session check could not reach server: $e');
+        if (mounted) _offline = true;
       }
     }
     if (mounted) setState(() => _checking = false);
@@ -105,7 +133,14 @@ class _GateState extends State<_Gate> {
         ),
       );
     }
-    if (!_signedIn) return const LoginScreen();
+    if (!_signedIn) {
+      return LoginScreen(
+        notice: _offline
+            ? 'Could not reach the server. Your session is still saved — '
+                'reopen the app once you are back online.'
+            : null,
+      );
+    }
     // isRoot rather than a callback: AdminScreen signs out with its own
     // context, so the action cannot be swallowed by an unmounted caller.
     return _isAdmin ? const AdminScreen(isRoot: true) : Shell(landing: _landing);

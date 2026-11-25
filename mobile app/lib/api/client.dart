@@ -281,6 +281,28 @@ class Api {
   Future<void> markNotificationsRead() async =>
       await _post('/api/mobile/notifications', const {});
 
+  /// Whether the server holds a Firebase key and can actually deliver a push.
+  /// Asked before the permission prompt — see the note in push.dart about
+  /// Android only ever asking once.
+  Future<bool> pushAvailable() async {
+    final j = await _get('/api/mobile/push');
+    return j['available'] == true;
+  }
+
+  /// Bind this device's FCM token to the signed-in account. The server takes
+  /// the account from the session, never from anything sent here.
+  Future<void> pushRegister(String token, {String? appVersion}) async =>
+      await _post('/api/mobile/push', {
+        'token': token,
+        'platform': 'android',
+        'appVersion': ?appVersion,
+      });
+
+  /// Revoke this device, so a signed-out phone stops receiving the account's
+  /// notices.
+  Future<void> pushUnregister(String token) async =>
+      await _post('/api/mobile/push', {'token': token, 'action': 'unregister'});
+
   Future<List<Watchlist>> watchlists() async {
     final j = await _get('/api/mobile/watchlist');
     return (j['lists'] as List).map((e) => Watchlist.fromJson(e as Map<String, dynamic>)).toList();
