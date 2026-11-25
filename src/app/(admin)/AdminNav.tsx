@@ -47,6 +47,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     items: [
       { label: "Paper trading", href: "/admin/paper", icon: I("M3 17l6-6 4 4 8-8M14 7h7v7"), live: true },
       { label: "Daily report", href: "/admin/paper/report", icon: I("M6 2h9l5 5v15H6zM14 2v6h6M9 13h6M9 17h6") },
+      { label: "Day logs", href: "/admin/paper/logs", icon: I("M4 5h16M4 10h16M4 15h10M4 20h7") },
     ],
   },
 ];

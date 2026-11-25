@@ -22,7 +22,7 @@ app = FastAPI(title="MNHA research", version="0.1.0")
 async def _local_only(request: Request, call_next):
     """Everything except /health and /live is for localhost (the SSH tunnel), whatever the bind address."""
     host = request.client.host if request.client else ""
-    if request.url.path not in ("/health", "/live", "/live/today", "/live/ticks") and host not in ("127.0.0.1", "::1"):
+    if request.url.path not in ("/health", "/live", "/live/today", "/live/ticks", "/live/logs") and host not in ("127.0.0.1", "::1"):
         return JSONResponse({"detail": "local only"}, status_code=403)
     return await call_next(request)
 
@@ -219,6 +219,22 @@ def live_today(authorization: str | None = Header(default=None)) -> dict:
     from . import livex
 
     return livex.today_state()
+
+
+@app.get("/live/logs")
+def live_logs(day: str | None = Query(default=None), authorization: str | None = Header(default=None)) -> dict:
+    """The admin's day-by-day log: the index of sessions and, for `day` (YYYY-MM-DD, default the latest), everything recorded."""
+    _authorised(authorization)
+    import datetime as dt
+
+    from . import livex
+
+    days = livex.log_days()
+    if not days:
+        return {"days": [], "log": None}
+    d = day or days[0]["day"]
+    n = (dt.date.fromisoformat(d) - dt.date(1970, 1, 1)).days
+    return {"days": days, "log": livex.day_log(n)}
 
 
 @app.get("/live/ticks")

@@ -248,3 +248,112 @@ export async function liveToday(): Promise<LiveToday | null> {
 export function dayToIso(day: number): string {
   return new Date(day * 86_400_000).toISOString().slice(0, 10);
 }
+
+/* ------------------------------------------------------------ day-by-day logs */
+export interface LogDayIndex {
+  day: string;
+  weekday: string;
+  status: string | null;
+  skip: boolean;
+  book_a_net: number | null;
+}
+
+export interface LogLeg {
+  leg: string;
+  symbol: string;
+  side: number;
+  qty: number;
+  entry: number;
+  exit: number;
+  entry_bar: number;
+  exit_bar: number;
+  entry_time: string | null;
+  exit_time: string | null;
+  exit_reason: string;
+  gross: number;
+  costs: number;
+  net: number;
+}
+
+export interface LogBookA {
+  status: string;
+  skip: boolean;
+  flags: Record<string, unknown>;
+  model_year: number | null;
+  n_rows: number | null;
+  decided_at: string | null;
+  pick: string | null;
+  pick_px: number | null;
+  flip: boolean | null;
+  flip_symbol: string | null;
+  flip_px: number | null;
+  flip_at: string | null;
+  settled_at: string | null;
+  info: string | null;
+  legs: LogLeg[];
+  net: number | null;
+}
+
+export interface LogEvent {
+  kind: string;
+  time: string | null;
+  bar: number | null;
+  bar_time: string | null;
+  value: number | null;
+  info: Record<string, unknown>;
+}
+
+export interface LogBookBLeg {
+  book: string;
+  leg: string;
+  symbol: string;
+  side: number;
+  qty: number;
+  entry: number;
+  entry_time: string | null;
+  exit: number | null;
+  exit_time: string | null;
+  why: string | null;
+  gross: number | null;
+  costs: number | null;
+  net: number | null;
+}
+
+export interface LogMark {
+  minute: number;
+  time: string;
+  phase: string;
+  pick_ltp: number | null;
+  pick_pnl: number | null;
+  mkt_move: number | null;
+  flip_ltp: number | null;
+  flip_pnl: number | null;
+  running_net: number | null;
+  n_quotes: number | null;
+}
+
+export interface DayLog {
+  day: string;
+  weekday: string;
+  book_a: LogBookA | null;
+  events: LogEvent[];
+  book_b: LogBookBLeg[];
+  trades: ManualTrade[];
+  marks: LogMark[];
+}
+
+export type LogsState = { kind: "ok"; days: LogDayIndex[]; log: DayLog | null } | { kind: "unconfigured" } | { kind: "error"; message: string };
+
+export async function dayLogs(day?: string): Promise<LogsState> {
+  const url = process.env.RESEARCH_API_URL;
+  const token = process.env.RESEARCH_API_TOKEN;
+  if (!url || !token) return { kind: "unconfigured" };
+  try {
+    const r = await fetch(`${url.replace(/\/$/, "")}/live/logs${day ? `?day=${encodeURIComponent(day)}` : ""}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(10000) });
+    if (!r.ok) return { kind: "error", message: `research box answered ${r.status}` };
+    const j = (await r.json()) as { days: LogDayIndex[]; log: DayLog | null };
+    return { kind: "ok", days: j.days, log: j.log };
+  } catch (e) {
+    return { kind: "error", message: e instanceof Error ? e.message : String(e) };
+  }
+}

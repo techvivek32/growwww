@@ -771,6 +771,83 @@ def ticks() -> dict:
     return {"at": now, "day": day_to_date(day).isoformat(), "phase": phase, "nifty": q.get("NIFTY"), "items": items, "running_total": round(total, 2)}
 
 
+def bar_hm(b) -> str | None:
+    if b is None:
+        return None
+    m = 9 * 60 + 20 + 5 * int(b)
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def _hms(t) -> str | None:
+    return None if t is None else time.strftime("%H:%M:%S", time.gmtime(float(t) + config.IST_OFFSET_S))
+
+
+def day_log(day: int) -> dict:
+    """Everything recorded for one session, in order, for the admin's day-by-day log page: the 09:20 decision, the
+    regime flags, the 10:15 flip, the market-stop checks, the admin's hand, Book A's legs, Book B's legs, the active and
+    manual paper trades, and the running marks. Nothing is recomputed here."""
+    con = _db()
+    d = con.execute("SELECT * FROM livex_days WHERE day=?", (day,)).fetchone()
+    date = day_to_date(day).isoformat()
+    out: dict = {"day": date, "weekday": day_to_date(day).strftime("%a"), "book_a": None, "events": [], "book_b": [], "trades": [], "marks": []}
+    if d:
+        d = dict(d)
+        flags = {}
+        try:
+            flags = json.loads(d.get("flags") or "{}")
+        except Exception:  # noqa: BLE001
+            pass
+        out["book_a"] = {"status": d["status"], "skip": bool(d.get("skip")), "flags": flags, "model_year": d.get("model_year"), "n_rows": d.get("n_rows"),
+                         "decided_at": _hms(d.get("decided_at")), "pick": d.get("pick"), "pick_px": d.get("pick_px"), "flip": None if d.get("flip") is None else bool(d["flip"]),
+                         "flip_symbol": d.get("flip_symbol"), "flip_px": d.get("flip_px"), "flip_at": _hms(d.get("flip_at")), "settled_at": _hms(d.get("settled_at")),
+                         "info": d.get("info")}
+        legs = [dict(x) for x in con.execute("SELECT * FROM livex_trades WHERE day=? ORDER BY entry_bar", (day,))]
+        for L_ in legs:
+            L_["entry_time"], L_["exit_time"], L_["exit_reason"] = bar_hm(L_["entry_bar"]), bar_hm(L_["exit_bar"]), WHY.get(L_["why"], str(L_["why"]))
+            for k in ("entry", "exit", "gross", "costs", "net"):
+                L_[k] = round(float(L_[k]), 2)
+        out["book_a"]["legs"] = legs
+        out["book_a"]["net"] = round(sum(L_["net"] for L_ in legs), 2) if legs else None
+        for e in con.execute("SELECT kind, at, bar, value, info FROM livex_events WHERE day=? ORDER BY at", (day,)):
+            info = {}
+            try:
+                info = json.loads(e["info"]) if e["info"] else {}
+            except Exception:  # noqa: BLE001
+                info = {"text": e["info"]}
+            out["events"].append({"kind": e["kind"], "time": _hms(e["at"]), "bar": e["bar"], "bar_time": bar_hm(e["bar"]), "value": e["value"], "info": info})
+    for r in con.execute("SELECT * FROM livex_fast WHERE day=? ORDER BY entry_at", (day,)):
+        r = dict(r)
+        out["book_b"].append({"book": r["book"], "leg": r["leg"], "symbol": r["symbol"], "side": r["side"], "qty": r["qty"], "entry": round(r["entry"], 2),
+                              "entry_time": _hms(r["entry_at"]), "exit": None if r["exit"] is None else round(r["exit"], 2), "exit_time": _hms(r["exit_at"]),
+                              "why": r["why"], "gross": r["gross"], "costs": r["costs"], "net": r["net"]})
+    p = config.DATA / "manual_trades.json"
+    if p.exists():
+        out["trades"] = [m for m in json.loads(p.read_text()) if m.get("day") == date]
+    out["marks"] = [dict(x) for x in con.execute("SELECT minute, phase, pick_ltp, pick_pnl, mkt_move, flip_ltp, flip_pnl, running_net, n_quotes FROM livex_marks WHERE day=? ORDER BY minute", (day,))]
+    for m in out["marks"]:
+        m["time"] = f"{m['minute'] // 60:02d}:{m['minute'] % 60:02d}"
+    return out
+
+
+def log_days() -> list[dict]:
+    """Every session with anything recorded, newest first, with its Book A status and net: the log page's index."""
+    con = _db()
+    days = {int(x[0]) for x in con.execute("SELECT day FROM livex_days")}
+    days |= {int(x[0]) for x in con.execute("SELECT DISTINCT day FROM livex_fast")}
+    p = config.DATA / "manual_trades.json"
+    if p.exists():
+        for m in json.loads(p.read_text()):
+            try:
+                days.add((dt.date.fromisoformat(m["day"]) - dt.date(1970, 1, 1)).days)
+            except Exception:  # noqa: BLE001
+                pass
+    net = dict(con.execute("SELECT day, SUM(net) FROM livex_trades GROUP BY day").fetchall())
+    st = dict(con.execute("SELECT day, status FROM livex_days").fetchall())
+    skip = dict(con.execute("SELECT day, skip FROM livex_days").fetchall())
+    return [{"day": day_to_date(x).isoformat(), "weekday": day_to_date(x).strftime("%a"), "status": st.get(x), "skip": bool(skip.get(x)),
+             "book_a_net": None if net.get(x) is None else round(float(net[x]), 2)} for x in sorted(days, reverse=True)]
+
+
 def report() -> dict:
     con = _db()
     D = pd.read_sql_query("SELECT * FROM livex_days ORDER BY day", con)
