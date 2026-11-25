@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import LiveTicks from "./LiveTicks";
 import Link from "next/link";
 import { requireAdminPage } from "@/lib/access";
-import { liveSummary, dayToIso, type LiveSummary, type LivexDay, type LivexLeg, type LivexMark, type LivexReport, type ManualTrade } from "@/lib/research";
+import { liveSummary, dayToIso, type LiveLeg, type LiveSummary, type LivexDay, type LivexLeg, type LivexMark, type LivexReport, type ManualTrade } from "@/lib/research";
 import { Card, CardHead, Pill, StatTile } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Paper trading · MNHA Financials" };
@@ -13,15 +13,26 @@ const DAY_MON = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short
 const inr = (v: number) => `${v < 0 ? "−" : ""}₹${Math.abs(Math.round(v)).toLocaleString("en-IN")}`;
 const pct = (v: number, d = 2) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(d)}%`;
 const fmtDay = (day: number) => DAY_MON.format(new Date(dayToIso(day)));
+/** The current IST minute of the day (a helper outside render, for React's purity rule). */
+function istMinuteNow(): number {
+  return ((Date.now() / 1000 + 19_800) % 86_400) / 60;
+}
 const fmtClock = (t: number) => new Date(t * 1000).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false });
 const WHY: Record<number, string> = { 0: "15:15 square-off", 5: "market stop", 6: "covered at 10:15 flip", 7: "closed by admin" };
 const eyebrow = "font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase";
 const th = "px-3 py-2 text-left font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase";
 const td = "px-3 py-2 text-[12.5px] text-ink";
 
-function statusOf(d: LivexDay): { text: string; tone: "up" | "down" | "warn" | "neutral" } {
+function statusOf(d: LivexDay, live?: { legs: LiveLeg[] | null; covered: boolean }): { text: string; tone: "up" | "down" | "warn" | "neutral" } {
   if (d.status === "no_session") return { text: "holiday", tone: "neutral" };
   if (d.skip) return { text: "skipped (regime)", tone: "neutral" };
+  if ((d.status === "decided" || d.status === "flipped") && live) {
+    // today, from the live legs: the day row is the rule's own and does not carry the admin's hand or the stop
+    const long = live.legs?.find((l) => l.side > 0 && !l.closed);
+    if (long) return { text: long.leg === "admin_long" ? "admin long" : "flipped long", tone: "warn" };
+    const shortOpen = live.legs ? live.legs.some((l) => l.side < 0 && !l.closed) : !live.covered;
+    return { text: shortOpen ? "short open" : "short covered", tone: "warn" };
+  }
   if (d.status === "decided") return { text: "short open", tone: "warn" };
   if (d.status === "flipped") return { text: d.flip ? "flipped long" : "holding short", tone: "warn" };
   return { text: "settled", tone: "up" };
@@ -116,7 +127,7 @@ function LiveNow({ mark, marks, today, events }: { mark: LivexMark | null; marks
   }
   const running = mark.running_net ?? 0;
   const mkt = mark.mkt_move ?? 0;
-  const squared = mark.minute >= 15 * 60 + 15;
+  const squared = mark.minute >= 15 * 60 + 15 || istMinuteNow() >= 15 * 60 + 15;
   const stop = events.find((e) => e.kind === "mstop");
   const legs = mark.legs ?? null;
   const anyShortOpen = legs ? legs.some((l) => l.side < 0 && !l.closed) : mark.pick_pnl != null;
@@ -150,7 +161,7 @@ function LiveNow({ mark, marks, today, events }: { mark: LivexMark | null; marks
                   <td className={td}>{LEG_TITLE[l.leg] ?? l.label}</td>
                   <td className={td}><span className={`font-semibold ${l.side < 0 ? "text-down" : "text-up"}`}>{l.side < 0 ? "SELL" : "BUY"}</span> {l.qty} {l.symbol}</td>
                   <td className={`${td} tnum text-right`}>₹{l.entry.toFixed(2)}</td>
-                  <td className={`${td} text-ink2`}>{l.closed ? `closed${l.exit != null ? ` at ₹${l.exit.toFixed(2)}` : ""} · ${l.how ?? "—"}` : `open · now ₹${l.ltp?.toFixed(2) ?? "—"}`}</td>
+                  <td className={`${td} text-ink2`}>{l.closed ? `closed${l.exit != null ? ` at ₹${l.exit.toFixed(2)}` : ""} · ${l.how ?? "—"}` : squared ? "squared off 15:15 · settling" : `open · now ₹${l.ltp?.toFixed(2) ?? "—"}`}</td>
                   <td className={`${td} tnum text-right font-semibold ${l.pnl == null ? "text-ink3" : l.pnl >= 0 ? "text-up" : "text-down"}`}>{l.pnl == null ? "—" : inr(l.pnl)}</td>
                 </tr>
               ))}
@@ -298,7 +309,7 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
               {days.slice((cur - 1) * PER_PAGE, cur * PER_PAGE).map((d) => {
                 const legs = legsByDay.get(d.day) ?? [];
                 const net = netByDay.get(d.day);
-                const st = statusOf(d);
+                const st = statusOf(d, today && d.day === today.day ? { legs: r.mark?.legs ?? null, covered: (r.events_today ?? []).some((e) => e.kind === "mstop" || e.kind === "admin_reverse" || e.kind === "flip_cover") } : undefined);
                 const iso = dayToIso(d.day);
                 const all = manualByDay.get(iso) ?? [];
                 const act = all.filter((m) => m.book === "active");

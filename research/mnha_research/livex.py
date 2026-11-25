@@ -501,6 +501,10 @@ def _reshort(con, day: int) -> tuple | None:
 
 
 def admin_reshort() -> dict:
+    raise RuntimeError("retired: Book A runs as tested (the admin's re-short was used once, on 25 Nov)")
+
+
+def _admin_reshort_retired() -> dict:
     """The admin's order: after the short was covered by hand (reversal / cover), short the pick AGAIN now at the live
     price, to 15:15 with the market stop. Recorded as an event; settle() prices the leg from it."""
     now = time.time()
@@ -623,6 +627,13 @@ def settle(day: int | None = None) -> dict:
     P = _paths_today(day, rows)
     if len(P) < live.MIN_ROWS:
         raise RuntimeError(f"only {len(P)} full sessions of bars")
+    need = [] if r[1] or not r[2] else [r[2]] + ([r[4]] if r[3] and r[4] else [])
+    miss = [s_ for s_ in need if s_ not in P]
+    if miss:  # one symbol's fetch failed: try it alone, and never book the day without the legs' own bars
+        P.update(_paths_today(day, miss))
+        miss = [s_ for s_ in need if s_ not in P]
+        if miss:
+            raise RuntimeError(f"no bars for {', '.join(miss)}: not settled yet")
     # The recorded 10:15 decision once flip() ran: also when re-settling a settled day, which
     # must reproduce the result rather than work the flip out again. When flip() never ran
     # (the session was down at 10:15) it is decided here from bars 0..FLIP_BAR, once, and
@@ -684,6 +695,23 @@ def _ltp_many(symbols: list[str]) -> dict[str, float]:
     return out
 
 
+def _pos(x) -> float | None:
+    """A usable price: a positive number, else None."""
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    return v if v > 0 else None
+
+
+def _mark_px(con, day: int, at: float) -> float | None:
+    """The pick's live price from the session's own marks (every 30 s): the last at or before `at`, else the first after."""
+    r = con.execute("SELECT pick_ltp FROM livex_marks WHERE day=? AND at<=? AND pick_ltp>0 ORDER BY at DESC LIMIT 1", (day, at)).fetchone()
+    if r is None:
+        r = con.execute("SELECT pick_ltp FROM livex_marks WHERE day=? AND at>? AND pick_ltp>0 ORDER BY at LIMIT 1", (day, at)).fetchone()
+    return float(r[0]) if r else None
+
+
 LEG_LABEL = {"short": "Short (09:20 pick)", "flip_long": "Flip long (10:15)", "admin_long": "Admin long", "admin_short": "Admin short"}
 
 
@@ -717,29 +745,42 @@ def _legs_today(con, day: int, r, minute: float | None = None) -> list[dict]:
     legs = []
     short = leg("short", pick, -1, float(pick_px))
     admin = "admin_reverse" in ev
-    covers = []  # (time, price or None, by what): the earliest one covered the short
-    if "mstop" in ev:
-        covers.append((ev["mstop"][0], info("mstop").get("pick_ltp"), "market stop"))
+    # Which event covered the short is decided as price_day walks the bars, not by the events' wall-clock order: the
+    # market stop counts only on a bar BEFORE the bar the short is otherwise closed in (the admin's bar on a reversal,
+    # which also overrides the rule's flip; FLIP_BAR on a flip day).
+    ms = ev.get("mstop")
+    ms_bar = None if ms is None or ms[1] is None else int(ms[1])
+    ms_px = _pos(info("mstop").get("pick_ltp")) if ms else None
+    if ms is not None and ms_px is None:  # no quote stored with the stop: the nearest live mark of the pick
+        ms_px = _mark_px(con, day, ms[0])
     if admin:
-        covers.append((ev["admin_reverse"][0], ev["admin_reverse"][2], "admin"))
-    if "flip_cover" in ev:
-        covers.append((ev["flip_cover"][0], ev["flip_cover"][2], "10:15 flip"))
-    elif status == "flipped" and flip_on and not admin:
-        covers.append((float("inf"), None, "10:15 flip"))  # flipped before cover prices were recorded
-    if covers:
-        _at, px, how = min(covers, key=lambda c: c[0])
-        close(short, px, how)
+        a_bar = ev["admin_reverse"][1]
+        if ms_bar is not None and a_bar is not None and ms_bar < int(a_bar):
+            close(short, ms_px, "market stop")
+        else:
+            close(short, _pos(ev["admin_reverse"][2]), "admin")
+    elif status == "flipped" and flip_on:
+        if ms_bar is not None and ms_bar < FLIP_BAR:
+            close(short, ms_px, "market stop")
+        else:
+            fc = ev.get("flip_cover")
+            px = _pos(fc[2]) if fc else None
+            if fc is not None and px is None:
+                px = _mark_px(con, day, fc[0])
+            close(short, px, "10:15 flip")  # flipped before cover prices were kept: closed, price unknown
+    elif ms is not None:
+        close(short, ms_px, "market stop")
     legs.append(short)
     if admin:
         # as at settle: the admin's long exists only if the admin, not the market stop, covered the short
-        if (info("admin_reverse").get("mode") or "reverse") == "reverse" and short["how"] == "admin":
+        if (info("admin_reverse").get("mode") or "reverse") == "reverse" and short["how"] == "admin" and _pos(ev["admin_reverse"][2]):
             L = leg("admin_long", pick, 1, float(ev["admin_reverse"][2]))
             if "admin_close_long" in ev:
                 close(L, ev["admin_close_long"][2], "admin")
             legs.append(L)
     elif flip_on and flip_sym and flip_px:
         legs.append(leg("flip_long", flip_sym, 1, float(flip_px)))
-    if "admin_reshort" in ev:
+    if "admin_reshort" in ev and _pos(ev["admin_reshort"][2]):  # retired (25 Nov only); kept so that day still reads right
         L = leg("admin_short", pick, -1, float(ev["admin_reshort"][2]))
         if "admin_close_reshort" in ev:
             close(L, ev["admin_close_reshort"][2], "admin")
@@ -1028,7 +1069,8 @@ def market_stop_check(now: float | None = None, con=None) -> dict:
         return {"checked": False, "bar": i, "why": f"only {len(moves)} of {len(px0)} quotes"}
     mkt = float(np.mean(moves))
     out = {"checked": True, "bar": i, "mkt": round(mkt, 5), "stop": mkt >= MSTOP}
-    info = json.dumps({"quotes": len(moves), "rows": len(px0), "pick": r[2], "pick_ltp": q.get(r[2])})
+    pick_ltp = q.get(r[2]) if q.get(r[2]) and q[r[2]] > 0 else None
+    info = json.dumps({"quotes": len(moves), "rows": len(px0), "pick": r[2], "pick_ltp": pick_ltp})
     with con:
         con.execute("INSERT OR REPLACE INTO livex_events(day, kind, at, bar, value, info) VALUES(?,?,?,?,?,?)",
                     (day, "mstop_check", time.time(), i, mkt, info))
@@ -1038,6 +1080,15 @@ def market_stop_check(now: float | None = None, con=None) -> dict:
     if mkt >= MSTOP:
         m = bar_close_minute(i)
         log(f"MARKET STOP at the {m // 60:02d}:{m % 60:02d} close: the average stock is up {mkt:.2%} since 09:20 — cover the short")
+        if pick_ltp is None:  # after the commit, so the executor already sees the stop: the cover price, for the live card
+            try:
+                p2 = _pos(_ltp_many([r[2]]).get(r[2]))
+                if p2 is not None:
+                    with con:
+                        con.execute("UPDATE livex_events SET info=? WHERE day=? AND kind='mstop'",
+                                    (json.dumps({"quotes": len(moves), "rows": len(px0), "pick": r[2], "pick_ltp": p2}), day))
+            except Exception as e:  # noqa: BLE001  the card falls back to the marks
+                log(f"pick quote for the stop failed: {e}")
     return out
 
 

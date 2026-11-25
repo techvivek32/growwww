@@ -211,6 +211,8 @@ export function PaperSnapshot({ live }: { live: { kind: "ok"; data: LiveSummary 
   const liveMark = mark && t && t.status !== "settled" && !t.skip ? mark : null;
   const todayNet = t ? (r?.trades ?? []).filter((x) => x.day === t.day).reduce((a, x) => a + x.net, 0) : 0;
   const adminToday = (r?.events_today ?? []).some((e) => e.kind === "admin_reverse");
+  // today's long, from the live legs (the day row is the rule's own and never carries the admin's hand)
+  const longLeg = (liveMark?.legs ?? []).find((l) => l.side > 0) ?? null;
   return (
     <Card className="border-sideaccent/30">
       <CardHead
@@ -237,11 +239,15 @@ export function PaperSnapshot({ live }: { live: { kind: "ok"; data: LiveSummary 
                 ? `settled ${inr(todayNet)}`
                 : t?.skip
                   ? "no Book A trade today"
-                  : t?.flip && t.flip_symbol
-                    ? `${adminToday ? "admin long" : "flipped long"} ${t.flip_symbol}`
-                    : t
-                      ? "in progress"
-                      : "picks at 09:20"}
+                  : longLeg
+                    ? `${longLeg.leg === "admin_long" ? "admin long" : "flipped long"} ${longLeg.symbol}${longLeg.closed ? " (sold)" : ""}`
+                    : !adminToday && t?.flip && t.flip_symbol
+                      ? `flipped long ${t.flip_symbol}`
+                      : adminToday
+                        ? "short covered by admin"
+                        : t
+                          ? "in progress"
+                          : "picks at 09:20"}
             </p>
           </div>
           <div>

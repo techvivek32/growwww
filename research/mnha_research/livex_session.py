@@ -89,6 +89,16 @@ def session() -> dict:
     if date.weekday() >= 5:
         return {"status": "weekend"}
     con = _db()
+    # catch-up: an earlier session left unsettled (its settle kept failing until 15:30) is settled now from its bars
+    try:
+        lc = livex._db()
+        for (d0,) in lc.execute("SELECT day FROM livex_days WHERE day<? AND day>=? AND status IN ('decided', 'flipped') ORDER BY day", (day, day - 10)).fetchall():
+            try:
+                log(f"catch-up settle of {day_to_date(int(d0))}: {json.dumps(livex.settle(int(d0)), default=str)[:300]}")
+            except Exception as e:  # noqa: BLE001
+                log(f"catch-up settle of {day_to_date(int(d0))} failed: {e}")
+    except Exception as e:  # noqa: BLE001
+        log(f"catch-up check failed: {e}")
     log(f"session {date}: preparing the decision context")
     ctx = None
     try:
@@ -192,7 +202,9 @@ def session() -> dict:
                             _close_leg(con, day, leg, px, now, "stop 0.5%")
                 if minute >= 15 * 60 + 15:
                     squared = True
-                if now - last_mark >= MARK_EVERY_S and minute <= 15 * 60 + 20:
+                # one mark on the pass that squares off, whatever the 30 s timer says: the card then shows the
+                # 15:15 state until the settle
+                if (squared or now - last_mark >= MARK_EVERY_S) and minute <= 15 * 60 + 20:
                     livex.mark()
                     last_mark = now
             if squared and minute >= 15 * 60 + 17 and "settle" not in summary:
