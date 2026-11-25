@@ -142,12 +142,8 @@ def session() -> dict:
                         rec = manual.open_trade(sym, "long" if direction > 0 else "short", note=f"market median {mkt * 100:+.2f}% since 09:20; {why}",
                                                 stop_pct=TRAIL, book=BOOK_NAME, watch=False)
                         rec["mkt_at_entry"] = mkt
-                        recs = manual._load()
-                        for x in recs:
-                            if x["symbol"] == sym and x["status"] == "open" and x.get("book") == BOOK_NAME:
-                                x["mkt_at_entry"] = mkt
-                                x["stop_rule"] = f"trailing {TRAIL * 100:g}% from the best price; VWAP cross against; market {MKT_AGAINST * 100:g}% against; 15:15"
-                        manual._save(recs)
+                        manual.update_open(sym, BOOK_NAME, {"mkt_at_entry": mkt,
+                                                            "stop_rule": f"trailing {TRAIL * 100:g}% from the best price; VWAP cross against; market {MKT_AGAINST * 100:g}% against; 15:15"})
                         pos = {"symbol": sym, "side": direction, "entry": rec["entry"], "qty": rec["qty"], "best": rec["entry"], "mkt_at_entry": mkt, "entry_time": rec["entry_time"]}
                         trades += 1
                         traded.add(sym)

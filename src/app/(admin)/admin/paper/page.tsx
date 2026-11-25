@@ -13,6 +13,7 @@ const DAY_MON = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short
 const inr = (v: number) => `${v < 0 ? "−" : ""}₹${Math.abs(Math.round(v)).toLocaleString("en-IN")}`;
 const pct = (v: number, d = 2) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(d)}%`;
 const fmtDay = (day: number) => DAY_MON.format(new Date(dayToIso(day)));
+const fmtClock = (t: number) => new Date(t * 1000).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false });
 const WHY: Record<number, string> = { 0: "15:15 square-off", 5: "market stop", 6: "covered at 10:15 flip", 7: "closed by admin" };
 const eyebrow = "font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase";
 const th = "px-3 py-2 text-left font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase";
@@ -78,13 +79,15 @@ const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, 
 /** Book A fills at the CLOSE of a 5-minute bar: bar 0 closes 09:20, bar b at 09:20 + 5b. */
 
 /** The open paper position at the latest live mark, and the day's running P&L so far. */
-function LiveNow({ mark, marks, today }: { mark: LivexMark | null; marks: LivexReport["marks_today"]; today: LivexDay | null }) {
+const LEG_TITLE: Record<string, string> = { short: "Short (09:20 pick)", flip_long: "Flip long (10:15)", admin_long: "Admin long", admin_short: "Admin short" };
+
+function LiveNow({ mark, marks, today, events }: { mark: LivexMark | null; marks: LivexReport["marks_today"]; today: LivexDay | null; events: NonNullable<LivexReport["events_today"]> }) {
   // Only while a trade is live. Once the day is settled (or skipped, or before 09:20) the card is empty: the
   // finished day lives in Day logs, and the next session's log starts with its own 09:20 decision.
   const settled = today?.status === "settled";
   const skip = Boolean(today?.skip);
-  const decided = !settled && !skip && (today?.status === "decided" || today?.status === "flipped") && Boolean(today?.pick);
-  if (decided && !mark && today) {
+  const covered = events.some((e) => e.kind === "mstop" || e.kind === "admin_reverse" || e.kind === "flip_cover");
+  if (!settled && !skip && today?.status === "decided" && today.pick && !mark && !covered) {
     // between the 09:20 decision and the first live mark (09:22): the short is open, the strip above has its price
     return (
       <Card className="border-brand/40">
@@ -113,40 +116,74 @@ function LiveNow({ mark, marks, today }: { mark: LivexMark | null; marks: LivexR
   }
   const running = mark.running_net ?? 0;
   const mkt = mark.mkt_move ?? 0;
-  const stopDist = 0.005 - mkt; // the market stop covers the short once the average stock is up 0.5% since 09:20
-  const shortOpen = mark.pick_pnl != null;
+  const squared = mark.minute >= 15 * 60 + 15;
+  const stop = events.find((e) => e.kind === "mstop");
+  const legs = mark.legs ?? null;
+  const anyShortOpen = legs ? legs.some((l) => l.side < 0 && !l.closed) : mark.pick_pnl != null;
+  const stopText = stop
+    ? `market stop hit at ${fmtClock(stop.at)} (average stock ${pct((stop.value ?? 0) * 100)})`
+    : !anyShortOpen
+      ? "no short open: the stop does not apply"
+      : mkt >= 0.005
+        ? "market stop level reached"
+        : `stop at +0.50% (${pct((0.005 - mkt) * 100)} away)`;
   return (
     <Card className="border-brand/40">
       <CardHead
         title="Live now"
-        sub={`Marked at ${hhmm(mark.minute)} IST from Groww live prices (${mark.n_quotes} quotes). Before charges; the official result comes from the 15:15 settlement. Below: today's log from 09:20, every 30 seconds.`}
-        right={<Pill tone={running >= 0 ? "up" : "down"}>{inr(running)} running</Pill>}
+        sub={squared
+          ? `Squared off at 15:15. Last marked ${hhmm(mark.minute)} IST; the official result comes from the 5-minute bars at the settlement, a few minutes after 15:15.`
+          : `Marked at ${hhmm(mark.minute)} IST from Groww live prices (${mark.n_quotes} quotes). Running = closed legs at their exit price + open legs at the live price, before charges; the official result comes from the settlement after 15:15.`}
+        right={<Pill tone={running >= 0 ? "up" : "down"}>{inr(running)} {squared ? "· settling" : "running"}</Pill>}
       />
-      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div>
-          <dt className={eyebrow}>{shortOpen ? "Short (open)" : "Short (covered)"}</dt>
-          <dd className="mt-1 text-[15px] font-semibold text-ink">{mark.pick ?? "—"}</dd>
-          <dd className="tnum text-[12px] text-ink3">entry {mark.pick_entry?.toFixed(2) ?? "—"} · now {mark.pick_ltp?.toFixed(2) ?? "—"} · {mark.pick_qty ?? "—"} sh</dd>
+      {legs ? (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-line">
+                <th className={th}>Leg</th><th className={th}>Trade</th><th className={`${th} text-right`}>Entry</th><th className={th}>Status</th><th className={`${th} text-right`}>P&L</th>
+              </tr>
+            </thead>
+            <tbody>
+              {legs.map((l) => (
+                <tr key={`${l.leg}-${l.symbol}`} className="border-b border-line last:border-0">
+                  <td className={td}>{LEG_TITLE[l.leg] ?? l.label}</td>
+                  <td className={td}><span className={`font-semibold ${l.side < 0 ? "text-down" : "text-up"}`}>{l.side < 0 ? "SELL" : "BUY"}</span> {l.qty} {l.symbol}</td>
+                  <td className={`${td} tnum text-right`}>₹{l.entry.toFixed(2)}</td>
+                  <td className={`${td} text-ink2`}>{l.closed ? `closed${l.exit != null ? ` at ₹${l.exit.toFixed(2)}` : ""} · ${l.how ?? "—"}` : `open · now ₹${l.ltp?.toFixed(2) ?? "—"}`}</td>
+                  <td className={`${td} tnum text-right font-semibold ${l.pnl == null ? "text-ink3" : l.pnl >= 0 ? "text-up" : "text-down"}`}>{l.pnl == null ? "—" : inr(l.pnl)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div>
-          <dt className={eyebrow}>Short P&L</dt>
-          <dd className={`tnum mt-1 text-[15px] font-semibold ${(mark.pick_pnl ?? 0) >= 0 ? "text-up" : "text-down"}`}>{mark.pick_pnl == null ? "—" : inr(mark.pick_pnl)}</dd>
-        </div>
-        <div>
-          <dt className={eyebrow}>Market since 09:20</dt>
-          <dd className={`tnum mt-1 text-[15px] font-semibold ${mkt >= 0.005 ? "text-down" : "text-ink"}`}>{pct(mkt * 100)}</dd>
-          <dd className="text-[12px] text-ink3">{mkt >= 0.005 ? "market stop level reached" : `stop at +0.50% (${pct(stopDist * 100)} away)`}</dd>
-        </div>
-        <div>
-          <dt className={eyebrow}>Flip long</dt>
-          <dd className="mt-1 text-[15px] font-semibold text-ink">{mark.flip_symbol ?? (mark.minute < 10 * 60 + 15 ? "check at 10:15" : "none today")}</dd>
-          {mark.flip_symbol && (
-            <dd className={`tnum text-[12px] ${(mark.flip_pnl ?? 0) >= 0 ? "text-up" : "text-down"}`}>
-              {mark.flip_entry?.toFixed(2)} → {mark.flip_ltp?.toFixed(2)} · {mark.flip_pnl == null ? "—" : inr(mark.flip_pnl)}
-            </dd>
-          )}
-        </div>
-      </dl>
+      ) : (
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div>
+            <dt className={eyebrow}>{mark.pick_pnl != null ? "Short (open)" : "Short (covered)"}</dt>
+            <dd className="mt-1 text-[15px] font-semibold text-ink">{mark.pick ?? "—"}</dd>
+            <dd className="tnum text-[12px] text-ink3">entry {mark.pick_entry?.toFixed(2) ?? "—"} · now {mark.pick_ltp?.toFixed(2) ?? "—"} · {mark.pick_qty ?? "—"} sh</dd>
+          </div>
+          <div>
+            <dt className={eyebrow}>Short P&L</dt>
+            <dd className={`tnum mt-1 text-[15px] font-semibold ${(mark.pick_pnl ?? 0) >= 0 ? "text-up" : "text-down"}`}>{mark.pick_pnl == null ? "—" : inr(mark.pick_pnl)}</dd>
+          </div>
+          <div>
+            <dt className={eyebrow}>Long</dt>
+            <dd className="mt-1 text-[15px] font-semibold text-ink">{mark.flip_symbol ?? (mark.minute < 10 * 60 + 15 ? "check at 10:15" : "none today")}</dd>
+            {mark.flip_symbol && (
+              <dd className={`tnum text-[12px] ${(mark.flip_pnl ?? 0) >= 0 ? "text-up" : "text-down"}`}>
+                {mark.flip_entry?.toFixed(2)} → {mark.flip_ltp?.toFixed(2)} · {mark.flip_pnl == null ? "—" : inr(mark.flip_pnl)}
+              </dd>
+            )}
+          </div>
+        </dl>
+      )}
+      <p className="mt-3 text-[12.5px] text-ink2">
+        <span className={eyebrow}>Market since 09:20 </span>
+        <span className={`tnum font-semibold ${mkt >= 0.005 ? "text-down" : "text-ink"}`}>{pct(mkt * 100)}</span> · {stopText}
+        {!legs || !legs.some((l) => l.leg === "flip_long" || l.leg === "admin_long") ? (mark.minute < 10 * 60 + 15 && !covered ? " · flip check at 10:15" : "") : ""}
+      </p>
       {marks.length > 0 && (
         <div className="mt-4 max-h-[460px] overflow-auto rounded-md border border-line">
           <table className="w-full">
@@ -155,7 +192,7 @@ function LiveNow({ mark, marks, today }: { mark: LivexMark | null; marks: LivexR
                 <th className={th}>Time</th>
                 <th className={`${th} text-right`}>Running P&L</th>
                 <th className={`${th} text-right`}>Market since 09:20</th>
-                <th className={`${th} text-right`}>Short LTP</th>
+                <th className={`${th} text-right`}>Pick LTP</th>
               </tr>
             </thead>
             <tbody>
@@ -231,7 +268,7 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
       {(data.manual_error || data.all_books_error) && (
         <p className="text-[12px] text-warn">Active and manual trades could not be read on this refresh ({data.manual_error ?? data.all_books_error}); the tiles show Book A only until the next refresh.</p>
       )}
-      <LiveNow mark={r.mark ?? null} marks={r.marks_today ?? []} today={today ?? null} />
+      <LiveNow mark={r.mark ?? null} marks={r.marks_today ?? []} today={today ?? null} events={r.events_today ?? []} />
 
       <Card pad={false}>
         <div className="p-4 sm:p-5 pb-0 sm:pb-0">
@@ -280,9 +317,9 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
                   : d.status === "no_session"
                     ? "no session"
                     : legs.length
-                      ? legs.map((l) => `${l.side < 0 ? "SELL" : "BUY"} ${l.symbol} ${l.entry.toFixed(2)} → ${l.exit.toFixed(2)} (${WHY[l.why] ?? l.why})`).join(" · ")
+                      ? legs.map((l) => `${LEG_TITLE[l.leg] ?? l.leg}: ${l.side < 0 ? "SELL" : "BUY"} ${l.symbol} ${l.entry.toFixed(2)} → ${l.exit.toFixed(2)} (${WHY[l.why] ?? l.why})`).join(" · ")
                       : d.pick
-                        ? `SELL ${d.pick} @ ${d.pick_px?.toFixed(2)} (open)`
+                        ? `SELL ${d.pick} @ ${d.pick_px?.toFixed(2)} · in progress (settles after 15:15; see Live now)`
                         : "—";
                 return (
                   <tr key={d.day} className="border-b border-line last:border-0 align-top">

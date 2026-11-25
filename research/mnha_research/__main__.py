@@ -148,6 +148,10 @@ def main(argv: list[str] | None = None) -> int:
             p.print_help()
             return 2
         print(json.dumps(out, default=str, indent=1))
+    elif cmd == "manual-watch":
+        from . import manual
+
+        print(json.dumps(manual.watch(), default=str))
     elif cmd == "active":
         from . import active
 

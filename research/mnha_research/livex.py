@@ -20,6 +20,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import math
+import sqlite3
 import time
 
 import joblib
@@ -69,6 +70,12 @@ log = live.log
 def _db():
     con = live._db()
     con.executescript(SCHEMA)
+    if "legs" not in {c[1] for c in con.execute("PRAGMA table_info(livex_marks)")}:
+        try:  # each mark's legs (JSON): what the live card shows, realised and open
+            con.execute("ALTER TABLE livex_marks ADD COLUMN legs TEXT")
+            con.commit()
+        except sqlite3.OperationalError:
+            pass  # another process added it first
     return con
 
 
@@ -403,7 +410,7 @@ def flip() -> dict:
     """At 10:16: record the flip decision from bars 0..11 (the strategy's second decision time)."""
     day = live.today_ist()
     con = _db()
-    r = con.execute("SELECT status, skip FROM livex_days WHERE day=?", (day,)).fetchone()
+    r = con.execute("SELECT status, skip, pick FROM livex_days WHERE day=?", (day,)).fetchone()
     if not r or r[0] != "decided":
         return {"status": f"nothing to do ({r[0] if r else 'not decided'})"}
     rows = [x[0] for x in con.execute("SELECT symbol FROM livex_rows WHERE day=?", (day,))]
@@ -419,6 +426,9 @@ def flip() -> dict:
         # The first flip decision stands: another run never overwrites it.
         cur = con.execute("UPDATE livex_days SET status='flipped', flip_at=?, flip=?, flip_symbol=?, flip_px=? WHERE day=? AND status='decided'",
                           (time.time(), int(do), top, px, day))
+        if cur.rowcount and do and not r[1] and r[2] in P:  # the short's cover price, for the live card
+            con.execute("INSERT OR IGNORE INTO livex_events(day, kind, at, bar, value, info) VALUES(?,?,?,?,?,?)",
+                        (day, "flip_cover", time.time(), FLIP_BAR, float(P[r[2]][3, FLIP_BAR]), json.dumps({"pick": r[2], "long": top})))
     if cur.rowcount == 0:
         rec = con.execute("SELECT flip FROM livex_days WHERE day=?", (day,)).fetchone()
         return {"day": day_to_date(day).isoformat(), "status": "already flipped", "flip": bool(rec and rec[0])}
@@ -673,10 +683,73 @@ def _ltp_many(symbols: list[str]) -> dict[str, float]:
     return out
 
 
+LEG_LABEL = {"short": "Short (09:20 pick)", "flip_long": "Flip long (10:15)", "admin_long": "Admin long", "admin_short": "Admin short"}
+
+
+def _legs_today(con, day: int, r, minute: float | None = None) -> list[dict]:
+    """Book A's legs so far today from the recorded decision and events (no bars): entry, qty, side, and, once closed,
+    the exit price and by what. Shared by mark() and ticks(), so the live card and the live strip agree; the official
+    figures still come from the bars at settle (which follows the same order of events)."""
+    status, skip, pick, pick_px, flip_on, flip_sym, flip_px = r
+    if skip or not pick or not pick_px or status not in ("decided", "flipped"):
+        return []
+    ev = {k: (at, bar, val, inf) for k, at, bar, val, inf in con.execute("SELECT kind, at, bar, value, info FROM livex_events WHERE day=?", (day,))}
+
+    def info(kind: str) -> dict:
+        try:
+            return json.loads(ev[kind][3] or "{}") if kind in ev else {}
+        except Exception:  # noqa: BLE001
+            return {}
+
+    def slip(px: float) -> float:
+        return max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([px]), np.array([day]))[0]) / px)
+
+    def leg(name, sym, side, px):
+        sl = slip(px)
+        e = px * (1 + sl * side)  # a short fills a touch below the quote, a long a touch above
+        return {"leg": name, "label": LEG_LABEL[name], "symbol": sym, "side": side, "entry": e, "qty": math.floor(BOOK / e), "slip": sl,
+                "exit": None, "closed": False, "how": None}
+
+    def close(L, px, how):
+        L.update(closed=True, how=how, exit=None if px is None else float(px) * (1 + L["slip"] * -L["side"]))
+
+    legs = []
+    short = leg("short", pick, -1, float(pick_px))
+    admin = "admin_reverse" in ev
+    covers = []  # (time, price or None, by what): the earliest one covered the short
+    if "mstop" in ev:
+        covers.append((ev["mstop"][0], info("mstop").get("pick_ltp"), "market stop"))
+    if admin:
+        covers.append((ev["admin_reverse"][0], ev["admin_reverse"][2], "admin"))
+    if "flip_cover" in ev:
+        covers.append((ev["flip_cover"][0], ev["flip_cover"][2], "10:15 flip"))
+    elif status == "flipped" and flip_on and not admin:
+        covers.append((float("inf"), None, "10:15 flip"))  # flipped before cover prices were recorded
+    if covers:
+        _at, px, how = min(covers, key=lambda c: c[0])
+        close(short, px, how)
+    legs.append(short)
+    if admin:
+        # as at settle: the admin's long exists only if the admin, not the market stop, covered the short
+        if (info("admin_reverse").get("mode") or "reverse") == "reverse" and short["how"] == "admin":
+            L = leg("admin_long", pick, 1, float(ev["admin_reverse"][2]))
+            if "admin_close_long" in ev:
+                close(L, ev["admin_close_long"][2], "admin")
+            legs.append(L)
+    elif flip_on and flip_sym and flip_px:
+        legs.append(leg("flip_long", flip_sym, 1, float(flip_px)))
+    if "admin_reshort" in ev:
+        L = leg("admin_short", pick, -1, float(ev["admin_reshort"][2]))
+        if "admin_close_reshort" in ev:
+            close(L, ev["admin_close_reshort"][2], "admin")
+        legs.append(L)
+    return legs
+
+
 def mark() -> dict:
-    """Every few minutes during the session: the open paper position marked at Groww's live prices (LTP), the
-    average stock's move since 09:20 (the market stop watches 0.5%), and the flip leg. Informational: the day's
-    official result is still `settle`, priced from the 5-minute bars."""
+    """Every 30 s during the session: Book A's legs today at Groww's live prices (LTP), realised ones at their cover
+    price, the average stock's move since 09:20 (the market stop watches 0.5%). Informational: the day's official result
+    is still `settle`, priced from the 5-minute bars."""
     now = time.time()
     day, minute = live.today_ist(now), int(live.minute_ist(now))
     if not (9 * 60 + 22 <= minute <= 15 * 60 + 20):
@@ -685,85 +758,67 @@ def mark() -> dict:
     r = con.execute("SELECT status, skip, pick, pick_px, flip, flip_symbol, flip_px FROM livex_days WHERE day=?", (day,)).fetchone()
     if not r or r[0] not in ("decided", "flipped"):
         return {"status": f"no open paper position ({r[0] if r else 'not decided'})"}
-    status, skip, pick, pick_px, flip_on, flip_sym, flip_px = r
+    status, skip, pick = r[0], r[1], r[2]
     rows = [x[0] for x in con.execute("SELECT symbol FROM livex_rows WHERE day=?", (day,))]
     px0 = dict(con.execute("SELECT symbol, px_0920 FROM livex_rows WHERE day=?", (day,)).fetchall())
-    q = _ltp_many(rows)
+    legs = _legs_today(con, day, tuple(r))
+    q = _ltp_many(sorted(set(rows) | {L["symbol"] for L in legs}))
     moves = [q[s_] / px0[s_] - 1 for s_ in rows if s_ in q and px0.get(s_)]
     mkt = float(np.mean(moves)) if moves else np.nan
+    squared = minute >= 15 * 60 + 15
+    for L in legs:
+        L["ltp"] = q.get(L["symbol"])
+        if not L["closed"] and squared and L["ltp"] is not None:  # square-off: closed at the 15:15 price, settled from the bars
+            L.update(closed=True, how="15:15 square-off", exit=L["ltp"] * (1 + L["slip"] * -L["side"]))
+        px = L["exit"] if L["closed"] else L["ltp"]
+        L["pnl"] = None if px is None else round(L["side"] * (px - L["entry"]) * L["qty"], 2)
+    realised = sum(L["pnl"] or 0.0 for L in legs if L["closed"])
+    unrealised = sum(L["pnl"] or 0.0 for L in legs if not L["closed"])
+    running = realised + unrealised
+    short_open = next((L for L in legs if L["side"] < 0 and not L["closed"]), None)  # the open short (09:20 pick or re-short)
+    long_leg = next((L for L in legs if L["side"] > 0), None)
     out = {"day": day_to_date(day).isoformat(), "time": f"{minute // 60:02d}:{minute % 60:02d}", "phase": "skip" if skip else status,
-           "mkt_move_since_0920": round(mkt, 5), "market_stop_at": MSTOP, "quotes": len(q)}
-    pick_pnl = flip_pnl = 0.0
-    pq = fq = None
-    if not skip and pick and pick in q:
-        slip = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([pick_px]), np.array([day]))[0]) / pick_px)
-        e = pick_px * (1 - slip)
-        pq = math.floor(BOOK / e)
-        stopped = con.execute("SELECT 1 FROM livex_events WHERE day=? AND kind='mstop'", (day,)).fetchone() is not None
-        short_open = not ((status == "flipped" and flip_on) or stopped)  # covered by the 10:15 flip, the admin, or the market stop
-        rs = _reshort(con, day)
-        if rs is not None:  # the admin re-opened the short by hand: that is the open short now
-            slip = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([rs[1]]), np.array([day]))[0]) / rs[1])
-            e = rs[1] * (1 - slip)
-            pq = math.floor(BOOK / e)
-            short_open = True
-        pick_pnl = (e - q[pick]) * pq if short_open else None
-        out["short"] = {"symbol": pick, "entry": round(e, 2), "ltp": q[pick], "qty": pq, "open": short_open,
-                        "running_pnl": None if pick_pnl is None else round(pick_pnl, 2)}
-    if flip_on and flip_sym:
-        fl = q.get(flip_sym) or _ltp_many([flip_sym]).get(flip_sym)
-        if fl:
-            s2 = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([flip_px]), np.array([day]))[0]) / flip_px)
-            e2 = flip_px * (1 + s2)
-            fq = math.floor(BOOK / e2)
-            flip_pnl = (fl - e2) * fq
-            out["flip_long"] = {"symbol": flip_sym, "entry": round(e2, 2), "ltp": fl, "qty": fq, "running_pnl": round(flip_pnl, 2)}
-    running = (pick_pnl or 0.0) + (flip_pnl or 0.0)
-    out["running_net_before_costs"] = round(running, 2)
+           "mkt_move_since_0920": round(mkt, 5), "market_stop_at": MSTOP, "quotes": len(q), "realised": round(realised, 2),
+           "open": round(unrealised, 2), "running_net_before_costs": round(running, 2),
+           "legs": [{k: (round(v, 2) if isinstance(v, float) else v) for k, v in L.items() if k != "slip"} for L in legs]}
     with con:
-        con.execute("INSERT OR REPLACE INTO livex_marks VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (day, now, minute, out["phase"], pick, out.get("short", {}).get("entry"), q.get(pick) if pick else None, pq,
-                     pick_pnl if pick_pnl is not None else None, mkt if np.isfinite(mkt) else None, flip_sym,
-                     out.get("flip_long", {}).get("entry"), out.get("flip_long", {}).get("ltp"), fq, flip_pnl or None, running, len(q)))
+        con.execute("INSERT OR REPLACE INTO livex_marks(day, at, minute, phase, pick, pick_entry, pick_ltp, pick_qty, pick_pnl, mkt_move, "
+                    "flip_symbol, flip_entry, flip_ltp, flip_qty, flip_pnl, running_net, n_quotes, legs) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (day, now, minute, out["phase"], pick,
+                     short_open["entry"] if short_open else (legs[0]["entry"] if legs else None), q.get(pick) if pick else None,
+                     short_open["qty"] if short_open else (legs[0]["qty"] if legs else None), short_open["pnl"] if short_open else None,
+                     mkt if np.isfinite(mkt) else None, long_leg["symbol"] if long_leg else None, long_leg["entry"] if long_leg else None,
+                     long_leg["ltp"] if long_leg else None, long_leg["qty"] if long_leg else None, long_leg["pnl"] if long_leg else None,
+                     running, len(q), json.dumps(out["legs"])))
     log(json.dumps(out))
     return out
 
 
 def ticks() -> dict:
-    """Every open paper position (Book A legs, Book B legs, manual trades) at the live price: one LTP call, no writes.
-    For the dashboard's per-second strip; the official figures still come from the bars at settle."""
+    """Every open paper position (Book A legs, Book B legs, active and manual trades) at the live price: one LTP call,
+    no writes. For the paper page's per-second strip; the official figures still come from the bars at settle."""
     now = time.time()
-    day = live.today_ist(now)
+    day, minute = live.today_ist(now), live.minute_ist(now)
     con = _db()
     items: list[dict] = []
     r = con.execute("SELECT status, skip, pick, pick_px, flip, flip_symbol, flip_px FROM livex_days WHERE day=?", (day,)).fetchone()
     phase = r[0] if r else "not decided"
-    if r and r[0] in ("decided", "flipped") and not r[1]:
-        status, _skip, pick, pick_px, flip_on, flip_sym, flip_px = r
-        rs = _reshort(con, day)
-        if pick and rs is not None:
-            slip = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([rs[1]]), np.array([day]))[0]) / rs[1])
-            e = rs[1] * (1 - slip)
-            items.append({"book": "Book A", "leg": "short (re-opened)", "side": -1, "symbol": pick, "entry": round(e, 2), "qty": math.floor(BOOK / e)})
-        elif pick and not (status == "flipped" and flip_on) and not con.execute(
-                "SELECT 1 FROM livex_events WHERE day=? AND kind='mstop'", (day,)).fetchone():  # not covered by the market stop
-            slip = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([pick_px]), np.array([day]))[0]) / pick_px)
-            e = pick_px * (1 - slip)
-            items.append({"book": "Book A", "leg": "short", "side": -1, "symbol": pick, "entry": round(e, 2), "qty": math.floor(BOOK / e)})
-        if flip_on and flip_sym:
-            s2 = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([flip_px]), np.array([day]))[0]) / flip_px)
-            e2 = flip_px * (1 + s2)
-            items.append({"book": "Book A", "leg": "flip long", "side": 1, "symbol": flip_sym, "entry": round(e2, 2), "qty": math.floor(BOOK / e2)})
-    for leg, sym, side, qty, entry in con.execute("SELECT leg, symbol, side, qty, entry FROM livex_fast WHERE day=? AND exit IS NULL", (day,)):
-        items.append({"book": "Book B", "leg": leg, "side": int(side), "symbol": sym, "entry": round(float(entry), 2), "qty": int(qty)})
+    if r and minute < 15 * 60 + 15:  # after the square-off nothing of Book A is open
+        for L in _legs_today(con, day, tuple(r)):
+            if not L["closed"]:
+                items.append({"book": "Book A", "leg": L["label"], "side": L["side"], "symbol": L["symbol"], "entry": round(L["entry"], 2), "qty": L["qty"]})
+    for leg_, sym, side, qty, entry in con.execute("SELECT leg, symbol, side, qty, entry FROM livex_fast WHERE day=? AND exit IS NULL", (day,)):
+        items.append({"book": "Book B", "leg": leg_, "side": int(side), "symbol": sym, "entry": round(float(entry), 2), "qty": int(qty)})
     p = config.DATA / "manual_trades.json"
     if p.exists():
-        for m in json.loads(p.read_text()):
+        from . import manual as _manual
+
+        for m in _manual._load():
             if m.get("status") == "open":
                 items.append({"book": "Active" if m.get("book") == "active" else "Manual", "leg": m["side"], "side": -1 if m["side"] == "short" else 1,
                               "symbol": m["symbol"], "entry": m["entry"], "qty": m["qty"]})
     syms = sorted({it["symbol"] for it in items} | {"NIFTY"})
-    q = _ltp_many(syms) if items else _ltp_many(["NIFTY"])
+    q = _ltp_many(syms)
     total = 0.0
     for it in items:
         lt = q.get(it["symbol"])
@@ -860,9 +915,19 @@ def report() -> dict:
     mk = con.execute("SELECT * FROM livex_marks WHERE day=? ORDER BY minute DESC LIMIT 1", (live.today_ist(),)).fetchone()
     marks = [dict(x) for x in con.execute("SELECT minute, running_net, mkt_move, pick_ltp FROM livex_marks WHERE day=? ORDER BY minute", (live.today_ist(),))]
     adm = {int(x[0]) for x in con.execute("SELECT DISTINCT day FROM livex_events WHERE kind='admin_reverse'")}  # the admin's hand, not the rule's flip
-    return {"mark": dict(mk) if mk else None, "marks_today": marks,
-            "sessions": {k: int(v) for k, v in D.status.value_counts().items()}, "skip_days": int(D.skip.fillna(0).sum()),
-            "flip_days": int(D[(D.skip.fillna(0) == 0) & ~D.day.isin(adm)].flip.fillna(0).sum()), "admin_days": int(D.day.isin(adm).sum()),
+    S = D[D.status == "settled"]  # counts are of finished sessions; today joins them once settled
+    ev_today = [{"kind": k, "at": at, "bar": bar, "value": val} for k, at, bar, val in
+                con.execute("SELECT kind, at, bar, value FROM livex_events WHERE day=? ORDER BY at", (live.today_ist(),))]
+    mkd = dict(mk) if mk else None
+    if mkd is not None:
+        try:
+            mkd["legs"] = json.loads(mkd["legs"]) if mkd.get("legs") else None
+        except Exception:  # noqa: BLE001
+            mkd["legs"] = None
+    return {"mark": mkd, "marks_today": marks,
+            "sessions": {k: int(v) for k, v in D.status.value_counts().items()}, "skip_days": int(S.skip.fillna(0).sum()),
+            "flip_days": int(S[(S.skip.fillna(0) == 0) & ~S.day.isin(adm)].flip.fillna(0).sum()), "admin_days": int(S.day.isin(adm).sum()),
+            "events_today": ev_today,
             "net_rs": round(float(daily.sum())), "pct_of_book": round(float(daily.sum() / BOOK * 100), 2),
             "per_month_pct": {str(k): round(float(v / BOOK * 100), 2) for k, v in mo.items()},
             "day_win_rate": round(float((daily > 0).mean()), 3) if len(daily) else None, "worst_day_rs": round(float(daily.min())) if len(daily) else None,
@@ -962,7 +1027,7 @@ def market_stop_check(now: float | None = None, con=None) -> dict:
         return {"checked": False, "bar": i, "why": f"only {len(moves)} of {len(px0)} quotes"}
     mkt = float(np.mean(moves))
     out = {"checked": True, "bar": i, "mkt": round(mkt, 5), "stop": mkt >= MSTOP}
-    info = json.dumps({"quotes": len(moves), "rows": len(px0)})
+    info = json.dumps({"quotes": len(moves), "rows": len(px0), "pick": r[2], "pick_ltp": q.get(r[2])})
     with con:
         con.execute("INSERT OR REPLACE INTO livex_events(day, kind, at, bar, value, info) VALUES(?,?,?,?,?,?)",
                     (day, "mstop_check", time.time(), i, mkt, info))

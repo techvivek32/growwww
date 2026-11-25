@@ -57,11 +57,29 @@ export interface LivexMark {
   flip_pnl: number | null;
   running_net: number | null;
   n_quotes: number;
+  /** Book A's legs at this mark (from 26 Nov): realised ones at their cover price, open ones at the live price */
+  legs?: LiveLeg[] | null;
+}
+
+export interface LiveLeg {
+  leg: "short" | "flip_long" | "admin_long" | "admin_short";
+  label: string;
+  symbol: string;
+  side: number;
+  entry: number;
+  qty: number;
+  exit: number | null;
+  closed: boolean;
+  how: string | null;
+  ltp: number | null;
+  pnl: number | null;
 }
 
 export interface LivexReport {
   mark: LivexMark | null;
   marks_today: { minute: number; running_net: number | null; mkt_move: number | null; pick_ltp: number | null }[];
+  /** today's recorded events (market stop, flip cover, the admin's hand) */
+  events_today?: { kind: string; at: number; bar: number | null; value: number | null }[];
   sessions: Record<string, number>;
   skip_days: number;
   flip_days: number;

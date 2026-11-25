@@ -207,6 +207,10 @@ export function PaperSnapshot({ live }: { live: { kind: "ok"; data: LiveSummary 
   const net = ab ? ab.net_rs : (r?.net_rs ?? 0);
   const winRate = ab ? ab.win_rate : (r?.day_win_rate ?? null);
   const worst = ab ? ab.worst_day_rs : (r?.worst_day_rs ?? null);
+  // the mark is live only on a traded day that has not settled; a settled or skipped day shows no running figure
+  const liveMark = mark && t && t.status !== "settled" && !t.skip ? mark : null;
+  const todayNet = t ? (r?.trades ?? []).filter((x) => x.day === t.day).reduce((a, x) => a + x.net, 0) : 0;
+  const adminToday = (r?.events_today ?? []).some((e) => e.kind === "admin_reverse");
   return (
     <Card className="border-sideaccent/30">
       <CardHead
@@ -228,12 +232,24 @@ export function PaperSnapshot({ live }: { live: { kind: "ok"; data: LiveSummary 
           <div>
             <p className={eyebrow}>Today</p>
             <p className="mt-1 text-[15px] font-semibold text-ink">{t ? (t.skip ? "Skipped (regime)" : t.pick ? `Short ${t.pick}` : "—") : "No decision yet"}</p>
-            <p className="text-[11.5px] text-ink3">{t?.flip && t.flip_symbol ? `flipped long ${t.flip_symbol}` : t?.status === "settled" ? "settled" : t ? "open" : "picks at 09:20"}</p>
+            <p className="text-[11.5px] text-ink3">
+              {t?.status === "settled"
+                ? `settled ${inr(todayNet)}`
+                : t?.skip
+                  ? "no Book A trade today"
+                  : t?.flip && t.flip_symbol
+                    ? `${adminToday ? "admin long" : "flipped long"} ${t.flip_symbol}`
+                    : t
+                      ? "in progress"
+                      : "picks at 09:20"}
+            </p>
           </div>
           <div>
             <p className={eyebrow}>Running P&L</p>
-            <p className={`tnum mt-1 text-[15px] font-semibold ${(mark?.running_net ?? 0) >= 0 ? "text-up" : "text-down"}`}>{mark ? inr(mark.running_net ?? 0) : "—"}</p>
-            <p className="text-[11.5px] text-ink3">{mark ? `marked ${String(Math.floor(mark.minute / 60)).padStart(2, "0")}:${String(mark.minute % 60).padStart(2, "0")} IST` : "during the session"}</p>
+            <p className={`tnum mt-1 text-[15px] font-semibold ${(liveMark?.running_net ?? 0) >= 0 ? "text-up" : "text-down"}`}>{liveMark ? inr(liveMark.running_net ?? 0) : "—"}</p>
+            <p className="text-[11.5px] text-ink3">
+              {liveMark ? `marked ${String(Math.floor(liveMark.minute / 60)).padStart(2, "0")}:${String(liveMark.minute % 60).padStart(2, "0")} IST` : t?.status === "settled" ? "settled: see Today" : "during the session"}
+            </p>
           </div>
           <div>
             <p className={eyebrow}>Winning days</p>
