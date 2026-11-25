@@ -9,7 +9,7 @@ import "server-only";
 
 export interface LivexLeg {
   day: number;
-  leg: "short" | "flip_long" | "admin_long";
+  leg: "short" | "flip_long" | "admin_long" | "admin_short";
   symbol: string;
   side: number;
   qty: number;

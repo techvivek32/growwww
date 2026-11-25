@@ -163,6 +163,10 @@ def main(argv: list[str] | None = None) -> int:
             out = livex.decide(wait=not a.no_wait)
         elif cmd == "livex-flip":
             out = livex.flip()
+        elif cmd == "livex-reshort":
+            out = livex.admin_reshort()
+        elif cmd == "livex-close-reshort":
+            out = livex.admin_close_reshort()
         elif cmd == "livex-close-long":
             out = livex.admin_close_long()
         elif cmd == "livex-reverse":
