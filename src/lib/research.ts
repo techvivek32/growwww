@@ -131,10 +131,26 @@ export interface ManualTrade {
   net?: number;
 }
 
+/** Every paper book together, by session (Book A's settled days + the closed active and manual trades). */
+export interface AllBooks {
+  net_rs: number;
+  book_a_rs: number;
+  other_rs: number;
+  sessions: number;
+  other_trades: number;
+  open_trades: number;
+  win_rate: number | null;
+  worst_day_rs: number | null;
+  max_fall_rs: number | null;
+  days: { day: string; book_a: number; other: number; total: number }[];
+}
+
 export interface LiveSummary {
   as_of: number;
   book: number;
   manual?: ManualTrade[];
+  all_books?: AllBooks;
+  all_books_error?: string;
   livex: LivexReport | null;
   livex_error?: string;
   sl05?: Sl05Report;

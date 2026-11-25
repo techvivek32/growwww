@@ -204,6 +204,10 @@ def live_summary(authorization: str | None = Header(default=None)) -> dict:
         out["manual"] = manual
     except Exception as e:  # noqa: BLE001
         out["manual_error"] = str(e)[:200]
+    try:  # every paper book together: the admin's headline tiles
+        out["all_books"] = livex.all_books(out.get("manual") or [])
+    except Exception as e:  # noqa: BLE001
+        out["all_books_error"] = str(e)[:200]
     try:
         out["live"] = live.report()
     except Exception as e:  # noqa: BLE001

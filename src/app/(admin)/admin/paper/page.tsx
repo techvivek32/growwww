@@ -10,7 +10,6 @@ export const dynamic = "force-dynamic";
 
 const IST = "Asia/Kolkata";
 const DAY_MON = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", timeZone: IST });
-const TIME = new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: IST });
 const inr = (v: number) => `${v < 0 ? "−" : ""}₹${Math.abs(Math.round(v)).toLocaleString("en-IN")}`;
 const pct = (v: number, d = 2) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(d)}%`;
 const fmtDay = (day: number) => DAY_MON.format(new Date(dayToIso(day)));
@@ -183,15 +182,28 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
   const pages = Math.max(1, Math.ceil(days.length / PER_PAGE));
   const cur = Math.min(page, pages);
   const tone = r.net_rs > 0 ? "up" : r.net_rs < 0 ? "down" : "neutral";
+  const ab = data.all_books;
 
   return (
     <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatTile label="Net so far" value={inr(r.net_rs)} sub={`${pct(r.pct_of_book)} of ₹${(book / 1e5).toFixed(0)} lakh`} tone={tone} />
-        <StatTile label="Sessions" value={String(settled)} sub={`${r.skip_days} skipped · ${r.flip_days} flipped`} />
-        <StatTile label="Winning days" value={r.day_win_rate == null ? "—" : `${Math.round(r.day_win_rate * 100)}%`} />
-        <StatTile label="Worst day" value={r.worst_day_rs == null ? "—" : inr(r.worst_day_rs)} tone={r.worst_day_rs && r.worst_day_rs < 0 ? "down" : "neutral"} />
-        <StatTile label="Largest fall" value={r.max_fall_rs == null ? "—" : inr(-(r.max_fall_rs ?? 0))} sub="from the running peak" />
+        {ab ? (
+          <>
+            <StatTile label="Net so far · all books" value={inr(ab.net_rs)} sub={`Book A ${inr(ab.book_a_rs)} · Active & manual ${inr(ab.other_rs)}`} tone={ab.net_rs > 0 ? "up" : ab.net_rs < 0 ? "down" : "neutral"} />
+            <StatTile label="Sessions" value={String(ab.sessions)} sub={`${r.skip_days} skipped · ${r.flip_days} flipped · ${ab.other_trades} active & manual trades${ab.open_trades ? ` · ${ab.open_trades} open` : ""}`} />
+            <StatTile label="Winning days" value={ab.win_rate == null ? "—" : `${Math.round(ab.win_rate * 100)}%`} sub="all books together" />
+            <StatTile label="Worst day" value={ab.worst_day_rs == null ? "—" : inr(ab.worst_day_rs)} tone={ab.worst_day_rs != null && ab.worst_day_rs < 0 ? "down" : "neutral"} sub="all books together" />
+            <StatTile label="Largest fall" value={ab.max_fall_rs == null ? "—" : inr(-ab.max_fall_rs)} sub="from the running peak, all books" />
+          </>
+        ) : (
+          <>
+            <StatTile label="Net so far" value={inr(r.net_rs)} sub={`${pct(r.pct_of_book)} of ₹${(book / 1e5).toFixed(0)} lakh`} tone={tone} />
+            <StatTile label="Sessions" value={String(settled)} sub={`${r.skip_days} skipped · ${r.flip_days} flipped`} />
+            <StatTile label="Winning days" value={r.day_win_rate == null ? "—" : `${Math.round(r.day_win_rate * 100)}%`} />
+            <StatTile label="Worst day" value={r.worst_day_rs == null ? "—" : inr(r.worst_day_rs)} tone={r.worst_day_rs && r.worst_day_rs < 0 ? "down" : "neutral"} />
+            <StatTile label="Largest fall" value={r.max_fall_rs == null ? "—" : inr(-(r.max_fall_rs ?? 0))} sub="from the running peak" />
+          </>
+        )}
       </div>
 
       <LiveNow mark={r.mark ?? null} marks={r.marks_today ?? []} settled={today?.status === "settled"} settledNet={today ? (netByDay.get(today.day) ?? null) : null} />
