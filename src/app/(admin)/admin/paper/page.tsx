@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import LiveTicks from "./LiveTicks";
 import Link from "next/link";
 import { requireAdminPage } from "@/lib/access";
-import { liveSummary, dayToIso, type LiveSummary, type LivexDay, type LivexLeg, type LivexMark, type LivexReport } from "@/lib/research";
+import { liveSummary, dayToIso, type LiveSummary, type LivexDay, type LivexLeg, type LivexMark, type LivexReport, type ManualTrade } from "@/lib/research";
 import { Card, CardHead, Pill, StatTile } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Paper trading · MNHA Financials" };
@@ -171,6 +171,14 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
   for (const t of r.trades) netByDay.set(t.day, (netByDay.get(t.day) ?? 0) + t.net);
   const legsByDay = new Map<number, LivexLeg[]>();
   for (const t of r.trades) legsByDay.set(t.day, [...(legsByDay.get(t.day) ?? []), t]);
+  const manualByDay = new Map<string, ManualTrade[]>();
+  for (const m of data.manual ?? []) manualByDay.set(m.day, [...(manualByDay.get(m.day) ?? []), m]);
+  // days with only active/manual trades (no Book A record) still get a row
+  for (const iso of manualByDay.keys()) {
+    const n = Math.round((new Date(iso).getTime() - Date.UTC(1970, 0, 1)) / 86_400_000);
+    if (!days.some((d) => d.day === n)) days.push({ day: n, status: "no_session", skip: 0, pick: null, pick_px: null, pick_ltp: null, flip: null, flip_symbol: null, flip_px: null, decided_at: null, settled_at: null });
+  }
+  days.sort((a, b) => b.day - a.day);
   const settled = days.filter((d) => d.status === "settled").length;
   const pages = Math.max(1, Math.ceil(days.length / PER_PAGE));
   const cur = Math.min(page, pages);
@@ -198,38 +206,53 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
               <tr className="border-b border-line">
                 <th className={th}>Day</th>
                 <th className={th}>Status</th>
-                <th className={th}>Short</th>
-                <th className={th}>Exit</th>
-                <th className={th}>Flip long</th>
-                <th className={`${th} text-right`}>Net</th>
+                <th className={th}>Book A</th>
+                <th className={`${th} text-right`}>Book A net</th>
+                <th className={th}>Active &amp; manual</th>
+                <th className={`${th} text-right`}>Active &amp; manual net</th>
+                <th className={`${th} text-right`}>Total</th>
               </tr>
             </thead>
             <tbody>
               {days.length === 0 && (
                 <tr>
-                  <td className={`${td} text-ink3`} colSpan={6}>Nothing yet.</td>
+                  <td className={`${td} text-ink3`} colSpan={7}>Nothing yet.</td>
                 </tr>
               )}
               {days.slice((cur - 1) * PER_PAGE, cur * PER_PAGE).map((d) => {
                 const legs = legsByDay.get(d.day) ?? [];
-                const s = legs.find((l) => l.leg === "short");
-                const f = legs.find((l) => l.leg === "flip_long" || l.leg === "admin_long");
                 const net = netByDay.get(d.day);
                 const st = statusOf(d);
+                const iso = dayToIso(d.day);
+                const mt = manualByDay.get(iso) ?? [];
+                const mNet = mt.filter((m) => m.status === "closed").reduce((a, m) => a + (m.net ?? 0), 0);
+                const total = (net ?? 0) + mNet;
+                const bookA = d.skip
+                  ? "skipped (regime)"
+                  : d.status === "no_session"
+                    ? "no session"
+                    : legs.length
+                      ? legs.map((l) => `${l.side < 0 ? "SELL" : "BUY"} ${l.symbol} ${l.entry.toFixed(2)} → ${l.exit.toFixed(2)} (${WHY[l.why] ?? l.why})`).join(" · ")
+                      : d.pick
+                        ? `SELL ${d.pick} @ ${d.pick_px?.toFixed(2)} (open)`
+                        : "—";
                 return (
-                  <tr key={d.day} className="border-b border-line last:border-0">
+                  <tr key={d.day} className="border-b border-line last:border-0 align-top">
                     <td className={td}>
-                      <Link href={`/admin/paper/logs?day=${dayToIso(d.day)}`} className="font-semibold text-ink underline-offset-2 hover:underline">{fmtDay(d.day)}</Link>
+                      <Link href={`/admin/paper/logs?day=${iso}`} className="font-semibold text-ink underline-offset-2 hover:underline">{fmtDay(d.day)}</Link>
                     </td>
                     <td className={td}>
                       <Pill tone={st.tone}>{st.text}</Pill>
                     </td>
-                    <td className={td}>{d.skip || d.status === "no_session" ? "—" : `${d.pick} @ ${d.pick_px?.toFixed(2)}`}</td>
-                    <td className={`${td} text-ink2`}>{s ? `${s.exit.toFixed(2)} · ${WHY[s.why] ?? s.why}` : "—"}</td>
-                    <td className={td}>{f ? `${f.symbol} ${f.entry.toFixed(2)} → ${f.exit.toFixed(2)}` : d.flip ? `${d.flip_symbol}` : "—"}</td>
+                    <td className={`${td} max-w-[40ch] text-ink2`}>{bookA}</td>
                     <td className={`${td} tnum text-right font-semibold ${net == null ? "text-ink3" : net >= 0 ? "text-up" : "text-down"}`}>
                       {net == null ? (d.skip ? "0" : "—") : inr(net)}
                     </td>
+                    <td className={`${td} max-w-[40ch] text-ink2`}>
+                      {mt.length === 0 ? "—" : mt.map((m) => `${m.side === "short" ? "SELL" : "BUY"} ${m.symbol} ${m.status === "closed" ? `${m.entry.toFixed(2)} → ${m.exit?.toFixed(2)}` : "(open)"}`).join(" · ")}
+                    </td>
+                    <td className={`${td} tnum text-right font-semibold ${mt.length === 0 ? "text-ink3" : mNet >= 0 ? "text-up" : "text-down"}`}>{mt.length === 0 ? "—" : inr(mNet)}</td>
+                    <td className={`${td} tnum text-right font-semibold ${total >= 0 ? "text-up" : "text-down"}`}>{inr(total)}</td>
                   </tr>
                 );
               })}
