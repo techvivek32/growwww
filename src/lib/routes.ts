@@ -25,6 +25,11 @@ const ADMIN_MAY_OPEN = [
   "/api/kyc/file",
   "/api/consent/media",
   "/api/mobile/admin",
+  // The console's own JSON endpoints (the paper page's Exit button and its
+  // per-second live strip). Listed here, not in ADMIN_ONLY, for the same
+  // reason as /api/mobile/admin: the routes answer non-admins with their own
+  // JSON 403 instead of an HTML redirect.
+  "/api/admin",
   // The mobile client asks "who am I" on every launch, for every role. Without
   // this the admin's own session answers 307, the client reads that as an
   // expired session, and signing in as admin bounces straight back to the
