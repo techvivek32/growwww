@@ -330,7 +330,7 @@ function Body({ data }: { data: LiveSummary }) {
                 {days.slice(0, 60).map((d) => {
                   const legs = legsByDay.get(d.day) ?? [];
                   const s = legs.find((l) => l.leg === "short");
-                  const f = legs.find((l) => l.leg === "flip_long");
+                  const f = legs.find((l) => l.leg === "flip_long" || l.leg === "admin_long");
                   const net = netByDay.get(d.day);
                   const st = statusOf(d);
                   return (
@@ -389,7 +389,7 @@ function Body({ data }: { data: LiveSummary }) {
               {r.trades.slice(0, 80).map((t) => (
                 <tr key={`${t.day}-${t.leg}-${t.symbol}`} className="border-b border-line last:border-0">
                   <td className={td}>{fmtDay(t.day)}</td>
-                  <td className={td}>{t.leg === "flip_long" ? "Flip long" : "Short"}</td>
+                  <td className={td}>{t.leg === "flip_long" ? "Flip long" : t.leg === "admin_long" ? "Admin long (reversal)" : "Short"}</td>
                   <td className={`${td} font-semibold`}>{t.symbol}</td>
                   <td className={`${td} tnum text-right`}>{t.qty}</td>
                   <td className={`${td} tnum text-right`}>{t.entry.toFixed(2)}</td>

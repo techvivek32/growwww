@@ -162,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
             out = livex.decide(wait=not a.no_wait)
         elif cmd == "livex-flip":
             out = livex.flip()
+        elif cmd == "livex-reverse":
+            out = livex.admin_reverse()
         elif cmd == "livex-settle":
             out = livex.settle()
         elif cmd == "livex-mark":
