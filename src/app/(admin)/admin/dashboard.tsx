@@ -200,9 +200,13 @@ export function Money({ d }: { d: AdminData }) {
 /* ------------------------------------------------------------ paper book */
 export function PaperSnapshot({ live }: { live: { kind: "ok"; data: LiveSummary } | { kind: "unconfigured" } | { kind: "error"; message: string } }) {
   const r = live.kind === "ok" ? live.data.livex : null;
+  const ab = live.kind === "ok" ? live.data.all_books : undefined;
   const t = r?.today ?? null;
   const mark = r?.mark ?? null;
-  const net = r?.net_rs ?? 0;
+  // every paper book together, as on /admin/paper; Book A's own figures only when the box cannot total them
+  const net = ab ? ab.net_rs : (r?.net_rs ?? 0);
+  const winRate = ab ? ab.win_rate : (r?.day_win_rate ?? null);
+  const worst = ab ? ab.worst_day_rs : (r?.worst_day_rs ?? null);
   return (
     <Card className="border-sideaccent/30">
       <CardHead
@@ -213,9 +217,13 @@ export function PaperSnapshot({ live }: { live: { kind: "ok"; data: LiveSummary 
       {r && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div>
-            <p className={eyebrow}>Net so far</p>
+            <p className={eyebrow}>{ab ? "Net so far · all books" : "Net so far"}</p>
             <p className={`tnum mt-1 text-[20px] font-semibold ${net >= 0 ? "text-up" : "text-down"}`}>{inr(net)}</p>
-            <p className="text-[11.5px] text-ink3">{pct(r.pct_of_book)} of ₹5 lakh · {Object.keys(r.sessions).length ? `${r.sessions.settled ?? 0} settled` : "—"}</p>
+            <p className="text-[11.5px] text-ink3">
+              {ab
+                ? `Book A ${inr(ab.book_a_rs)} · Active ${inr(ab.active_rs ?? 0)} · Manual ${inr(ab.manual_rs ?? 0)} · ${ab.sessions} sessions`
+                : `${pct(r.pct_of_book)} of ₹5 lakh · ${Object.keys(r.sessions).length ? `${r.sessions.settled ?? 0} settled` : "—"}`}
+            </p>
           </div>
           <div>
             <p className={eyebrow}>Today</p>
@@ -229,8 +237,8 @@ export function PaperSnapshot({ live }: { live: { kind: "ok"; data: LiveSummary 
           </div>
           <div>
             <p className={eyebrow}>Winning days</p>
-            <p className="tnum mt-1 text-[15px] font-semibold text-ink">{r.day_win_rate == null ? "—" : `${Math.round(r.day_win_rate * 100)}%`}</p>
-            <p className="text-[11.5px] text-ink3">worst day {r.worst_day_rs == null ? "—" : inr(r.worst_day_rs)}</p>
+            <p className="tnum mt-1 text-[15px] font-semibold text-ink">{winRate == null ? "—" : `${Math.round(winRate * 100)}%`}</p>
+            <p className="text-[11.5px] text-ink3">worst day {worst == null ? "—" : inr(worst)}</p>
           </div>
         </div>
       )}

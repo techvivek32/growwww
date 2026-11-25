@@ -5,6 +5,7 @@ Records live in data/manual_trades.json; tools_watch_manual.py (service mnha-man
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import time
 
@@ -18,11 +19,21 @@ PATH = config.DATA / "manual_trades.json"
 
 
 def _load() -> list[dict]:
-    return json.loads(PATH.read_text()) if PATH.exists() else []
+    """The records; a read that lands mid-write by an older writer is retried once."""
+    if not PATH.exists():
+        return []
+    try:
+        return json.loads(PATH.read_text())
+    except json.JSONDecodeError:
+        time.sleep(0.1)
+        return json.loads(PATH.read_text())
 
 
 def _save(book: list[dict]) -> None:
-    PATH.write_text(json.dumps(book, indent=1))
+    """Atomic: write a temporary file next to it and rename, so a reader never sees half a file."""
+    tmp = PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(book, indent=1))
+    os.replace(tmp, PATH)
 
 
 def _slip(px: float) -> float:

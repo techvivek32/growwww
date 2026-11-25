@@ -140,7 +140,10 @@ export interface AllBooks {
   /** trades the admin asked for by hand */
   manual_rs: number;
   other_rs: number;
+  /** finished sessions only (today joins once Book A has settled it) */
   sessions: number;
+  /** today has closed active/manual trades but Book A has not settled yet */
+  today_open_day?: boolean;
   active_trades: number;
   manual_trades: number;
   other_trades: number;
@@ -157,6 +160,8 @@ export interface LiveSummary {
   manual?: ManualTrade[];
   all_books?: AllBooks;
   all_books_error?: string;
+  manual_error?: string;
+  manual_mark_error?: string;
   livex: LivexReport | null;
   livex_error?: string;
   sl05?: Sl05Report;

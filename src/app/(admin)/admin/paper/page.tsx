@@ -195,8 +195,8 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {ab ? (
           <>
-            <StatTile label="Net so far · all books" value={inr(ab.net_rs)} sub={`Book A ${inr(ab.book_a_rs)} · Active (auto) ${inr(ab.active_rs)} · Manual (admin) ${inr(ab.manual_rs)}`} tone={ab.net_rs > 0 ? "up" : ab.net_rs < 0 ? "down" : "neutral"} />
-            <StatTile label="Sessions" value={String(ab.sessions)} sub={`${r.skip_days} skipped · ${r.flip_days} flipped · ${ab.active_trades} active (auto) · ${ab.manual_trades} manual (admin) trades${ab.open_trades ? ` · ${ab.open_trades} open` : ""}`} />
+            <StatTile label="Net so far · all books" value={inr(ab.net_rs)} sub={`Book A ${inr(ab.book_a_rs)} · Active (auto) ${inr(ab.active_rs ?? 0)} · Manual (admin) ${inr(ab.manual_rs ?? 0)}${ab.today_open_day ? " · today's closed trades included" : ""}`} tone={ab.net_rs > 0 ? "up" : ab.net_rs < 0 ? "down" : "neutral"} />
+            <StatTile label="Sessions" value={String(ab.sessions)} sub={`finished · ${r.skip_days} skipped · ${r.flip_days} flipped · ${ab.active_trades ?? 0} active (auto) · ${ab.manual_trades ?? 0} manual (admin) trades${ab.open_trades ? ` · ${ab.open_trades} open` : ""}`} />
             <StatTile label="Winning days" value={ab.win_rate == null ? "—" : `${Math.round(ab.win_rate * 100)}%`} sub="all books together" />
             <StatTile label="Worst day" value={ab.worst_day_rs == null ? "—" : inr(ab.worst_day_rs)} tone={ab.worst_day_rs != null && ab.worst_day_rs < 0 ? "down" : "neutral"} sub="all books together" />
             <StatTile label="Largest fall" value={ab.max_fall_rs == null ? "—" : inr(-ab.max_fall_rs)} sub="from the running peak, all books" />
@@ -212,6 +212,9 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
         )}
       </div>
 
+      {(data.manual_error || data.all_books_error) && (
+        <p className="text-[12px] text-warn">Active and manual trades could not be read on this refresh ({data.manual_error ?? data.all_books_error}); the tiles show Book A only until the next refresh.</p>
+      )}
       <LiveNow mark={r.mark ?? null} marks={r.marks_today ?? []} settled={today?.status === "settled"} skip={Boolean(today?.skip)} />
 
       <Card pad={false}>
@@ -290,7 +293,7 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
         </div>
         <div className="flex items-center justify-between border-t border-line px-4 py-2 text-[12px] sm:px-5">
           {cur > 1 ? <Link className="font-semibold text-ink underline-offset-2 hover:underline" href={`/admin/paper?page=${cur - 1}`}>← Newer</Link> : <span className="text-ink3">← Newer</span>}
-          <span className="text-ink3">{days.length} sessions · {PER_PAGE} per page</span>
+          <span className="text-ink3">{days.length} days · {PER_PAGE} per page</span>
           {cur < pages ? <Link className="font-semibold text-ink underline-offset-2 hover:underline" href={`/admin/paper?page=${cur + 1}`}>Older →</Link> : <span className="text-ink3">Older →</span>}
         </div>
       </Card>

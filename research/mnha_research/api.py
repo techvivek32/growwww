@@ -188,14 +188,16 @@ def live_summary(authorization: str | None = Header(default=None)) -> dict:
             out["sl05"]["today"] = [dict(x) for x in con.execute("SELECT * FROM livex_fast WHERE day=? AND book='sl05'", (live.today_ist(),))]
     except Exception as e:  # noqa: BLE001
         out["sl05_error"] = str(e)[:200]
-    try:  # manual paper trades the user asked for (outside the tested rule), marked at the live price when open
-        import json as _json
-        from . import config
+    try:  # active (automatic) and manual (admin's) paper trades, marked at the live price when open
+        from . import manual as _manual
 
-        p = config.DATA / "manual_trades.json"
-        manual = _json.loads(p.read_text()) if p.exists() else []
+        manual = _manual._load()
+        out["manual"] = manual  # served and totalled even when the live quote below fails
         open_syms = sorted({m["symbol"] for m in manual if m.get("status") == "open"})
-        quotes = live.ltp(open_syms)[0] if open_syms else {}
+        try:  # marks are cosmetic: a failed quote leaves open trades unmarked, it never drops the books
+            quotes = live.ltp(open_syms)[0] if open_syms else {}
+        except Exception as e:  # noqa: BLE001
+            quotes, out["manual_mark_error"] = {}, str(e)[:200]
         for m in manual:
             if m.get("status") == "open" and m["symbol"] in quotes:
                 ltp = quotes[m["symbol"]]
@@ -204,8 +206,9 @@ def live_summary(authorization: str | None = Header(default=None)) -> dict:
         out["manual"] = manual
     except Exception as e:  # noqa: BLE001
         out["manual_error"] = str(e)[:200]
-    try:  # every paper book together: the admin's headline tiles
-        out["all_books"] = livex.all_books(out.get("manual") or [])
+    try:  # every paper book together: the admin's headline tiles. No file read -> KeyError -> all_books_error, and the
+        # page falls back to Book A's own figures under its own label rather than calling Book A "all books"
+        out["all_books"] = livex.all_books(out["manual"])
     except Exception as e:  # noqa: BLE001
         out["all_books_error"] = str(e)[:200]
     try:
