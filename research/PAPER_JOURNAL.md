@@ -96,4 +96,13 @@ walk-forward); the live book trades the tested rule, not yesterday's hindsight.
 - Withdrawn the same day, at the admin's request ("Book A tari rite, je add karvanu kidhu e kaadhi nakh"): the 2%
   reversal rule and the Cover / Reverse buttons. Book A runs exactly as tested from 26 Nov. The 25 Nov record stays
   as it happened (admin reversal, admin sell), about −₹9,000.
+- 25 Nov settled (re-settled with the admin legs): short LAURUSLABS 2,379.89 → 2,414.72 at 10:51 (admin) −₹7,540;
+  admin long 2,414.72 → 2,406.18 at 11:44 (admin) −₹1,992; admin re-short 2,410.78 (11:53) → 2,448.73 at 15:15
+  −₹8,081. Book A day −₹17,613 (−3.5%), all three legs the admin's. The stock closed +2.9% on a day the average
+  stock was flat: a stock-specific squeeze; the rule's own path (hold to 15:15) would have been about −₹14,500.
+  Active book (the admin's scan-and-rotate idea, first day): OFSS −₹308, WOCKPHARMA −₹2,611, MRPL +₹7,374,
+  CHENNPETRO +₹14,378 = +₹18,833; manual long LAURUSLABS +₹659. Day total across books about +₹1,900.
+  Running Book A: +₹31,460 (+6.3%), 6 traded sessions, 1 skip, 5 wins / 1 loss.
+- Admin asked: Day logs page (one session per page), paper page cut to tiles + Live now (whole day's marks, settled
+  state) + paginated day-by-day with active/manual trades and a total column.
 
