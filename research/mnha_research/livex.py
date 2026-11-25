@@ -463,8 +463,10 @@ def price_day(day: int, pick: str, skip: bool, P: dict[str, np.ndarray], flip_re
             s2 = max(slip_bps / 1e4, 0.5 * float(lab.tick_size(np.array([admin[1]]), np.array([day]))[0]) / admin[1])
             e2 = admin[1] * (1 + s2)
             q2 = math.floor(BOOK / e2)
-            x2 = g[3, EXIT_BAR] * (1 - s2)
-            out.append(leg("admin_long", pick, 1, q2, e2, x2, admin[0], EXIT_BAR, 0))
+            x2, xb2 = g[3, EXIT_BAR] * (1 - s2), EXIT_BAR
+            if len(admin) > 3 and admin[3] is not None:  # the admin sold the long early: (bar, price)
+                x2, xb2 = admin[3][1] * (1 - s2), admin[3][0]
+            out.append(leg("admin_long", pick, 1, q2, e2, x2, admin[0], xb2, 7 if xb2 != EXIT_BAR else 0))
         return out
     if do and top and top in P:
         g = P[top]
@@ -521,6 +523,33 @@ def reverse_rule_check(now: float | None = None, con=None) -> dict:
         return {"checked": True, "bar": i, "against": round(against, 4), "mkt": round(mkt, 4), "vwap": vwap, "reversed": False}
     out = admin_reverse("reverse", who="rule")
     out.update({"against": round(against, 4), "mkt": round(mkt, 4), "vwap": round(vwap, 2), "reversed": True, "checked": True})
+    return out
+
+
+def admin_close_long() -> dict:
+    """The admin's order: sell the long that an admin/rule reversal opened, now, at the live price. Recorded as an event;
+    settle() prices the leg's exit from it."""
+    now = time.time()
+    day, minute = live.today_ist(now), live.minute_ist(now)
+    con = _db()
+    r = con.execute("SELECT status, flip, flip_symbol FROM livex_days WHERE day=?", (day,)).fetchone()
+    ev = con.execute("SELECT 1 FROM livex_events WHERE day=? AND kind='admin_reverse'", (day,)).fetchone()
+    if not r or r[0] != "flipped" or not r[1] or not r[2] or not ev:
+        raise RuntimeError("no open reversal long today")
+    if con.execute("SELECT 1 FROM livex_events WHERE day=? AND kind='admin_close_long'", (day,)).fetchone():
+        raise RuntimeError("the long is already closed")
+    sym = r[2]
+    q = _ltp_many([sym])
+    if sym not in q:
+        raise RuntimeError(f"no live price for {sym}")
+    px = q[sym]
+    bar = int(min(max((minute - (9 * 60 + 20)) // 5 + 1, 1), EXIT_BAR))
+    with con:
+        con.execute("INSERT OR REPLACE INTO livex_events VALUES(?,?,?,?,?,?)",
+                    (day, "admin_close_long", now, bar, px, json.dumps({"symbol": sym, "time": f"{int(minute) // 60:02d}:{int(minute) % 60:02d}"})))
+        con.execute("UPDATE livex_days SET flip_symbol=NULL, info=COALESCE(info,'') || ? WHERE day=?", (f" | admin closed the long at {px} (bar {bar})", day))
+    out = {"day": day_to_date(day).isoformat(), "symbol": sym, "price": px, "bar": bar, "action": "reversal long sold (paper, admin's order)"}
+    log(json.dumps({"admin_close_long": out}))
     return out
 
 
@@ -585,7 +614,8 @@ def settle(day: int | None = None) -> dict:
     admin = None
     if ev:
         mode = (json.loads(ev[2] or "{}").get("mode") or "reverse") if ev[2] else "reverse"
-        admin = (int(ev[0]), float(ev[1]), mode)
+        cl = con.execute("SELECT bar, value FROM livex_events WHERE day=? AND kind='admin_close_long'", (day,)).fetchone()
+        admin = (int(ev[0]), float(ev[1]), mode, (int(cl[0]), float(cl[1])) if cl else None)
     legs = price_day(day, r[2], bool(r[1]), P, flip_rec, admin=admin)
     with con:
         if store_flip is not None:

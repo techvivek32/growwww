@@ -238,7 +238,8 @@ def book_a_admin(body: dict = Body(...), authorization: str | None = Header(defa
     from . import livex
 
     try:
-        return {"ok": True, "result": livex.admin_reverse(str(body.get("mode") or "reverse"))}
+        mode = str(body.get("mode") or "reverse")
+        return {"ok": True, "result": livex.admin_close_long() if mode == "close-long" else livex.admin_reverse(mode)}
     except RuntimeError as e:
         raise HTTPException(400, str(e))
 

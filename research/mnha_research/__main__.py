@@ -163,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
             out = livex.decide(wait=not a.no_wait)
         elif cmd == "livex-flip":
             out = livex.flip()
+        elif cmd == "livex-close-long":
+            out = livex.admin_close_long()
         elif cmd == "livex-reverse":
             out = livex.admin_reverse(a.mode or "reverse")
         elif cmd == "livex-settle":
