@@ -69,3 +69,20 @@ walk-forward); the live book trades the tested rule, not yesterday's hindsight.
   lose −11 bps after 09:20. Worth a proper walk-forward test as a LONG rule; not live.
 - Wider universe (Nifty 500, top-500 by turnover): base model K=3 9.38%/month vs 3.14% on the 150 F&O names. Needs
   liquidity slippage, the full rule and leak tests before any change to the live book.
+
+### Wed 25 Nov · Book A: short LAURUSLABS, reversed by the admin at 10:51 (paper)
+- Decided 09:20: SHORT LAURUSLABS 210 × ₹2,379.89 (regime: gap top-20% but not Monday, no skip). Market median −0.40% at
+  10:15 → no flip. The stock rose against the market (+1.3% by 10:30).
+- 10:51 the admin ordered the short reversed into a long of the same stock ("short mathi long switch"). Recorded as
+  `admin_reverse` (bar 19, ₹2,414); settle prices the short's exit and an `admin_long` leg from it. Outside the tested
+  rule; the day's figure is the admin's, not the rule's.
+- Test run the same day (`exp/search/reverse_test.py`, 885 sessions 2023-01..2026-10, live rule as baseline):
+  per-stock stop-and-REVERSE into the same stock is the worst variant at every level (0.5%: −3.1%/month dev,
+  −4.8% sealed; 1%: +0.3% / +0.5%); reverse into the top gainer is no better out of sample; cover-only is the
+  only one close to the rule, and only at 2% (dev 6.95% vs 7.46%, sealed 6.36% vs 8.08%, worst month −10.4% vs
+  −18.9%). Lesson 5 holds for reversals too: the short's adverse move is mostly noise, and buying it buys the noise.
+- Short-leg record so far: 16 Nov +₹8,491, 17 Nov +₹13,031, 18 Nov +₹4,059, 19 Nov −₹466, 20 Nov −₹3,356,
+  25 Nov about −₹7,200 (reversed): 3 wins, 3 losses, net about +₹14,500 on the short legs; +₹30,600 on the flip longs.
+- New: Active book (`active.py`, the admin's all-day scan-and-rotate idea, paper) from 10:30; Exit buttons and a
+  per-second live strip on the paper page; manual trades through the API.
+
