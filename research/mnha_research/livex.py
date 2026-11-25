@@ -478,52 +478,8 @@ def price_day(day: int, pick: str, skip: bool, P: dict[str, np.ndarray], flip_re
     return out
 
 
-REV_X = 0.02  # the admin's reversal rule (26 Nov 2026): the short 2% against at a bar close, the stock above its VWAP,
-REV_MKT = 0.0  # and the average stock since 09:20 not negative -> cover and go long the same stock to 15:15.
-# Tested 2023-01..2026-10 (exp/search/reverse_cond.py): 6.89%/month vs 7.46% for the plain rule, worst month -12.5%
-# vs -18.9%, sealed 7.42% vs 8.08%; fires on 14% of sessions. The least costly form of "switch when it goes against us".
-
-
-def reverse_rule_check(now: float | None = None, con=None) -> dict:
-    """At a 5-minute close: the admin's reversal rule on Book A's open short (see REV_X). Fires at most once a day, and
-    never once the short is covered (flip, market stop, admin)."""
-    now = now if now is not None else time.time()
-    i = mstop_bar_due(now)
-    if i is None:
-        return {"checked": False, "why": "not at a bar close"}
-    day = live.today_ist(now)
-    con = con if con is not None else _db()
-    r = con.execute("SELECT status, skip, pick, pick_px, flip FROM livex_days WHERE day=?", (day,)).fetchone()
-    if not r or r[0] != "decided" or r[1] or not r[2] or r[4]:
-        return {"checked": True, "why": "no open short"}
-    if con.execute("SELECT 1 FROM livex_events WHERE day=? AND kind IN ('admin_reverse', 'mstop')", (day,)).fetchone():
-        return {"checked": True, "why": "already covered"}
-    pick, pick_px = r[2], float(r[3])
-    rows = [x[0] for x in con.execute("SELECT symbol FROM livex_rows WHERE day=?", (day,))]
-    px0 = dict(con.execute("SELECT symbol, px_0920 FROM livex_rows WHERE day=?", (day,)).fetchall())
-    q = _ltp_many(rows)
-    if pick not in q or len(q) < live.MIN_ROWS // 2:
-        return {"checked": False, "why": "too few quotes"}
-    mkt = float(np.mean([q[s_] / px0[s_] - 1 for s_ in rows if s_ in q and px0.get(s_)]))
-    slip = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([pick_px]), np.array([day]))[0]) / pick_px)
-    e = pick_px * (1 - slip)
-    lt = q[pick]
-    against = lt / e - 1
-    if against < REV_X or mkt < REV_MKT:
-        return {"checked": True, "bar": i, "against": round(against, 4), "mkt": round(mkt, 4), "reversed": False}
-    bars = live.fetch_range_day([pick], day).get(pick)
-    vwap = None
-    if bars is not None and len(bars):
-        from .sessions import ist_day as _ist_day
-
-        d_ = bars[_ist_day(bars["time"].to_numpy(dtype=np.int64)) == day]
-        tp = (d_["high"] + d_["low"] + d_["close"]) / 3
-        vwap = float((tp * d_["volume"]).sum() / max(float(d_["volume"].sum()), 1.0))
-    if vwap is None or lt <= vwap:
-        return {"checked": True, "bar": i, "against": round(against, 4), "mkt": round(mkt, 4), "vwap": vwap, "reversed": False}
-    out = admin_reverse("reverse", who="rule")
-    out.update({"against": round(against, 4), "mkt": round(mkt, 4), "vwap": round(vwap, 2), "reversed": True, "checked": True})
-    return out
+# 25 Nov 2026: a 2% reversal rule was built at the admin's request and withdrawn the same day (the admin asked for Book A
+# to run exactly as tested). The admin_reverse / admin_close_long records below stay so that day settles correctly.
 
 
 def admin_close_long() -> dict:

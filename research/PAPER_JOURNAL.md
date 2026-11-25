@@ -93,4 +93,7 @@ walk-forward); the live book trades the tested rule, not yesterday's hindsight.
   case would NOT have triggered it (stock +1.35% against at 10:30 with the market at −0.31%).
 - Buttons added to the Live now card: Cover short / Reverse to long (the admin's hand, recorded as `admin_reverse`
   with who=admin; the rule records who=rule).
+- Withdrawn the same day, at the admin's request ("Book A tari rite, je add karvanu kidhu e kaadhi nakh"): the 2%
+  reversal rule and the Cover / Reverse buttons. Book A runs exactly as tested from 26 Nov. The 25 Nov record stays
+  as it happened (admin reversal, admin sell), about −₹9,000.
 
