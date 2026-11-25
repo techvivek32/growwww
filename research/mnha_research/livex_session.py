@@ -104,6 +104,7 @@ def session() -> dict:
     flip_fails = 0
     last_mark = 0.0
     last_mstop_bar = -1
+    last_rev_bar = -1
     squared = False
     summary: dict = {"day": date.isoformat()}
     while True:
@@ -148,6 +149,17 @@ def session() -> dict:
                             summary["mstop"] = res
                     except Exception as e:  # noqa: BLE001
                         log(f"market stop check failed: {e}")
+                # The admin's reversal rule (livex.REV_X): its own try, once per bar close, after the market stop.
+                if bar is not None and bar != last_rev_bar:
+                    try:
+                        res = livex.reverse_rule_check(t, con)
+                        if res.get("checked"):
+                            last_rev_bar = bar
+                        if res.get("reversed"):
+                            summary["reverse"] = res
+                            log(f"reversal rule fired: {res}")
+                    except Exception as e:  # noqa: BLE001
+                        log(f"reversal rule check failed: {e}")
             if decided and not flipped and minute >= 10 * 60 + 15 + 0.5 and now >= next_flip:
                 # Its own try: a flip that is not done yet never holds up book B's stop checks, the square-off
                 # or the settle below, and it backs off instead of re-fetching back to back.

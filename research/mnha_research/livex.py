@@ -476,7 +476,55 @@ def price_day(day: int, pick: str, skip: bool, P: dict[str, np.ndarray], flip_re
     return out
 
 
-def admin_reverse(mode: str = "reverse") -> dict:
+REV_X = 0.02  # the admin's reversal rule (26 Nov 2026): the short 2% against at a bar close, the stock above its VWAP,
+REV_MKT = 0.0  # and the average stock since 09:20 not negative -> cover and go long the same stock to 15:15.
+# Tested 2023-01..2026-10 (exp/search/reverse_cond.py): 6.89%/month vs 7.46% for the plain rule, worst month -12.5%
+# vs -18.9%, sealed 7.42% vs 8.08%; fires on 14% of sessions. The least costly form of "switch when it goes against us".
+
+
+def reverse_rule_check(now: float | None = None, con=None) -> dict:
+    """At a 5-minute close: the admin's reversal rule on Book A's open short (see REV_X). Fires at most once a day, and
+    never once the short is covered (flip, market stop, admin)."""
+    now = now if now is not None else time.time()
+    i = mstop_bar_due(now)
+    if i is None:
+        return {"checked": False, "why": "not at a bar close"}
+    day = live.today_ist(now)
+    con = con if con is not None else _db()
+    r = con.execute("SELECT status, skip, pick, pick_px, flip FROM livex_days WHERE day=?", (day,)).fetchone()
+    if not r or r[0] != "decided" or r[1] or not r[2] or r[4]:
+        return {"checked": True, "why": "no open short"}
+    if con.execute("SELECT 1 FROM livex_events WHERE day=? AND kind IN ('admin_reverse', 'mstop')", (day,)).fetchone():
+        return {"checked": True, "why": "already covered"}
+    pick, pick_px = r[2], float(r[3])
+    rows = [x[0] for x in con.execute("SELECT symbol FROM livex_rows WHERE day=?", (day,))]
+    px0 = dict(con.execute("SELECT symbol, px_0920 FROM livex_rows WHERE day=?", (day,)).fetchall())
+    q = _ltp_many(rows)
+    if pick not in q or len(q) < live.MIN_ROWS // 2:
+        return {"checked": False, "why": "too few quotes"}
+    mkt = float(np.mean([q[s_] / px0[s_] - 1 for s_ in rows if s_ in q and px0.get(s_)]))
+    slip = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([pick_px]), np.array([day]))[0]) / pick_px)
+    e = pick_px * (1 - slip)
+    lt = q[pick]
+    against = lt / e - 1
+    if against < REV_X or mkt < REV_MKT:
+        return {"checked": True, "bar": i, "against": round(against, 4), "mkt": round(mkt, 4), "reversed": False}
+    bars = live.fetch_range_day([pick], day).get(pick)
+    vwap = None
+    if bars is not None and len(bars):
+        from .sessions import ist_day as _ist_day
+
+        d_ = bars[_ist_day(bars["time"].to_numpy(dtype=np.int64)) == day]
+        tp = (d_["high"] + d_["low"] + d_["close"]) / 3
+        vwap = float((tp * d_["volume"]).sum() / max(float(d_["volume"].sum()), 1.0))
+    if vwap is None or lt <= vwap:
+        return {"checked": True, "bar": i, "against": round(against, 4), "mkt": round(mkt, 4), "vwap": vwap, "reversed": False}
+    out = admin_reverse("reverse", who="rule")
+    out.update({"against": round(against, 4), "mkt": round(mkt, 4), "vwap": round(vwap, 2), "reversed": True, "checked": True})
+    return out
+
+
+def admin_reverse(mode: str = "reverse", who: str = "admin") -> dict:
     """The admin's order, by hand: cover Book A's open short NOW at the live price and, with mode "reverse", go long
     the same stock to 15:15 (mode "cover": stay flat). Recorded as an event; settle() prices the day from it.
     Outside the tested rule; the journal says so."""
@@ -499,12 +547,13 @@ def admin_reverse(mode: str = "reverse") -> dict:
     bar = int(min(max((minute - (9 * 60 + 20)) // 5 + 1, 1), EXIT_BAR - 1))  # the 5-minute bar now in progress
     with con:
         con.execute("INSERT OR REPLACE INTO livex_events VALUES(?,?,?,?,?,?)",
-                    (day, "admin_reverse", now, bar, px, json.dumps({"symbol": pick, "mode": mode, "time": f"{int(minute) // 60:02d}:{int(minute) % 60:02d}"})))
+                    (day, "admin_reverse", now, bar, px, json.dumps({"symbol": pick, "mode": mode, "who": who, "time": f"{int(minute) // 60:02d}:{int(minute) % 60:02d}"})))
         # flip=1 marks the short closed for mark()/ticks(); flip_symbol stays empty on a plain cover (no long leg)
         con.execute("UPDATE livex_days SET status='flipped', flip=1, flip_symbol=?, flip_px=?, flip_at=?, info=COALESCE(info,'') || ? WHERE day=?",
-                    (pick if mode == "reverse" else None, px, now, f" | admin {mode} at {px} (bar {bar})", day))
+                    (pick if mode == "reverse" else None, px, now, f" | {who} {mode} at {px} (bar {bar})", day))
     out = {"day": day_to_date(day).isoformat(), "symbol": pick, "price": px, "bar": bar, "mode": mode,
            "action": "short covered, long opened (paper, admin's order)" if mode == "reverse" else "short covered (paper, admin's order)"}
+    out["who"] = who
     log(json.dumps({"admin_reverse": out}))
     return out
 

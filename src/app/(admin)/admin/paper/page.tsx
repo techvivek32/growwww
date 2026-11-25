@@ -46,7 +46,7 @@ export default async function PaperPage() {
           <p className={eyebrow}>Admin · Research</p>
           <h1 className="pub-display mt-1 text-[28px] leading-tight text-ink">Paper trading</h1>
           <p className="mt-1 max-w-[70ch] text-[13px] leading-snug text-ink3">
-            The 2026 intraday rule, run every trading day on live Groww data with no orders: one stock shorted at 09:20 (full ₹5 lakh), a 0.5% market stop, a 10:15 flip into the top gainer on strong mornings, square-off at 15:15. Figures are after brokerage, charges and slippage.
+            The 2026 intraday rule, run every trading day on live Groww data with no orders: one stock shorted at 09:20 (full ₹5 lakh), a 0.5% market stop, a 10:15 flip into the top gainer on strong mornings, square-off at 15:15. From 26 Nov, the admin&apos;s reversal rule: if the short is 2% against at a 5-minute close, the stock is above its VWAP and the average stock is not down, the short is covered and the same stock bought to 15:15 (tested: 6.9%/month vs 7.5% without it; worst month −12.5% vs −18.9%). Figures are after brokerage, charges and slippage.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-4">

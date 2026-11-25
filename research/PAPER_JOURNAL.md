@@ -85,4 +85,12 @@ walk-forward); the live book trades the tested rule, not yesterday's hindsight.
   25 Nov about −₹7,200 (reversed): 3 wins, 3 losses, net about +₹14,500 on the short legs; +₹30,600 on the flip longs.
 - New: Active book (`active.py`, the admin's all-day scan-and-rotate idea, paper) from 10:30; Exit buttons and a
   per-second live strip on the paper page; manual trades through the API.
+- Rule change from Thu 26 Nov (the admin's instruction, "short loss ma hoy ane stock upar jay to long ma switch"):
+  reversal rule in Book A: at a 5-minute close, short ≥ 2% against AND stock above VWAP AND average stock since 09:20
+  ≥ 0 → cover, buy the same stock to 15:15. Chosen as the least costly form of the instruction
+  (`exp/search/reverse_cond.py`, 885 sessions): 6.89%/month vs 7.46% plain, worst month −12.5% vs −18.9%, sealed
+  7.42% vs 8.08%, fires on 14% of sessions. The 1% / 1.5% / no-condition forms lose 2–4%/month. Today's LAURUSLABS
+  case would NOT have triggered it (stock +1.35% against at 10:30 with the market at −0.31%).
+- Buttons added to the Live now card: Cover short / Reverse to long (the admin's hand, recorded as `admin_reverse`
+  with who=admin; the rule records who=rule).
 
