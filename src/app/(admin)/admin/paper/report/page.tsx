@@ -24,7 +24,8 @@ const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, 
 /** Book A fills at the CLOSE of a 5-minute bar: bar 0 closes 09:20, bar b at 09:20 + 5b. */
 const barTime = (b: number) => hhmm(9 * 60 + 20 + 5 * b);
 const atTime = (s: number | null | undefined) => (s ? TIME.format(new Date(s * 1000)) : "—");
-const WHY_A: Record<number, string> = { 0: "15:15 square-off", 1: "stop", 5: "market stop", 6: "covered at 10:15 flip" };
+const WHY_A: Record<number, string> = { 0: "15:15 square-off", 1: "stop", 5: "market stop", 6: "covered at 10:15 flip", 7: "closed by admin" };
+const LEG_NAME: Record<string, string> = { short: "Short", flip_long: "Flip long", admin_long: "Admin long", admin_short: "Admin short" };
 
 const th = "border-b border-line px-2.5 py-1.5 text-left font-mono text-[10px] tracking-[0.08em] text-ink3 uppercase";
 const td = "border-b border-line px-2.5 py-1.5 text-[12px] text-ink";
@@ -69,7 +70,7 @@ export default async function PaperReportPage({ searchParams }: { searchParams: 
     );
   }
 
-  const legsA: LivexLeg[] = r.trades.filter((t) => t.day === chosen.day);
+  const legsA: LivexLeg[] = r.trades.filter((t) => t.day === chosen.day).sort((a, b) => a.entry_bar - b.entry_bar || a.exit_bar - b.exit_bar);
   const netA = legsA.reduce((s, t) => s + t.net, 0);
   const costsA = legsA.reduce((s, t) => s + t.costs, 0);
   const iso = isoOf(chosen.day);
@@ -195,7 +196,7 @@ export default async function PaperReportPage({ searchParams }: { searchParams: 
               <tbody>
                 {legsA.map((t) => (
                   <tr key={t.leg + t.symbol}>
-                    <td className={td}>{t.leg === "flip_long" ? "Flip long" : "Short"}</td>
+                    <td className={td}>{LEG_NAME[t.leg] ?? ((t.side ?? -1) < 0 ? "Short" : "Long")}</td>
                     <td className={`${td} font-semibold`}>{t.symbol}</td>
                     <td className={td}>{t.side < 0 ? "SELL → BUY" : "BUY → SELL"}</td>
                     <td className={`${td} ${num}`}>{t.qty}</td>
@@ -258,7 +259,7 @@ export default async function PaperReportPage({ searchParams }: { searchParams: 
               <tbody>
                 {legsB.map((t) => (
                   <tr key={t.leg + t.symbol}>
-                    <td className={td}>{t.leg === "flip_long" ? "Flip long" : "Short"}</td>
+                    <td className={td}>{LEG_NAME[t.leg] ?? ((t.side ?? -1) < 0 ? "Short" : "Long")}</td>
                     <td className={`${td} font-semibold`}>{t.symbol}</td>
                     <td className={td}>{t.side == null ? "—" : t.side < 0 ? "SELL → BUY" : "BUY → SELL"}</td>
                     <td className={`${td} ${num}`}>{t.qty ?? "—"}</td>

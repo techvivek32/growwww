@@ -13,7 +13,7 @@ const DAY_MON = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short
 const inr = (v: number) => `${v < 0 ? "−" : ""}₹${Math.abs(Math.round(v)).toLocaleString("en-IN")}`;
 const pct = (v: number, d = 2) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(d)}%`;
 const fmtDay = (day: number) => DAY_MON.format(new Date(dayToIso(day)));
-const WHY: Record<number, string> = { 0: "15:15 square-off", 5: "market stop", 6: "covered at 10:15 flip" };
+const WHY: Record<number, string> = { 0: "15:15 square-off", 5: "market stop", 6: "covered at 10:15 flip", 7: "closed by admin" };
 const eyebrow = "font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase";
 const th = "px-3 py-2 text-left font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase";
 const td = "px-3 py-2 text-[12.5px] text-ink";
@@ -78,20 +78,35 @@ const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, 
 /** Book A fills at the CLOSE of a 5-minute bar: bar 0 closes 09:20, bar b at 09:20 + 5b. */
 
 /** The open paper position at the latest live mark, and the day's running P&L so far. */
-function LiveNow({ mark, marks, settled, skip }: { mark: LivexMark | null; marks: LivexReport["marks_today"]; settled: boolean; skip: boolean }) {
+function LiveNow({ mark, marks, today }: { mark: LivexMark | null; marks: LivexReport["marks_today"]; today: LivexDay | null }) {
   // Only while a trade is live. Once the day is settled (or skipped, or before 09:20) the card is empty: the
   // finished day lives in Day logs, and the next session's log starts with its own 09:20 decision.
+  const settled = today?.status === "settled";
+  const skip = Boolean(today?.skip);
+  const decided = !settled && !skip && (today?.status === "decided" || today?.status === "flipped") && Boolean(today?.pick);
+  if (decided && !mark && today) {
+    // between the 09:20 decision and the first live mark (09:22): the short is open, the strip above has its price
+    return (
+      <Card className="border-brand/40">
+        <CardHead
+          title="Live now"
+          sub={`Book A: short ${today.pick} taken at 09:20 @ ₹${today.pick_px?.toFixed(2) ?? "—"}. The first live mark lands at 09:22; the live price is in the strip above.`}
+          right={<Pill tone="warn">short open</Pill>}
+        />
+      </Card>
+    );
+  }
   if (settled || skip || !mark) {
     return (
       <Card className="border-brand/40">
         <CardHead
           title="Live now"
           sub={settled
-            ? "No trade available. Today's trades are settled; the next trade is taken at 09:20 on the next trading day, and its log starts here then."
+            ? "No trade available. Today's Book A trades are settled; the next one is taken at 09:20 on the next trading day, and its log starts here then."
             : skip
-              ? "No trade available. Today was skipped by the regime filter; the next trade is taken at 09:20 on the next trading day."
+              ? "Book A: no trade today. The regime filter skipped the 09:20 short; Book A's next trade is at 09:20 on the next trading day. The Active (auto) book still scans today, and any open Active or Manual position shows in the live strip above."
               : "No trade available yet. The day's log starts here with the 09:20 decision and runs to the 15:15 square-off."}
-          right={<Pill tone="neutral">no trade available</Pill>}
+          right={<Pill tone="neutral">{skip && !settled ? "Book A skipped today" : "no trade available"}</Pill>}
         />
       </Card>
     );
@@ -176,6 +191,7 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
   for (const t of r.trades) netByDay.set(t.day, (netByDay.get(t.day) ?? 0) + t.net);
   const legsByDay = new Map<number, LivexLeg[]>();
   for (const t of r.trades) legsByDay.set(t.day, [...(legsByDay.get(t.day) ?? []), t]);
+  for (const xs of legsByDay.values()) xs.sort((a, b) => a.entry_bar - b.entry_bar || a.exit_bar - b.exit_bar); // in time order
   const manualByDay = new Map<string, ManualTrade[]>();
   for (const m of data.manual ?? []) manualByDay.set(m.day, [...(manualByDay.get(m.day) ?? []), m]);
   // days with only active/manual trades (no Book A record) still get a row
@@ -196,7 +212,7 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
         {ab ? (
           <>
             <StatTile label="Net so far · all books" value={inr(ab.net_rs)} sub={`Book A ${inr(ab.book_a_rs)} · Active (auto) ${inr(ab.active_rs ?? 0)} · Manual (admin) ${inr(ab.manual_rs ?? 0)}${ab.today_open_day ? " · today's closed trades included" : ""}`} tone={ab.net_rs > 0 ? "up" : ab.net_rs < 0 ? "down" : "neutral"} />
-            <StatTile label="Sessions" value={String(ab.sessions)} sub={`finished · ${r.skip_days} skipped · ${r.flip_days} flipped · ${ab.active_trades ?? 0} active (auto) · ${ab.manual_trades ?? 0} manual (admin) trades${ab.open_trades ? ` · ${ab.open_trades} open` : ""}`} />
+            <StatTile label="Sessions" value={String(ab.sessions)} sub={`finished · ${r.skip_days} skipped · ${r.flip_days} flipped${r.admin_days ? ` · ${r.admin_days} by admin` : ""} · ${ab.active_trades ?? 0} active (auto) · ${ab.manual_trades ?? 0} manual (admin) trades${ab.open_trades ? ` · ${ab.open_trades} open` : ""}`} />
             <StatTile label="Winning days" value={ab.win_rate == null ? "—" : `${Math.round(ab.win_rate * 100)}%`} sub="all books together" />
             <StatTile label="Worst day" value={ab.worst_day_rs == null ? "—" : inr(ab.worst_day_rs)} tone={ab.worst_day_rs != null && ab.worst_day_rs < 0 ? "down" : "neutral"} sub="all books together" />
             <StatTile label="Largest fall" value={ab.max_fall_rs == null ? "—" : inr(-ab.max_fall_rs)} sub="from the running peak, all books" />
@@ -215,7 +231,7 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
       {(data.manual_error || data.all_books_error) && (
         <p className="text-[12px] text-warn">Active and manual trades could not be read on this refresh ({data.manual_error ?? data.all_books_error}); the tiles show Book A only until the next refresh.</p>
       )}
-      <LiveNow mark={r.mark ?? null} marks={r.marks_today ?? []} settled={today?.status === "settled"} skip={Boolean(today?.skip)} />
+      <LiveNow mark={r.mark ?? null} marks={r.marks_today ?? []} today={today ?? null} />
 
       <Card pad={false}>
         <div className="p-4 sm:p-5 pb-0 sm:pb-0">

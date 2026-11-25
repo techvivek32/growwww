@@ -100,6 +100,7 @@ function Body({ days, log, page }: { days: LogDayIndex[]; log: DayLog | null; pa
 
 function BookA({ log }: { log: DayLog }) {
   const a = log.book_a;
+  const adminRev = log.events.find((e) => e.kind === "admin_reverse");
   if (!a) return <Card><CardHead title="Book A" sub="No decision recorded for this day (the session did not run, or it was a holiday)." /></Card>;
   const flags = a.flags as { n_gap_top20?: boolean; breadth_top20?: boolean; monday?: boolean; skip?: boolean };
   const why = [flags.n_gap_top20 ? "NIFTY gap in the top 20%" : null, flags.breadth_top20 ? "first-bar breadth in the top 20%" : null, flags.monday ? "Monday" : null].filter(Boolean);
@@ -110,7 +111,7 @@ function BookA({ log }: { log: DayLog }) {
           title="Book A (the tested rule)"
           sub={a.skip
             ? `Skipped: two or more of the regime flags were set (${why.join(", ") || "flags"}), so no trade was taken.`
-            : `09:20 decision at ${a.decided_at ?? "—"}: SHORT ${a.pick ?? "—"} at ₹${a.pick_px?.toFixed(2) ?? "—"} (the lowest score among ${a.n_rows ?? "—"} names; ${why.length ? `regime flags set: ${why.join(", ")}` : "no regime flags"}). 10:15 flip: ${a.flip == null ? "not yet decided" : a.flip ? `YES → ${a.flip_symbol ?? "—"} at ₹${a.flip_px?.toFixed(2) ?? "—"}${a.flip_at ? ` (${a.flip_at})` : ""}` : "no (the average stock was not strong enough)"}. ${a.settled_at ? `Settled at ${a.settled_at}.` : "Not settled yet."}`}
+            : `09:20 decision at ${a.decided_at ?? "—"}: SHORT ${a.pick ?? "—"} at ₹${a.pick_px?.toFixed(2) ?? "—"} (the lowest score among ${a.n_rows ?? "—"} names; ${why.length ? `regime flags set: ${why.join(", ")}` : "no regime flags"}). 10:15 flip: ${adminRev ? `superseded by the admin, who ${String(adminRev.info.mode ?? "reverse") === "cover" ? "covered the short" : "reversed the short into a long"} at ${adminRev.time ?? "—"} (₹${adminRev.value?.toFixed(2) ?? "—"})` : a.flip == null ? "not yet decided" : a.flip ? `YES → ${a.flip_symbol ?? "—"} at ₹${a.flip_px?.toFixed(2) ?? "—"}${a.flip_at ? ` (${a.flip_at})` : ""}` : "no (the average stock was not strong enough)"}. ${a.settled_at ? `Settled at ${a.settled_at}.` : "Not settled yet."}`}
           right={<Pill tone={a.net == null ? "neutral" : a.net >= 0 ? "up" : "down"}>{a.status}{a.net != null ? ` · ${inr(a.net)}` : ""}</Pill>}
         />
         {a.info && <p className="mt-2 text-[12px] text-ink3">{a.info}</p>}

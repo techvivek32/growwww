@@ -699,7 +699,8 @@ def mark() -> dict:
         slip = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([pick_px]), np.array([day]))[0]) / pick_px)
         e = pick_px * (1 - slip)
         pq = math.floor(BOOK / e)
-        short_open = not (status == "flipped" and flip_on)
+        stopped = con.execute("SELECT 1 FROM livex_events WHERE day=? AND kind='mstop'", (day,)).fetchone() is not None
+        short_open = not ((status == "flipped" and flip_on) or stopped)  # covered by the 10:15 flip, the admin, or the market stop
         rs = _reshort(con, day)
         if rs is not None:  # the admin re-opened the short by hand: that is the open short now
             slip = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([rs[1]]), np.array([day]))[0]) / rs[1])
@@ -744,7 +745,8 @@ def ticks() -> dict:
             slip = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([rs[1]]), np.array([day]))[0]) / rs[1])
             e = rs[1] * (1 - slip)
             items.append({"book": "Book A", "leg": "short (re-opened)", "side": -1, "symbol": pick, "entry": round(e, 2), "qty": math.floor(BOOK / e)})
-        elif pick and not (status == "flipped" and flip_on):
+        elif pick and not (status == "flipped" and flip_on) and not con.execute(
+                "SELECT 1 FROM livex_events WHERE day=? AND kind='mstop'", (day,)).fetchone():  # not covered by the market stop
             slip = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([pick_px]), np.array([day]))[0]) / pick_px)
             e = pick_px * (1 - slip)
             items.append({"book": "Book A", "leg": "short", "side": -1, "symbol": pick, "entry": round(e, 2), "qty": math.floor(BOOK / e)})
@@ -857,9 +859,11 @@ def report() -> dict:
     eq = daily.cumsum()
     mk = con.execute("SELECT * FROM livex_marks WHERE day=? ORDER BY minute DESC LIMIT 1", (live.today_ist(),)).fetchone()
     marks = [dict(x) for x in con.execute("SELECT minute, running_net, mkt_move, pick_ltp FROM livex_marks WHERE day=? ORDER BY minute", (live.today_ist(),))]
+    adm = {int(x[0]) for x in con.execute("SELECT DISTINCT day FROM livex_events WHERE kind='admin_reverse'")}  # the admin's hand, not the rule's flip
     return {"mark": dict(mk) if mk else None, "marks_today": marks,
             "sessions": {k: int(v) for k, v in D.status.value_counts().items()}, "skip_days": int(D.skip.fillna(0).sum()),
-            "flip_days": int(D[D.skip.fillna(0) == 0].flip.fillna(0).sum()), "net_rs": round(float(daily.sum())), "pct_of_book": round(float(daily.sum() / BOOK * 100), 2),
+            "flip_days": int(D[(D.skip.fillna(0) == 0) & ~D.day.isin(adm)].flip.fillna(0).sum()), "admin_days": int(D.day.isin(adm).sum()),
+            "net_rs": round(float(daily.sum())), "pct_of_book": round(float(daily.sum() / BOOK * 100), 2),
             "per_month_pct": {str(k): round(float(v / BOOK * 100), 2) for k, v in mo.items()},
             "day_win_rate": round(float((daily > 0).mean()), 3) if len(daily) else None, "worst_day_rs": round(float(daily.min())) if len(daily) else None,
             "max_fall_rs": round(float((eq.cummax().clip(lower=0) - eq).max())) if len(daily) else None,

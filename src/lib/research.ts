@@ -65,6 +65,8 @@ export interface LivexReport {
   sessions: Record<string, number>;
   skip_days: number;
   flip_days: number;
+  /** sessions where the admin covered or reversed the short by hand (not counted as flips) */
+  admin_days?: number;
   net_rs: number;
   pct_of_book: number;
   per_month_pct: Record<string, number>;
