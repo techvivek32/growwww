@@ -209,8 +209,8 @@ function Body({ data }: { data: LiveSummary }) {
       {data.manual && data.manual.length > 0 && (
         <Card className="border-warn/40">
           <CardHead
-            title="Manual paper trades"
-            sub="Trades the admin asked for by hand, outside the tested rule. Paper only; marked at the live price while open; Exit closes one at the live price. They are not part of Book A or Book B."
+            title="Active & manual paper trades"
+            sub="Active: the all-day scan-and-rotate book (one position at a time, trailing 0.8% stop, exits on a VWAP cross or when the market turns, at most 4 trades a day; the admin's idea, not backtested). Manual: trades the admin asked for by hand. Paper only; marked at the live price while open; Exit closes one at the live price. Not part of Book A or Book B."
             right={<Pill tone="warn">manual</Pill>}
           />
           <div className="overflow-x-auto">
@@ -227,7 +227,7 @@ function Body({ data }: { data: LiveSummary }) {
                   return (
                     <tr key={`${m.day}-${m.symbol}-${m.entry_time}`} className="border-b border-line last:border-0">
                       <td className={td}>{m.day}</td>
-                      <td className={td}><span className={`font-semibold ${m.side === "short" ? "text-down" : "text-up"}`}>{m.side === "short" ? "SELL" : "BUY"}</span> {m.qty} {m.symbol}</td>
+                      <td className={td}><span className="font-mono text-[10px] tracking-[0.06em] text-ink3 uppercase">{m.book === "active" ? "active" : "manual"}</span> <span className={`font-semibold ${m.side === "short" ? "text-down" : "text-up"}`}>{m.side === "short" ? "SELL" : "BUY"}</span> {m.qty} {m.symbol}</td>
                       <td className={`${td} tnum text-right`}>{m.entry.toFixed(2)} <span className="text-ink3">{m.entry_time.slice(0, 5)}</span></td>
                       <td className={`${td} tnum text-right`}>{m.stop.toFixed(2)}</td>
                       <td className={`${td} tnum text-right`}>{m.status === "closed" ? `${m.exit?.toFixed(2)} ${m.exit_time?.slice(0, 5) ?? ""}` : (m.ltp?.toFixed(2) ?? "—")}</td>

@@ -1,0 +1,9 @@
+[Unit]
+Description=MNHA active paper book session (09:30 IST, Mon-Fri)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 04:00:00 UTC
+Persistent=false
+
+[Install]
+WantedBy=timers.target

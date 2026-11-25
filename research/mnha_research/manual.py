@@ -40,11 +40,11 @@ def _watch() -> None:
         pass
 
 
-def open_trade(symbol: str, side: str, note: str = "", stop_pct: float = 0.01) -> dict:
+def open_trade(symbol: str, side: str, note: str = "", stop_pct: float = 0.01, book: str = "manual", watch: bool = True) -> dict:
     symbol = symbol.upper().strip()
     side = "short" if side.lower().startswith("s") else "long"
-    book = _load()
-    if any(r["symbol"] == symbol and r["status"] == "open" for r in book):
+    recs = _load()
+    if any(r["symbol"] == symbol and r["status"] == "open" for r in recs):
         raise ValueError(f"{symbol} is already open")
     q, at = live.ltp([symbol, "NIFTY"])
     if symbol not in q:
@@ -53,13 +53,14 @@ def open_trade(symbol: str, side: str, note: str = "", stop_pct: float = 0.01) -
     entry = round(px * (1 + _slip(px) * sd), 2)
     qty = int(BOOK // entry)
     t = _ist(at)
-    rec = {"day": t[:10], "book": "manual", "side": side, "symbol": symbol, "entry_time": t[11:], "ltp_at_entry": px, "entry": entry, "qty": qty,
+    rec = {"day": t[:10], "book": book, "side": side, "symbol": symbol, "entry_time": t[11:], "ltp_at_entry": px, "entry": entry, "qty": qty,
            "notional": round(entry * qty, 2), "stop": round(entry * (1 - stop_pct * sd), 2),
            "stop_rule": f"{stop_pct * 100:g}% stop; exit if NIFTY moves 0.5% against from entry; square-off 15:15",
            "nifty_at_entry": q.get("NIFTY"), "status": "open", "note": note}
-    book.append(rec)
-    _save(book)
-    _watch()
+    recs.append(rec)
+    _save(recs)
+    if watch:
+        _watch()
     return rec
 
 

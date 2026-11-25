@@ -584,7 +584,8 @@ def ticks() -> dict:
     if p.exists():
         for m in json.loads(p.read_text()):
             if m.get("status") == "open":
-                items.append({"book": "Manual", "leg": m["side"], "side": -1 if m["side"] == "short" else 1, "symbol": m["symbol"], "entry": m["entry"], "qty": m["qty"]})
+                items.append({"book": "Active" if m.get("book") == "active" else "Manual", "leg": m["side"], "side": -1 if m["side"] == "short" else 1,
+                              "symbol": m["symbol"], "entry": m["entry"], "qty": m["qty"]})
     syms = sorted({it["symbol"] for it in items} | {"NIFTY"})
     q = _ltp_many(syms) if items else _ltp_many(["NIFTY"])
     total = 0.0
