@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import ManualExit from "./ManualExit";
+import LiveTicks from "./LiveTicks";
 import Link from "next/link";
 import { requireAdminPage } from "@/lib/access";
 import { liveSummary, dayToIso, type LiveSummary, type LivexDay, type LivexLeg, type LivexMark, type LivexReport } from "@/lib/research";
@@ -56,6 +57,7 @@ export default async function PaperPage() {
           </Link>
         </div>
       </div>
+      <LiveTicks every={1000} pageEvery={10000} />
 
       {state.kind === "unconfigured" && (
         <Card>

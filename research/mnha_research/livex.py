@@ -559,6 +559,43 @@ def mark() -> dict:
     return out
 
 
+def ticks() -> dict:
+    """Every open paper position (Book A legs, Book B legs, manual trades) at the live price: one LTP call, no writes.
+    For the dashboard's per-second strip; the official figures still come from the bars at settle."""
+    now = time.time()
+    day = live.today_ist(now)
+    con = _db()
+    items: list[dict] = []
+    r = con.execute("SELECT status, skip, pick, pick_px, flip, flip_symbol, flip_px FROM livex_days WHERE day=?", (day,)).fetchone()
+    phase = r[0] if r else "not decided"
+    if r and r[0] in ("decided", "flipped") and not r[1]:
+        status, _skip, pick, pick_px, flip_on, flip_sym, flip_px = r
+        if pick and not (status == "flipped" and flip_on):
+            slip = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([pick_px]), np.array([day]))[0]) / pick_px)
+            e = pick_px * (1 - slip)
+            items.append({"book": "Book A", "leg": "short", "side": -1, "symbol": pick, "entry": round(e, 2), "qty": math.floor(BOOK / e)})
+        if flip_on and flip_sym:
+            s2 = max(lab.SLIP_BPS / 1e4, 0.5 * float(lab.tick_size(np.array([flip_px]), np.array([day]))[0]) / flip_px)
+            e2 = flip_px * (1 + s2)
+            items.append({"book": "Book A", "leg": "flip long", "side": 1, "symbol": flip_sym, "entry": round(e2, 2), "qty": math.floor(BOOK / e2)})
+    for leg, sym, side, qty, entry in con.execute("SELECT leg, symbol, side, qty, entry FROM livex_fast WHERE day=? AND exit IS NULL", (day,)):
+        items.append({"book": "Book B", "leg": leg, "side": int(side), "symbol": sym, "entry": round(float(entry), 2), "qty": int(qty)})
+    p = config.DATA / "manual_trades.json"
+    if p.exists():
+        for m in json.loads(p.read_text()):
+            if m.get("status") == "open":
+                items.append({"book": "Manual", "leg": m["side"], "side": -1 if m["side"] == "short" else 1, "symbol": m["symbol"], "entry": m["entry"], "qty": m["qty"]})
+    syms = sorted({it["symbol"] for it in items} | {"NIFTY"})
+    q = _ltp_many(syms) if items else _ltp_many(["NIFTY"])
+    total = 0.0
+    for it in items:
+        lt = q.get(it["symbol"])
+        it["ltp"] = lt
+        it["running_pnl"] = None if lt is None else round(it["side"] * (lt - it["entry"]) * it["qty"], 2)
+        total += it["running_pnl"] or 0.0
+    return {"at": now, "day": day_to_date(day).isoformat(), "phase": phase, "nifty": q.get("NIFTY"), "items": items, "running_total": round(total, 2)}
+
+
 def report() -> dict:
     con = _db()
     D = pd.read_sql_query("SELECT * FROM livex_days ORDER BY day", con)

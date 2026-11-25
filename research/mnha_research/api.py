@@ -22,7 +22,7 @@ app = FastAPI(title="MNHA research", version="0.1.0")
 async def _local_only(request: Request, call_next):
     """Everything except /health and /live is for localhost (the SSH tunnel), whatever the bind address."""
     host = request.client.host if request.client else ""
-    if request.url.path not in ("/health", "/live", "/live/today") and host not in ("127.0.0.1", "::1"):
+    if request.url.path not in ("/health", "/live", "/live/today", "/live/ticks") and host not in ("127.0.0.1", "::1"):
         return JSONResponse({"detail": "local only"}, status_code=403)
     return await call_next(request)
 
@@ -219,6 +219,15 @@ def live_today(authorization: str | None = Header(default=None)) -> dict:
     from . import livex
 
     return livex.today_state()
+
+
+@app.get("/live/ticks")
+def live_ticks(authorization: str | None = Header(default=None)) -> dict:
+    """Open paper positions at the live price, for the dashboard's per-second strip (one LTP call, no writes)."""
+    _authorised(authorization)
+    from . import livex
+
+    return livex.ticks()
 
 
 @app.post("/live/manual/exit")

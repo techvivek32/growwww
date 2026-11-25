@@ -147,7 +147,7 @@ export type ResearchState =
   | { kind: "unconfigured" }
   | { kind: "error"; message: string };
 
-/** One fetch per page view; the box updates three times a trading day, so a minute of caching is plenty. */
+/** One fetch per page view, uncached: the paper page re-renders every 10 s during the session. */
 export async function liveSummary(): Promise<ResearchState> {
   const url = process.env.RESEARCH_API_URL;
   const token = process.env.RESEARCH_API_TOKEN;
@@ -155,7 +155,7 @@ export async function liveSummary(): Promise<ResearchState> {
   try {
     const r = await fetch(`${url.replace(/\/$/, "")}/live`, {
       headers: { Authorization: `Bearer ${token}` },
-      next: { revalidate: 60 },
+      cache: "no-store",
       signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) return { kind: "error", message: `research box answered ${r.status}` };
