@@ -253,21 +253,6 @@ def live_ticks(authorization: str | None = Header(default=None)) -> dict:
     return livex.ticks()
 
 
-@app.post("/live/book-a/admin")
-def book_a_admin(body: dict = Body(...), authorization: str | None = Header(default=None)) -> dict:
-    """The admin's hand on Book A's open short: {"mode": "cover"} covers it now, {"mode": "reverse"} covers and goes
-    long the same stock to 15:15. Paper only; recorded as an event and priced at settle. Local only."""
-    _authorised(authorization)
-    from . import livex
-
-    try:
-        mode = str(body.get("mode") or "reverse")
-        fn = {"close-long": livex.admin_close_long, "reshort": livex.admin_reshort, "close-reshort": livex.admin_close_reshort}.get(mode)
-        return {"ok": True, "result": fn() if fn else livex.admin_reverse(mode)}
-    except RuntimeError as e:
-        raise HTTPException(400, str(e))
-
-
 @app.post("/live/manual/exit")
 def manual_exit(body: dict = Body(...), authorization: str | None = Header(default=None)) -> dict:
     """Close an open manual paper trade at the live price (the admin's Exit button). Local only; paper only."""

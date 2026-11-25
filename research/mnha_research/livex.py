@@ -507,7 +507,7 @@ def admin_reshort() -> dict:
     day, minute = live.today_ist(now), live.minute_ist(now)
     con = _db()
     r = con.execute("SELECT status, skip, pick FROM livex_days WHERE day=?", (day,)).fetchone()
-    if not r or r[0] != "flipped" or r[1] or not r[2]:
+    if not r or r[0] not in ("decided", "flipped") or r[1] or not r[2]:
         raise RuntimeError("no covered Book A short to re-open today")
     if not con.execute("SELECT 1 FROM livex_events WHERE day=? AND kind='admin_reverse'", (day,)).fetchone():
         raise RuntimeError("the short was not covered by hand today")
@@ -522,7 +522,7 @@ def admin_reshort() -> dict:
     with con:
         con.execute("INSERT OR REPLACE INTO livex_events VALUES(?,?,?,?,?,?)",
                     (day, "admin_reshort", now, bar, px, json.dumps({"symbol": pick, "time": f"{int(minute) // 60:02d}:{int(minute) % 60:02d}"})))
-        con.execute("UPDATE livex_days SET info=COALESCE(info,'') || ? WHERE day=?", (f" | admin re-short at {px} (bar {bar})", day))
+        pass  # events only: the day row is the rule's (see admin_reverse)
     out = {"day": day_to_date(day).isoformat(), "symbol": pick, "price": px, "bar": bar, "action": "short re-opened (paper, admin's order)"}
     log(json.dumps({"admin_reshort": out}))
     return out
@@ -555,13 +555,14 @@ def admin_close_long() -> dict:
     now = time.time()
     day, minute = live.today_ist(now), live.minute_ist(now)
     con = _db()
-    r = con.execute("SELECT status, flip, flip_symbol FROM livex_days WHERE day=?", (day,)).fetchone()
-    ev = con.execute("SELECT 1 FROM livex_events WHERE day=? AND kind='admin_reverse'", (day,)).fetchone()
-    if not r or r[0] != "flipped" or not r[1] or not r[2] or not ev:
+    r = con.execute("SELECT status, skip, pick FROM livex_days WHERE day=?", (day,)).fetchone()
+    ev = con.execute("SELECT info FROM livex_events WHERE day=? AND kind='admin_reverse'", (day,)).fetchone()
+    mode = (json.loads(ev[0] or "{}").get("mode") or "reverse") if ev else None
+    if not r or r[1] or not r[2] or mode != "reverse":
         raise RuntimeError("no open reversal long today")
     if con.execute("SELECT 1 FROM livex_events WHERE day=? AND kind='admin_close_long'", (day,)).fetchone():
         raise RuntimeError("the long is already closed")
-    sym = r[2]
+    sym = r[2]  # the reversal long is in the 09:20 pick
     q = _ltp_many([sym])
     if sym not in q:
         raise RuntimeError(f"no live price for {sym}")
@@ -570,7 +571,7 @@ def admin_close_long() -> dict:
     with con:
         con.execute("INSERT OR REPLACE INTO livex_events VALUES(?,?,?,?,?,?)",
                     (day, "admin_close_long", now, bar, px, json.dumps({"symbol": sym, "time": f"{int(minute) // 60:02d}:{int(minute) % 60:02d}"})))
-        con.execute("UPDATE livex_days SET flip_symbol=NULL, info=COALESCE(info,'') || ? WHERE day=?", (f" | admin closed the long at {px} (bar {bar})", day))
+        pass  # events only: the day row is the rule's (see admin_reverse)
     out = {"day": day_to_date(day).isoformat(), "symbol": sym, "price": px, "bar": bar, "action": "reversal long sold (paper, admin's order)"}
     log(json.dumps({"admin_close_long": out}))
     return out
@@ -600,9 +601,9 @@ def admin_reverse(mode: str = "reverse", who: str = "admin") -> dict:
     with con:
         con.execute("INSERT OR REPLACE INTO livex_events VALUES(?,?,?,?,?,?)",
                     (day, "admin_reverse", now, bar, px, json.dumps({"symbol": pick, "mode": mode, "who": who, "time": f"{int(minute) // 60:02d}:{int(minute) % 60:02d}"})))
-        # flip=1 marks the short closed for mark()/ticks(); flip_symbol stays empty on a plain cover (no long leg)
-        con.execute("UPDATE livex_days SET status='flipped', flip=1, flip_symbol=?, flip_px=?, flip_at=?, info=COALESCE(info,'') || ? WHERE day=?",
-                    (pick if mode == "reverse" else None, px, now, f" | {who} {mode} at {px} (bar {bar})", day))
+        # The event alone records it: _legs_today() and settle() read it. The day row stays the rule's own, because
+        # the website's real-money executor reads it (today_state): a paper override must never move a real order,
+        # silence the market-stop heartbeat, or corrupt the row's JSON info.
     out = {"day": day_to_date(day).isoformat(), "symbol": pick, "price": px, "bar": bar, "mode": mode,
            "action": "short covered, long opened (paper, admin's order)" if mode == "reverse" else "short covered (paper, admin's order)"}
     out["who"] = who
