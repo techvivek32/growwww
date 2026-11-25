@@ -429,7 +429,7 @@ def flip() -> dict:
 
 
 def price_day(day: int, pick: str, skip: bool, P: dict[str, np.ndarray], flip_rec: tuple | None = None, slip_bps: float = lab.SLIP_BPS,
-              admin: tuple[int, float] | None = None) -> list[dict]:
+              admin: tuple | None = None) -> list[dict]:
     """The day's legs priced exactly like exp/search/engine.day_pnl for this variant. `admin` = (bar, price) when the
     admin reversed the short into a long of the same stock by hand (livex_events 'admin_reverse'): the short is covered
     at that price in that bar (unless the market stop got there first) and a long runs from there to 15:15."""
@@ -458,7 +458,7 @@ def price_day(day: int, pick: str, skip: bool, P: dict[str, np.ndarray], flip_re
                 "why": int(why), "gross": float(gross), "costs": costs, "net": float(gross - costs)}
     out.append(leg("short", pick, -1, q, e, x, 0, xbar, why))
     if admin is not None:
-        if why == 7:  # the long only exists if the short was still open when the admin reversed it
+        if why == 7 and (len(admin) < 3 or admin[2] == "reverse"):  # the long only exists on a reversal of a still-open short
             g = P[pick]
             s2 = max(slip_bps / 1e4, 0.5 * float(lab.tick_size(np.array([admin[1]]), np.array([day]))[0]) / admin[1])
             e2 = admin[1] * (1 + s2)
@@ -476,9 +476,11 @@ def price_day(day: int, pick: str, skip: bool, P: dict[str, np.ndarray], flip_re
     return out
 
 
-def admin_reverse() -> dict:
-    """The admin's order, by hand: cover Book A's open short NOW at the live price and go long the same stock to
-    15:15. Recorded as an event; settle() prices the day from it. Outside the tested rule; the journal says so."""
+def admin_reverse(mode: str = "reverse") -> dict:
+    """The admin's order, by hand: cover Book A's open short NOW at the live price and, with mode "reverse", go long
+    the same stock to 15:15 (mode "cover": stay flat). Recorded as an event; settle() prices the day from it.
+    Outside the tested rule; the journal says so."""
+    mode = "cover" if str(mode).lower().startswith("c") else "reverse"
     now = time.time()
     day, minute = live.today_ist(now), live.minute_ist(now)
     con = _db()
@@ -497,10 +499,12 @@ def admin_reverse() -> dict:
     bar = int(min(max((minute - (9 * 60 + 20)) // 5 + 1, 1), EXIT_BAR - 1))  # the 5-minute bar now in progress
     with con:
         con.execute("INSERT OR REPLACE INTO livex_events VALUES(?,?,?,?,?,?)",
-                    (day, "admin_reverse", now, bar, px, json.dumps({"symbol": pick, "time": f"{int(minute) // 60:02d}:{int(minute) % 60:02d}"})))
+                    (day, "admin_reverse", now, bar, px, json.dumps({"symbol": pick, "mode": mode, "time": f"{int(minute) // 60:02d}:{int(minute) % 60:02d}"})))
+        # flip=1 marks the short closed for mark()/ticks(); flip_symbol stays empty on a plain cover (no long leg)
         con.execute("UPDATE livex_days SET status='flipped', flip=1, flip_symbol=?, flip_px=?, flip_at=?, info=COALESCE(info,'') || ? WHERE day=?",
-                    (pick, px, now, f" | admin reversal at {px} (bar {bar})", day))
-    out = {"day": day_to_date(day).isoformat(), "symbol": pick, "price": px, "bar": bar, "action": "short covered, long opened (paper, admin's order)"}
+                    (pick if mode == "reverse" else None, px, now, f" | admin {mode} at {px} (bar {bar})", day))
+    out = {"day": day_to_date(day).isoformat(), "symbol": pick, "price": px, "bar": bar, "mode": mode,
+           "action": "short covered, long opened (paper, admin's order)" if mode == "reverse" else "short covered (paper, admin's order)"}
     log(json.dumps({"admin_reverse": out}))
     return out
 
@@ -528,8 +532,12 @@ def settle(day: int | None = None) -> dict:
         do, top, _med = flip_decision(P)
         flip_rec = (do, top, np.nan)
         store_flip = (int(do), top, float(P[top][3, FLIP_BAR]) if do and top else None)
-    ev = con.execute("SELECT bar, value FROM livex_events WHERE day=? AND kind='admin_reverse'", (day,)).fetchone()
-    legs = price_day(day, r[2], bool(r[1]), P, flip_rec, admin=(int(ev[0]), float(ev[1])) if ev else None)
+    ev = con.execute("SELECT bar, value, info FROM livex_events WHERE day=? AND kind='admin_reverse'", (day,)).fetchone()
+    admin = None
+    if ev:
+        mode = (json.loads(ev[2] or "{}").get("mode") or "reverse") if ev[2] else "reverse"
+        admin = (int(ev[0]), float(ev[1]), mode)
+    legs = price_day(day, r[2], bool(r[1]), P, flip_rec, admin=admin)
     with con:
         if store_flip is not None:
             con.execute("UPDATE livex_days SET flip=?, flip_symbol=?, flip_px=? WHERE day=? AND flip IS NULL", (*store_flip, day))

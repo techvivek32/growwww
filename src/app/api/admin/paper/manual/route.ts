@@ -11,11 +11,11 @@ export async function POST(req: Request) {
   const url = process.env.RESEARCH_API_URL;
   const token = process.env.RESEARCH_API_TOKEN;
   if (!url || !token) return NextResponse.json({ ok: false, error: "research box not configured" }, { status: 503 });
-  const body = (await req.json().catch(() => ({}))) as { action?: string; symbol?: string; entry_time?: string; side?: string; note?: string };
-  const action = body.action === "open" ? "open" : "exit";
+  const body = (await req.json().catch(() => ({}))) as { action?: string; symbol?: string; entry_time?: string; side?: string; note?: string; mode?: string };
+  const action = body.action === "open" ? "open" : body.action === "book-a" ? "book-a" : "exit";
   if (!body.symbol) return NextResponse.json({ ok: false, error: "symbol required" }, { status: 400 });
   try {
-    const r = await fetch(`${url.replace(/\/$/, "")}/live/manual/${action}`, {
+    const r = await fetch(`${url.replace(/\/$/, "")}${action === "book-a" ? "/live/book-a/admin" : `/live/manual/${action}`}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ ...body, why: action === "exit" ? "admin exit (button)" : undefined }),

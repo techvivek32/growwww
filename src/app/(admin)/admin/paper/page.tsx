@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import ManualExit from "./ManualExit";
 import LiveTicks from "./LiveTicks";
+import BookAAction from "./BookAAction";
 import Link from "next/link";
 import { requireAdminPage } from "@/lib/access";
 import { liveSummary, dayToIso, type LiveSummary, type LivexDay, type LivexLeg, type LivexMark, type LivexReport } from "@/lib/research";
@@ -96,6 +97,7 @@ function LiveNow({ mark, marks }: { mark: LivexMark; marks: LivexReport["marks_t
           <dt className={eyebrow}>{shortOpen ? "Short (open)" : "Short (covered)"}</dt>
           <dd className="mt-1 text-[15px] font-semibold text-ink">{mark.pick ?? "—"}</dd>
           <dd className="tnum text-[12px] text-ink3">entry {mark.pick_entry?.toFixed(2) ?? "—"} · now {mark.pick_ltp?.toFixed(2) ?? "—"} · {mark.pick_qty ?? "—"} sh</dd>
+          {shortOpen && mark.pick && <dd className="mt-2"><BookAAction symbol={mark.pick} /></dd>}
         </div>
         <div>
           <dt className={eyebrow}>Short P&L</dt>

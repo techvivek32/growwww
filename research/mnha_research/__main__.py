@@ -58,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--year", type=int, help="model year (live-train)")
     p.add_argument("--if-missing", action="store_true", help="live-train / livex-train: keep a year already frozen")
     p.add_argument("--no-wait", action="store_true", help="live-decide: do not wait for 09:21")
+    p.add_argument("--mode", help="livex-reverse: cover | reverse")
     a = p.parse_args(argv)
     db.migrate()
 
@@ -163,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
         elif cmd == "livex-flip":
             out = livex.flip()
         elif cmd == "livex-reverse":
-            out = livex.admin_reverse()
+            out = livex.admin_reverse(a.mode or "reverse")
         elif cmd == "livex-settle":
             out = livex.settle()
         elif cmd == "livex-mark":
