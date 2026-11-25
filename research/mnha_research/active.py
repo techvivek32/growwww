@@ -111,6 +111,10 @@ def session() -> dict:
         try:
             if pos and now - last_poll >= POLL_S:
                 last_poll = now
+                if not any(r.get("book") == BOOK_NAME and r["status"] == "open" and r["symbol"] == pos["symbol"] for r in manual._load()):
+                    log(f"{pos['symbol']} was closed from the page (Exit button); looking for the next trade")
+                    pos = None
+                    continue
                 q, _ = live.ltp([pos["symbol"]])
                 lt = q.get(pos["symbol"])
                 if lt:
