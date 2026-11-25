@@ -135,14 +135,20 @@ export interface ManualTrade {
 export interface AllBooks {
   net_rs: number;
   book_a_rs: number;
+  /** the automatic all-day scan book (entries are the program's) */
+  active_rs: number;
+  /** trades the admin asked for by hand */
+  manual_rs: number;
   other_rs: number;
   sessions: number;
+  active_trades: number;
+  manual_trades: number;
   other_trades: number;
   open_trades: number;
   win_rate: number | null;
   worst_day_rs: number | null;
   max_fall_rs: number | null;
-  days: { day: string; book_a: number; other: number; total: number }[];
+  days: { day: string; book_a: number; active: number; manual: number; other: number; total: number }[];
 }
 
 export interface LiveSummary {

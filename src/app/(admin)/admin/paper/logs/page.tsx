@@ -189,16 +189,20 @@ function BookB({ log }: { log: DayLog }) {
 
 function Trades({ log }: { log: DayLog }) {
   if (!log.trades.length) return null;
-  const net = log.trades.reduce((s, m) => s + (m.net ?? 0), 0);
+  const sum = (book: "active" | "manual") => log.trades.filter((m) => (m.book === "active" ? "active" : "manual") === book).reduce((s, m) => s + (m.net ?? 0), 0);
+  const aNet = sum("active");
+  const mNet = sum("manual");
+  const nA = log.trades.filter((m) => m.book === "active").length;
+  const nM = log.trades.length - nA;
   return (
     <Card pad={false}>
-      <div className="p-4 sm:p-5 pb-0 sm:pb-0"><CardHead title="Active & manual paper trades" sub="Active: the all-day scan-and-rotate book. Manual: trades the admin asked for by hand. Not part of Book A or Book B." right={<Pill tone={net >= 0 ? "up" : "down"}>{inr(net)} closed</Pill>} /></div>
+      <div className="p-4 sm:p-5 pb-0 sm:pb-0"><CardHead title="Active (auto) & manual (admin) trades" sub="Active (auto): the all-day scan book; the program found and entered these itself (the Why column says who closed each one). Manual (admin): trades the admin asked for. Not part of Book A or Book B." right={<span className="flex flex-wrap justify-end gap-2">{nA > 0 && <Pill tone={aNet >= 0 ? "up" : "down"}>active {inr(aNet)}</Pill>}{nM > 0 && <Pill tone={mNet >= 0 ? "up" : "down"}>manual {inr(mNet)}</Pill>}</span>} /></div>
       <table className="mt-3 w-full border-t border-line">
         <thead><tr className="border-b border-line"><th className={th}>Book</th><th className={th}>Trade</th><th className={`${th} text-right`}>Entry</th><th className={`${th} text-right`}>Exit</th><th className={th}>Why</th><th className={th}>Reason for entry</th><th className={`${th} text-right`}>Net</th></tr></thead>
         <tbody>
           {log.trades.map((m) => (
             <tr key={`${m.symbol}-${m.entry_time}`} className="border-b border-line last:border-0 align-top">
-              <td className={`${td} font-mono text-[10.5px] uppercase text-ink3`}>{m.book}</td>
+              <td className={`${td} font-mono text-[10.5px] uppercase text-ink3`}>{m.book === "active" ? "active · auto" : "manual · admin"}</td>
               <td className={td}><span className={`font-semibold ${m.side === "short" ? "text-down" : "text-up"}`}>{m.side === "short" ? "SELL" : "BUY"}</span> {m.qty} {m.symbol}</td>
               <td className={`${td} tnum text-right`}>₹{m.entry.toFixed(2)} <span className="text-ink3">{m.entry_time.slice(0, 5)}</span></td>
               <td className={`${td} tnum text-right`}>{m.status === "closed" ? `₹${m.exit?.toFixed(2)}` : "open"} <span className="text-ink3">{m.exit_time?.slice(0, 5) ?? ""}</span></td>

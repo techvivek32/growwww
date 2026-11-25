@@ -78,28 +78,34 @@ const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, 
 /** Book A fills at the CLOSE of a 5-minute bar: bar 0 closes 09:20, bar b at 09:20 + 5b. */
 
 /** The open paper position at the latest live mark, and the day's running P&L so far. */
-function LiveNow({ mark, marks, settled, settledNet }: { mark: LivexMark | null; marks: LivexReport["marks_today"]; settled: boolean; settledNet: number | null }) {
-  if (!mark) {
+function LiveNow({ mark, marks, settled, skip }: { mark: LivexMark | null; marks: LivexReport["marks_today"]; settled: boolean; skip: boolean }) {
+  // Only while a trade is live. Once the day is settled (or skipped, or before 09:20) the card is empty: the
+  // finished day lives in Day logs, and the next session's log starts with its own 09:20 decision.
+  if (settled || skip || !mark) {
     return (
       <Card className="border-brand/40">
-        <CardHead title="Live now" sub="No marks yet today. The 09:20 decision starts the day's log; it runs every 30 seconds until the 15:15 square-off." right={<Pill tone="neutral">waiting for 09:20</Pill>} />
+        <CardHead
+          title="Live now"
+          sub={settled
+            ? "No trade available. Today's trades are settled; the next trade is taken at 09:20 on the next trading day, and its log starts here then."
+            : skip
+              ? "No trade available. Today was skipped by the regime filter; the next trade is taken at 09:20 on the next trading day."
+              : "No trade available yet. The day's log starts here with the 09:20 decision and runs to the 15:15 square-off."}
+          right={<Pill tone="neutral">no trade available</Pill>}
+        />
       </Card>
     );
   }
   const running = mark.running_net ?? 0;
   const mkt = mark.mkt_move ?? 0;
   const stopDist = 0.005 - mkt; // the market stop covers the short once the average stock is up 0.5% since 09:20
-  const shortOpen = !settled && mark.pick_pnl != null;
+  const shortOpen = mark.pick_pnl != null;
   return (
     <Card className="border-brand/40">
       <CardHead
         title="Live now"
-        sub={settled
-          ? `Settled from the day's 5-minute bars. No open position; no new trade until 09:20 on the next session. Below: the whole day's log, as it was marked every 30 seconds from Groww live prices.`
-          : `Marked at ${hhmm(mark.minute)} IST from Groww live prices (${mark.n_quotes} quotes). Before charges; the official result comes from the 15:15 settlement. Below: the whole day's log so far.`}
-        right={settled
-          ? <Pill tone={(settledNet ?? 0) >= 0 ? "up" : "down"}>settled · {inr(settledNet ?? 0)} · no new trade</Pill>
-          : <Pill tone={running >= 0 ? "up" : "down"}>{inr(running)} running</Pill>}
+        sub={`Marked at ${hhmm(mark.minute)} IST from Groww live prices (${mark.n_quotes} quotes). Before charges; the official result comes from the 15:15 settlement. Below: today's log from 09:20, every 30 seconds.`}
+        right={<Pill tone={running >= 0 ? "up" : "down"}>{inr(running)} running</Pill>}
       />
       <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div>
@@ -189,8 +195,8 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {ab ? (
           <>
-            <StatTile label="Net so far · all books" value={inr(ab.net_rs)} sub={`Book A ${inr(ab.book_a_rs)} · Active & manual ${inr(ab.other_rs)}`} tone={ab.net_rs > 0 ? "up" : ab.net_rs < 0 ? "down" : "neutral"} />
-            <StatTile label="Sessions" value={String(ab.sessions)} sub={`${r.skip_days} skipped · ${r.flip_days} flipped · ${ab.other_trades} active & manual trades${ab.open_trades ? ` · ${ab.open_trades} open` : ""}`} />
+            <StatTile label="Net so far · all books" value={inr(ab.net_rs)} sub={`Book A ${inr(ab.book_a_rs)} · Active (auto) ${inr(ab.active_rs)} · Manual (admin) ${inr(ab.manual_rs)}`} tone={ab.net_rs > 0 ? "up" : ab.net_rs < 0 ? "down" : "neutral"} />
+            <StatTile label="Sessions" value={String(ab.sessions)} sub={`${r.skip_days} skipped · ${r.flip_days} flipped · ${ab.active_trades} active (auto) · ${ab.manual_trades} manual (admin) trades${ab.open_trades ? ` · ${ab.open_trades} open` : ""}`} />
             <StatTile label="Winning days" value={ab.win_rate == null ? "—" : `${Math.round(ab.win_rate * 100)}%`} sub="all books together" />
             <StatTile label="Worst day" value={ab.worst_day_rs == null ? "—" : inr(ab.worst_day_rs)} tone={ab.worst_day_rs != null && ab.worst_day_rs < 0 ? "down" : "neutral"} sub="all books together" />
             <StatTile label="Largest fall" value={ab.max_fall_rs == null ? "—" : inr(-ab.max_fall_rs)} sub="from the running peak, all books" />
@@ -206,11 +212,11 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
         )}
       </div>
 
-      <LiveNow mark={r.mark ?? null} marks={r.marks_today ?? []} settled={today?.status === "settled"} settledNet={today ? (netByDay.get(today.day) ?? null) : null} />
+      <LiveNow mark={r.mark ?? null} marks={r.marks_today ?? []} settled={today?.status === "settled"} skip={Boolean(today?.skip)} />
 
       <Card pad={false}>
         <div className="p-4 sm:p-5 pb-0 sm:pb-0">
-          <CardHead title="Day by day" sub="Every session, newest first. Click a date for that day's full report: the decision, every trade, the events and the P&L." right={<span className="text-[12px] text-ink3">page {cur} of {pages}</span>} />
+          <CardHead title="Day by day" sub="Every session, newest first. Book A: the tested rule. Active (auto): the all-day scan book, trades the program took itself. Manual (admin): trades the admin asked for. Click a date for that day's full report." right={<span className="text-[12px] text-ink3">page {cur} of {pages}</span>} />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full border-t border-line">
@@ -220,15 +226,17 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
                 <th className={th}>Status</th>
                 <th className={th}>Book A</th>
                 <th className={`${th} text-right`}>Book A net</th>
-                <th className={th}>Active &amp; manual</th>
-                <th className={`${th} text-right`}>Active &amp; manual net</th>
+                <th className={th}>Active (auto)</th>
+                <th className={`${th} text-right`}>Active net</th>
+                <th className={th}>Manual (admin)</th>
+                <th className={`${th} text-right`}>Manual net</th>
                 <th className={`${th} text-right`}>Total</th>
               </tr>
             </thead>
             <tbody>
               {days.length === 0 && (
                 <tr>
-                  <td className={`${td} text-ink3`} colSpan={7}>Nothing yet.</td>
+                  <td className={`${td} text-ink3`} colSpan={9}>Nothing yet.</td>
                 </tr>
               )}
               {days.slice((cur - 1) * PER_PAGE, cur * PER_PAGE).map((d) => {
@@ -236,9 +244,18 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
                 const net = netByDay.get(d.day);
                 const st = statusOf(d);
                 const iso = dayToIso(d.day);
-                const mt = manualByDay.get(iso) ?? [];
-                const mNet = mt.filter((m) => m.status === "closed").reduce((a, m) => a + (m.net ?? 0), 0);
-                const total = (net ?? 0) + mNet;
+                const all = manualByDay.get(iso) ?? [];
+                const act = all.filter((m) => m.book === "active");
+                const man = all.filter((m) => m.book !== "active");
+                const closedNet = (xs: ManualTrade[]) => xs.filter((m) => m.status === "closed").reduce((a, m) => a + (m.net ?? 0), 0);
+                const aNet = closedNet(act);
+                const mNet = closedNet(man);
+                const total = (net ?? 0) + aNet + mNet;
+                const list = (xs: ManualTrade[]) =>
+                  xs.length === 0 ? "—" : xs.map((m) => `${m.side === "short" ? "SELL" : "BUY"} ${m.symbol} ${m.status === "closed" ? `${m.entry.toFixed(2)} → ${m.exit?.toFixed(2)}` : "(open)"}`).join(" · ");
+                const netCell = (xs: ManualTrade[], v: number) => (
+                  <td className={`${td} tnum text-right font-semibold ${xs.length === 0 ? "text-ink3" : v >= 0 ? "text-up" : "text-down"}`}>{xs.length === 0 ? "—" : inr(v)}</td>
+                );
                 const bookA = d.skip
                   ? "skipped (regime)"
                   : d.status === "no_session"
@@ -260,10 +277,10 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
                     <td className={`${td} tnum text-right font-semibold ${net == null ? "text-ink3" : net >= 0 ? "text-up" : "text-down"}`}>
                       {net == null ? (d.skip ? "0" : "—") : inr(net)}
                     </td>
-                    <td className={`${td} max-w-[40ch] text-ink2`}>
-                      {mt.length === 0 ? "—" : mt.map((m) => `${m.side === "short" ? "SELL" : "BUY"} ${m.symbol} ${m.status === "closed" ? `${m.entry.toFixed(2)} → ${m.exit?.toFixed(2)}` : "(open)"}`).join(" · ")}
-                    </td>
-                    <td className={`${td} tnum text-right font-semibold ${mt.length === 0 ? "text-ink3" : mNet >= 0 ? "text-up" : "text-down"}`}>{mt.length === 0 ? "—" : inr(mNet)}</td>
+                    <td className={`${td} max-w-[36ch] text-ink2`}>{list(act)}</td>
+                    {netCell(act, aNet)}
+                    <td className={`${td} max-w-[30ch] text-ink2`}>{list(man)}</td>
+                    {netCell(man, mNet)}
                     <td className={`${td} tnum text-right font-semibold ${total >= 0 ? "text-up" : "text-down"}`}>{inr(total)}</td>
                   </tr>
                 );

@@ -876,29 +876,36 @@ def all_books(manual: list[dict]) -> dict:
     T = pd.read_sql_query("SELECT day, net FROM livex_trades", con)
     a = T.groupby("day").net.sum()
     book_a = {int(d): float(a.get(d, 0.0)) for d in D[D.status == "settled"].day}
-    other: dict[int, float] = {}
-    n_other = n_open = 0
+    # "active" = the automatic all-day scan book (its entries are the program's, whoever closed them);
+    # "manual" = trades the admin asked for by hand
+    by: dict[str, dict[int, float]] = {"active": {}, "manual": {}}
+    n_by = {"active": 0, "manual": 0}
+    n_open = 0
     for m in manual:
         if m.get("status") == "open":
             n_open += 1
             continue
         if m.get("status") != "closed" or m.get("net") is None:
             continue
+        k = "active" if m.get("book") == "active" else "manual"
         d = (dt.date.fromisoformat(str(m["day"])) - dt.date(1970, 1, 1)).days
-        other[d] = other.get(d, 0.0) + float(m["net"])
-        n_other += 1
-    days = sorted(set(book_a) | set(other))
+        by[k][d] = by[k].get(d, 0.0) + float(m["net"])
+        n_by[k] += 1
+    act, man = by["active"], by["manual"]
+    days = sorted(set(book_a) | set(act) | set(man))
     if not days:
-        return {"net_rs": 0.0, "book_a_rs": 0.0, "other_rs": 0.0, "sessions": 0, "other_trades": 0, "open_trades": n_open,
-                "win_rate": None, "worst_day_rs": None, "max_fall_rs": None, "days": []}
-    tot = pd.Series([book_a.get(d, 0.0) + other.get(d, 0.0) for d in days], index=days)
+        return {"net_rs": 0.0, "book_a_rs": 0.0, "active_rs": 0.0, "manual_rs": 0.0, "other_rs": 0.0, "sessions": 0, "active_trades": 0,
+                "manual_trades": 0, "other_trades": 0, "open_trades": n_open, "win_rate": None, "worst_day_rs": None, "max_fall_rs": None, "days": []}
+    tot = pd.Series([book_a.get(d, 0.0) + act.get(d, 0.0) + man.get(d, 0.0) for d in days], index=days)
     eq = tot.cumsum()
-    return {"net_rs": round(float(tot.sum()), 2), "book_a_rs": round(sum(book_a.values()), 2), "other_rs": round(sum(other.values()), 2),
-            "sessions": len(days), "other_trades": n_other, "open_trades": n_open,
-            "win_rate": round(float((tot > 0).mean()), 3), "worst_day_rs": round(float(tot.min()), 2),
+    return {"net_rs": round(float(tot.sum()), 2), "book_a_rs": round(sum(book_a.values()), 2), "active_rs": round(sum(act.values()), 2),
+            "manual_rs": round(sum(man.values()), 2), "other_rs": round(sum(act.values()) + sum(man.values()), 2),
+            "sessions": len(days), "active_trades": n_by["active"], "manual_trades": n_by["manual"], "other_trades": n_by["active"] + n_by["manual"],
+            "open_trades": n_open, "win_rate": round(float((tot > 0).mean()), 3), "worst_day_rs": round(float(tot.min()), 2),
             "max_fall_rs": round(float((eq.cummax().clip(lower=0) - eq).max()), 2),
-            "days": [{"day": day_to_date(d).isoformat(), "book_a": round(book_a.get(d, 0.0), 2), "other": round(other.get(d, 0.0), 2),
-                      "total": round(float(tot[d]), 2)} for d in days]}
+            "days": [{"day": day_to_date(d).isoformat(), "book_a": round(book_a.get(d, 0.0), 2), "active": round(act.get(d, 0.0), 2),
+                      "manual": round(man.get(d, 0.0), 2), "other": round(act.get(d, 0.0) + man.get(d, 0.0), 2), "total": round(float(tot[d]), 2)}
+                     for d in days]}
 
 
 # ------------------------------------------------------------ live executor (the website's real-money mirror of book A)
