@@ -32,9 +32,12 @@ function statusOf(d: LivexDay): { text: string; tone: "up" | "down" | "warn" | "
  * order is ever sent: every figure here is what the rule would have earned on a
  * ₹5 lakh book at real market prices, after Groww charges and slippage.
  */
-export default async function PaperPage() {
+const PER_PAGE = 10;
+
+export default async function PaperPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   await requireAdminPage();
   const state = await liveSummary();
+  const page = Math.max(1, Number((await searchParams).page ?? 1) || 1);
 
   return (
     <div className="space-y-6">
@@ -67,7 +70,7 @@ export default async function PaperPage() {
           <CardHead title="Research box unreachable" sub={state.message} />
         </Card>
       )}
-      {state.kind === "ok" && <Body data={state.data} />}
+      {state.kind === "ok" && <Body data={state.data} page={page} />}
     </div>
   );
 }
@@ -141,7 +144,7 @@ function LiveNow({ mark, marks }: { mark: LivexMark; marks: LivexReport["marks_t
   );
 }
 
-function Body({ data }: { data: LiveSummary }) {
+function Body({ data, page }: { data: LiveSummary; page: number }) {
   const r = data.livex;
   const book = data.book;
   if (!r) {
@@ -158,6 +161,8 @@ function Body({ data }: { data: LiveSummary }) {
   const legsByDay = new Map<number, LivexLeg[]>();
   for (const t of r.trades) legsByDay.set(t.day, [...(legsByDay.get(t.day) ?? []), t]);
   const settled = days.filter((d) => d.status === "settled").length;
+  const pages = Math.max(1, Math.ceil(days.length / PER_PAGE));
+  const cur = Math.min(page, pages);
   const tone = r.net_rs > 0 ? "up" : r.net_rs < 0 ? "down" : "neutral";
 
   return (
@@ -174,7 +179,7 @@ function Body({ data }: { data: LiveSummary }) {
 
       <Card pad={false}>
         <div className="p-4 sm:p-5 pb-0 sm:pb-0">
-          <CardHead title="Day by day" sub="Every session. Click a date for that day's full report: the decision, every trade, the events and the P&L." />
+          <CardHead title="Day by day" sub="Every session, newest first. Click a date for that day's full report: the decision, every trade, the events and the P&L." right={<span className="text-[12px] text-ink3">page {cur} of {pages}</span>} />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full border-t border-line">
@@ -194,7 +199,7 @@ function Body({ data }: { data: LiveSummary }) {
                   <td className={`${td} text-ink3`} colSpan={6}>Nothing yet.</td>
                 </tr>
               )}
-              {days.slice(0, 60).map((d) => {
+              {days.slice((cur - 1) * PER_PAGE, cur * PER_PAGE).map((d) => {
                 const legs = legsByDay.get(d.day) ?? [];
                 const s = legs.find((l) => l.leg === "short");
                 const f = legs.find((l) => l.leg === "flip_long" || l.leg === "admin_long");
@@ -219,6 +224,11 @@ function Body({ data }: { data: LiveSummary }) {
               })}
             </tbody>
           </table>
+        </div>
+        <div className="flex items-center justify-between border-t border-line px-4 py-2 text-[12px] sm:px-5">
+          {cur > 1 ? <Link className="font-semibold text-ink underline-offset-2 hover:underline" href={`/admin/paper?page=${cur - 1}`}>← Newer</Link> : <span className="text-ink3">← Newer</span>}
+          <span className="text-ink3">{days.length} sessions · {PER_PAGE} per page</span>
+          {cur < pages ? <Link className="font-semibold text-ink underline-offset-2 hover:underline" href={`/admin/paper?page=${cur + 1}`}>Older →</Link> : <span className="text-ink3">Older →</span>}
         </div>
       </Card>
     </>
