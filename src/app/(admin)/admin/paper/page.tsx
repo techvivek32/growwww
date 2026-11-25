@@ -79,17 +79,28 @@ const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, 
 /** Book A fills at the CLOSE of a 5-minute bar: bar 0 closes 09:20, bar b at 09:20 + 5b. */
 
 /** The open paper position at the latest live mark, and the day's running P&L so far. */
-function LiveNow({ mark, marks }: { mark: LivexMark; marks: LivexReport["marks_today"] }) {
+function LiveNow({ mark, marks, settled, settledNet }: { mark: LivexMark | null; marks: LivexReport["marks_today"]; settled: boolean; settledNet: number | null }) {
+  if (!mark) {
+    return (
+      <Card className="border-brand/40">
+        <CardHead title="Live now" sub="No marks yet today. The 09:20 decision starts the day's log; it runs every 30 seconds until the 15:15 square-off." right={<Pill tone="neutral">waiting for 09:20</Pill>} />
+      </Card>
+    );
+  }
   const running = mark.running_net ?? 0;
   const mkt = mark.mkt_move ?? 0;
   const stopDist = 0.005 - mkt; // the market stop covers the short once the average stock is up 0.5% since 09:20
-  const shortOpen = mark.pick_pnl != null;
+  const shortOpen = !settled && mark.pick_pnl != null;
   return (
     <Card className="border-brand/40">
       <CardHead
         title="Live now"
-        sub={`Marked at ${hhmm(mark.minute)} IST from Groww live prices (${mark.n_quotes} quotes). Before charges; the official result comes from the 15:15 settlement.`}
-        right={<Pill tone={running >= 0 ? "up" : "down"}>{inr(running)} running</Pill>}
+        sub={settled
+          ? `Settled from the day's 5-minute bars. No open position; no new trade until 09:20 on the next session. Below: the whole day's log, as it was marked every 30 seconds from Groww live prices.`
+          : `Marked at ${hhmm(mark.minute)} IST from Groww live prices (${mark.n_quotes} quotes). Before charges; the official result comes from the 15:15 settlement. Below: the whole day's log so far.`}
+        right={settled
+          ? <Pill tone={(settledNet ?? 0) >= 0 ? "up" : "down"}>settled · {inr(settledNet ?? 0)} · no new trade</Pill>
+          : <Pill tone={running >= 0 ? "up" : "down"}>{inr(running)} running</Pill>}
       />
       <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div>
@@ -116,11 +127,11 @@ function LiveNow({ mark, marks }: { mark: LivexMark; marks: LivexReport["marks_t
           )}
         </div>
       </dl>
-      {marks.length > 1 && (
-        <div className="mt-4 overflow-x-auto">
+      {marks.length > 0 && (
+        <div className="mt-4 max-h-[460px] overflow-auto rounded-md border border-line">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-line">
+              <tr className="sticky top-0 border-b border-line bg-surface">
                 <th className={th}>Time</th>
                 <th className={`${th} text-right`}>Running P&L</th>
                 <th className={`${th} text-right`}>Market since 09:20</th>
@@ -128,7 +139,7 @@ function LiveNow({ mark, marks }: { mark: LivexMark; marks: LivexReport["marks_t
               </tr>
             </thead>
             <tbody>
-              {[...marks].reverse().slice(0, 12).map((m) => (
+              {[...marks].reverse().map((m) => (
                 <tr key={m.minute} className="border-b border-line last:border-0">
                   <td className={td}>{hhmm(m.minute)}</td>
                   <td className={`${td} tnum text-right ${(m.running_net ?? 0) >= 0 ? "text-up" : "text-down"}`}>{m.running_net == null ? "—" : inr(m.running_net)}</td>
@@ -175,7 +186,7 @@ function Body({ data, page }: { data: LiveSummary; page: number }) {
         <StatTile label="Largest fall" value={r.max_fall_rs == null ? "—" : inr(-(r.max_fall_rs ?? 0))} sub="from the running peak" />
       </div>
 
-      {r.mark && today && today.status !== "settled" && <LiveNow mark={r.mark} marks={r.marks_today} />}
+      <LiveNow mark={r.mark ?? null} marks={r.marks_today ?? []} settled={today?.status === "settled"} settledNet={today ? (netByDay.get(today.day) ?? null) : null} />
 
       <Card pad={false}>
         <div className="p-4 sm:p-5 pb-0 sm:pb-0">
