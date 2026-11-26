@@ -50,9 +50,11 @@ export default async function ConsentPage() {
     >
       {earlier && (
         <p className="mb-6 border border-pub-hair px-4 py-3 text-[14px] leading-snug text-pub-cream">
-          You signed version {earlier.agreementVersion.split(" ")[0]}. This version adds MNHA&apos;s automatic intraday strategy (section 4),
-          which now trades connected accounts — yours included — whether or not you sign it. Signing is optional; your access stays
-          the same either way. Signing needs a new selfie and ID photo.
+          You signed version {earlier.agreementVersion.split(" ")[0]}.{" "}
+          {earlier.agreementVersion.startsWith("3.6")
+            ? "This version adds a second automatic intraday strategy to section 4 — the active strategy, which scans the market all day and may open up to four trades a day, sized from the money free in your account. It trades only the accounts whose holder signs this version; the 09:20 strategy carries on as before either way."
+            : "This version describes MNHA's automatic intraday strategies (section 4). The 09:20 strategy trades connected accounts — yours included — whether or not you sign; the active strategy, which may open up to four trades a day sized from the money free in your account, trades only the accounts whose holder signs this version."}{" "}
+          Signing is optional; your access stays the same either way. Signing needs a new selfie and ID photo.
         </p>
       )}
       <ConsentFlow contract={CONTRACT} />

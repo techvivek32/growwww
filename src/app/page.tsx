@@ -115,7 +115,7 @@ const FAQ: [string, string][] = [
   ],
   [
     "Do I need to add an IP address on my Groww key?",
-    "Yes, for MNHA to send any order to your account — yours, the automatic strategy's or the admin's — and we give you the exact one during setup. Exchange rules require orders sent through the API to arrive from a registered static IP, so we reserve an address for your account alone and show it in the connect step — you paste it onto your Groww key. One address serves one Groww account, so yours is never shared with another client.",
+    "Yes, for MNHA to send any order to your account — yours, the automatic strategies' or the admin's — and we give you the exact one during setup. Exchange rules require orders sent through the API to arrive from a registered static IP, so we reserve an address for your account alone and show it in the connect step — you paste it onto your Groww key. One address serves one Groww account, so yours is never shared with another client.",
   ],
   [
     "What do I need before I start?",
@@ -334,7 +334,7 @@ export default async function Landing() {
                   [G.vault, "Your money stays put", "Cash and shares never leave your Groww account. We take no custody and an API key cannot withdraw a rupee.", "/#faq", "Where money sits"],
                   [G.bars, "Honest numbers", "Every figure is read live from Groww or the exchange feed. A value we can't read shows as a dash — never a guess.", "/#desk", "See the desk"],
                   [G.key, "Keys, not passwords", "You paste a Groww API key, never your password. Keys are verified live and stored AES-256 encrypted.", "/legal/privacy", "Read the privacy policy"],
-                  [G.scale, "Nothing promised", "No guaranteed returns and no tips. MNHA's automatic strategy can lose money, and every result is yours.", "/legal/risk-disclosure", "Read the risk disclosure"],
+                  [G.scale, "Nothing promised", "No guaranteed returns and no tips. MNHA's automatic strategies can lose money, and every result is yours.", "/legal/risk-disclosure", "Read the risk disclosure"],
                 ] as const
               ).map(([icon, title, body, href, link]) => (
                 <div key={title}>

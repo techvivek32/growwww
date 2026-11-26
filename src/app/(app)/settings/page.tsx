@@ -260,8 +260,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             )}
             {deleteFlag === "live" && (
               <p role="alert" className="mb-4 border-l-2 border-warn bg-warnsoft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink">
-                MNHA has a position or an order open in your account today — its automatic strategy&apos;s, or one MNHA&apos;s
-                admin sent. You can delete your account once it is closed, or after the market closes (after 15:35 IST).
+                MNHA has a position or an order open in your account today — one of its automatic strategies&apos;, or one
+                MNHA&apos;s admin sent. You can delete your account once it is closed, or after the market closes (after 15:35 IST).
               </p>
             )}
             {deleteFlag === "unconfirmed" && (

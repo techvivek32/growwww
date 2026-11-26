@@ -24,7 +24,7 @@ export default function TermsPage() {
           <H>1. What the Service is — and is not</H>
           <p>
             MNHA Financials is software that reads your brokerage account, sends the orders you confirm and, as the User
-            Agreement describes, runs an automatic intraday strategy in it. It is <strong>not</strong>{" "}
+            Agreement describes, runs automatic intraday strategies in it. It is <strong>not</strong>{" "}
             a broker or a bank, and it is not registered as a portfolio manager or an investment adviser. It does not hold your money or your
             securities — those remain with your broker (Groww) at all times. It is not registered with SEBI as a
             Research Analyst or an Investment Adviser, and nothing it displays is personalised investment advice or a
@@ -45,11 +45,11 @@ export default function TermsPage() {
           <H>3. Trading decisions are yours</H>
           <p>
             MNHA connects to your brokerage account to show it to you and, once you set it up, to send the orders you
-            confirm on its order ticket. MNHA also runs an automatic intraday strategy in connected accounts, and
+            confirm on its order ticket. MNHA also runs automatic intraday strategies in connected accounts, and
             MNHA&apos;s admin may place or cancel orders and close positions in your account, as the User Agreement
             describes; each order is recorded and you are notified. Apart from those, every trading decision is your
             own — what to trade, in what size, and when — and the outcome of every trade in your account, the
-            strategy&apos;s included, is yours. The Service may fail, be delayed, or display stale data; you
+            strategies&apos; included, is yours. The Service may fail, be delayed, or display stale data; you
             must verify anything material with your broker before acting on it.
           </p>
         </div>

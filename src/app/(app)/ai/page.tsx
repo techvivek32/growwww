@@ -114,9 +114,9 @@ export default async function HomePage() {
                 : "Your desk shows your own Groww account as soon as it can be read. This page refreshes itself."}
             </p>
             <p className="mt-4 border-l-2 border-mark pl-3.5 text-[13.5px] leading-relaxed text-ink2">
-              <strong className="text-ink">MNHA&apos;s automatic intraday strategy</strong> trades connected accounts whose Groww key
-              has MNHA&apos;s order address and that have the base amount free, as your agreement describes; every order shows in your
-              notifications. {whoSends}
+              <strong className="text-ink">MNHA&apos;s automatic intraday strategies</strong> trade connected accounts whose Groww key
+              has MNHA&apos;s order address, as your agreement describes: the 09:20 strategy when the base amount is free, and the
+              active strategy only if you signed agreement 3.7 or later; every order shows in your notifications. {whoSends}
             </p>
           </div>
         </div>
@@ -157,7 +157,7 @@ export default async function HomePage() {
             n={isOwner ? "02" : "04"}
             label="Orders"
             value={strategy.value}
-            note={`On a trading day the strategy may short one F&O stock at about 09:20 and buy one at about 10:15, closing both by about 15:15 — intraday only, ${base} a trade, in accounts with at least that much free. ${whoSends} Every result is yours.`}
+            note={`On a trading day the 09:20 strategy may short one F&O stock at about 09:20 and buy one at about 10:15, closing both by about 15:15 — intraday only, ${base} a trade, in accounts with at least that much free. If you signed agreement 3.7 or later, the active strategy may also open up to four trades a day between about 09:35 and 14:45, one at a time, each sized from the money free (₹10,000 at least), while MNHA has it on. ${whoSends} Every result is yours.`}
             tone={strategy.tone}
           />
         </ul>

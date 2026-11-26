@@ -52,9 +52,9 @@ export default function RiskPage() {
         <div className="space-y-2">
           <H>Automatic trading in your account</H>
           <p>
-            MNHA&apos;s automatic intraday strategy (section 4 of the User Agreement) trades connected accounts without
-            asking first. It can lose money on any day and over long stretches, and its paper-trading and past results
-            do not predict it. Its orders can be rejected, filled at a worse price than the screen showed, or — after a
+            MNHA&apos;s automatic intraday strategies (section 4 of the User Agreement) trade connected accounts without
+            asking first; the active strategy has not been backtested. They can lose money on any day and over long stretches, and their paper-trading and past results
+            do not predict them. Their orders can be rejected, filled at a worse price than the screen showed, or — after a
             technical fault — left open; Groww squares intraday positions off itself near the close, with its own
             charge. If MNHA switches it off during the day it opens nothing new, but still closes what it opened. Its
             profits and losses, and Groww&apos;s brokerage and charges on its trades, are yours.
