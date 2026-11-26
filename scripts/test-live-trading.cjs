@@ -1114,17 +1114,10 @@ test("day: a holiday or weekend does nothing at all", async () => {
 });
 
 /* ------------------------------------------------- the active (auto) book in the accounts */
-const AQ = { owner: 498, m1: 498, m2: 99 }; // CCC at 1000: floor(min(free, 500000) / 1003); m2 has 100000 free
-const DQ = { owner: 997, m1: 997, m2: 199 }; // DDD at 500
-const act = (acct) => sent(acct).filter((x) => x.endsWith(" CCC") || x.endsWith(" DDD"));
-const COVERS = "3.7 · 2026-11-27"; // an agreement version that describes the active book
-const signed = (ids) => async (t, day) => {
-  if (t === at(day, 9, 12)) for (const c of sim.checks) if (ids.includes(c.id)) c.agreement = COVERS;
-};
 const timesOf = (acct) => Object.fromEntries(world.places.filter(([a]) => a === acct).map(([, i, when]) => [`${i.side} ${i.symbol}`, util.clock(util.istNow(when).minute)]));
+const activeSent = (acct) => sent(acct).filter((x) => x.endsWith(" CCC") || x.endsWith(" DDD"));
 
-test("active: under agreement 3.6 only the house account takes it; closed when the book closes it, or at 15:15", async () => {
-  const d = dayOf(1);
+test("active: removed — even with both switches LIVE its trades send nothing, and Book A is unchanged", async () => {
   await scenario({
     activeMode: "live",
     active: (day) => [
@@ -1132,245 +1125,36 @@ test("active: under agreement 3.6 only the house account takes it; closed when t
       { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5) },
     ],
   });
-  assert.deepEqual(act("owner"), [`BUY ${AQ.owner} CCC`, `SELL ${AQ.owner} CCC`, `SELL ${DQ.owner} DDD`, `BUY ${DQ.owner} DDD`]);
-  assert.deepEqual(act("m1"), []); // a client on 3.6: the agreement does not describe the active book
-  assert.deepEqual(act("m2"), []);
-  assert.deepEqual(sent("m1").filter((x) => x.endsWith(" AAA")), [ENTRY, COVER]); // Book A untouched
-  const t = timesOf("owner");
-  assert.equal(t["BUY CCC"], "10:21");
-  assert.equal(t["SELL CCC"], "10:40");
-  assert.equal(t["SELL DDD"], "11:00");
-  assert.equal(t["BUY DDD"], "15:15");
-  for (const a of ["owner", "m1", "m2"]) assert.ok(flat(a), `${a} flat`);
-  const plan = await store.getDay(d, "");
-  assert.ok(plan.active && plan.active.closed[1] && plan.active.closed[2]);
-});
-
-test("active: clients whose agreement covers it take part, each sized from its own free money (a low balance trades smaller)", async () => {
-  await scenario({
-    activeMode: "live",
-    onTick: signed(["m1", "m2"]),
-    active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }],
-  });
-  for (const a of ["owner", "m1", "m2"]) {
-    assert.deepEqual(act(a), [`BUY ${AQ[a]} CCC`, `SELL ${AQ[a]} CCC`], a);
-    assert.ok(flat(a), `${a} flat`);
-  }
-  assert.deepEqual(sent("m2").filter((x) => x.endsWith(" AAA")), []); // Book A still keeps low balances out
-});
-
-test("active: OFF sends nothing for it (Book A unchanged)", async () => {
-  await scenario({ activeMode: "off", active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }] });
-  for (const a of ["owner", "m1", "m2"]) assert.deepEqual(act(a), [], a);
+  for (const a of ["owner", "m1", "m2"]) assert.deepEqual(activeSent(a), [], a);
   assert.deepEqual(sent("m1"), [ENTRY, COVER]);
 });
 
-test("active: ON while Automatic trading is OFF opens nothing", async () => {
-  await scenario({ mode: "off", activeMode: "live", active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }] });
-  assert.equal(world.places.length, 0);
-});
-
-test("active: switched OFF with a trade open — that trade is still closed, nothing new is opened", async () => {
-  await scenario({
-    activeMode: "live",
-    active: (day) => [
-      { symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) },
-      { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5) },
-    ],
-    onTick: async (t, day) => {
-      if (t >= at(day, 10, 30) && t < at(day, 10, 30) + 3000) await store.setActiveMode("off", "test");
-    },
-  });
-  assert.deepEqual(act("owner"), [`BUY ${AQ.owner} CCC`, `SELL ${AQ.owner} CCC`]);
-  assert.ok(flat("owner"));
-});
-
-test("active: a trade seen too long after it opened is not followed; the next one is", async () => {
-  await scenario({
+/** A leg the active book opened before its removal: really bought in the house account, and on the day's plan. */
+function seededLeg(closeAt) {
+  return {
     activeMode: "off",
-    active: (day) => [
-      { symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) },
-      { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5) },
-    ],
+    active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 9, 12), ...(closeAt ? { closeAt: closeAt(day) } : {}) }],
     onTick: async (t, day) => {
-      if (t >= at(day, 10, 30) && t < at(day, 10, 30) + 3000) await store.setActiveMode("live", "test");
+      if (t !== at(day, 9, 12)) return;
+      await orders.openLegIn({ day, action: "active-open-1", leg: "a1-long", accountId: "owner", mode: "live", symbol: "CCC", qty: 498 });
+      await store.updateDay(day, util.istNow(t).date, (x) => {
+        x.active = { mode: "live", accounts: ["owner"], base: 500000, fixedAt: t, opened: { 1: { symbol: "CCC", qty: 498, px: 1000, leg: "a1-long", key: `CCC|${sec(at(day, 9, 12))}`, sizes: { owner: 498 } } }, closed: {}, skipped: {} };
+      });
     },
-  });
-  assert.deepEqual(act("owner"), [`SELL ${DQ.owner} DDD`, `BUY ${DQ.owner} DDD`]);
+  };
+}
+
+test("active: a leg opened before the removal is still closed when the book closes it", async () => {
+  await scenario(seededLeg((day) => at(day, 10, 40, 10)));
+  assert.deepEqual(activeSent("owner"), ["BUY 498 CCC", "SELL 498 CCC"]);
+  assert.equal(timesOf("owner")["SELL CCC"], "10:40");
   assert.ok(flat("owner"));
 });
 
-test("active: an account below the minimum, or blocked, takes no part", async () => {
-  sim.blocked.add("m1");
-  try {
-    await scenario({
-      activeMode: "live",
-      onTick: async (t, day) => {
-        await signed(["m1", "m2"])(t, day);
-        if (t === at(day, 9, 12)) sim.checks.find((c) => c.id === "m2").funds = { cash: 5000, used: 0, free: 5000 };
-      },
-      active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }],
-    });
-  } finally {
-    sim.blocked.delete("m1");
-  }
-  assert.deepEqual(act("owner"), [`BUY ${AQ.owner} CCC`, `SELL ${AQ.owner} CCC`]);
-  assert.deepEqual(act("m1"), []); // its order address no longer works: the gate holds it back
-  assert.deepEqual(act("m2"), []); // ₹5,000 free: below the minimum
-});
-
-test("active: never Book A's own name (the two would net out in one position)", async () => {
-  await scenario({ activeMode: "live", active: (day) => [{ symbol: "AAA", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }] });
-  assert.deepEqual(sent("owner"), [ENTRY, COVER]);
-});
-
-test("active: the book falls silent with a position open — the position is closed as a fail-safe 5 minutes later", async () => {
-  await scenario({
-    activeMode: "live",
-    active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26) }],
-    activeBeatUntil: (day) => at(day, 11, 0),
-  });
-  const t = timesOf("owner");
-  assert.equal(t["BUY CCC"], "10:21");
-  assert.equal(t["SELL CCC"], "11:05");
-  assert.ok(flat("owner"));
-});
-
-test("active: an exit Groww keeps refusing is given up, then tried afresh at 15:15", async () => {
-  let reject = false;
-  await scenario({
-    activeMode: "live",
-    active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }],
-    onTick: async (t, day) => {
-      reject = t >= at(day, 10, 40) && t < at(day, 15, 0);
-      if (t === at(day, 9, 12)) {
-        const real = broker.placeOrderAs;
-        broker.placeOrderAs = async (acct, input) =>
-          reject && input.symbol === "CCC" && input.side === "SELL"
-            ? (world.places.push([acct, { ...input, rejected: true }, sim.now]), { ok: false, outcome: "rejected", orderId: null, status: null, filled: null, message: "RMS", httpStatus: 400 })
-            : real(acct, input);
-      }
-    },
-  });
-  const mine = world.places.filter(([a, i]) => a === "owner" && i.symbol === "CCC");
-  assert.equal(mine.filter(([, i]) => i.rejected).length, 3); // the book's exit: three tries, then given up
-  const last = mine[mine.length - 1];
-  assert.equal(`${last[1].side} ${last[1].qty}`, "SELL 498");
-  assert.equal(util.clock(util.istNow(last[2]).minute), "15:15"); // tried afresh at 15:15, and done
-  assert.ok(flat("owner"));
-});
-
-test("active: matched by symbol and entry time, not place in the list — a renumbered list drops nothing", async () => {
-  const d = dayOf(1);
-  await scenario({
-    activeMode: "live",
-    active: (day) => [
-      { symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10), hideFrom: at(day, 10, 45) },
-      { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5), closeAt: at(day, 11, 40, 10) },
-    ],
-  });
-  const t = timesOf("owner");
-  assert.equal(t["BUY CCC"], "10:21");
-  assert.equal(t["SELL CCC"], "10:40");
-  assert.equal(t["SELL DDD"], "11:00"); // first in the list now, yet the accounts' trade 2 — not taken for trade 1
-  assert.equal(t["BUY DDD"], "11:40"); // closed when the book closed it
-  assert.ok(flat("owner"));
-  const plan = await store.getDay(d, "");
-  assert.equal(plan.active.opened[1].symbol, "CCC");
-  assert.equal(plan.active.opened[2].symbol, "DDD");
-});
-
-test("active: an open trade that drops out of the list is still closed at 15:15, and nothing opens on top of it", async () => {
-  await scenario({
-    activeMode: "live",
-    active: (day) => [
-      { symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), hideFrom: at(day, 10, 30) },
-      { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5), closeAt: at(day, 11, 40, 10) },
-    ],
-  });
+test("active: a leg opened before the removal is still closed at 15:15 at the latest", async () => {
+  await scenario(seededLeg(null));
+  assert.deepEqual(activeSent("owner"), ["BUY 498 CCC", "SELL 498 CCC"]);
   assert.equal(timesOf("owner")["SELL CCC"], "15:15");
-  assert.deepEqual(sent("owner").filter((x) => x.endsWith(" DDD")), []);
-  assert.ok(flat("owner"));
-});
-
-test("active: an exit once begun is carried through a research outage (not left to the fail-safe)", async () => {
-  let rejected = 0;
-  await scenario({
-    activeMode: "live",
-    active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }],
-    onTick: async (t, day) => {
-      if (t === at(day, 9, 12)) {
-        const real = broker.placeOrderAs;
-        broker.placeOrderAs = async (acct, input) =>
-          input.symbol === "CCC" && input.side === "SELL" && rejected++ === 0
-            ? (world.places.push([acct, { ...input, rejected: true }, sim.now]), { ok: false, outcome: "rejected", orderId: null, status: null, filled: null, message: "RMS", httpStatus: 400 })
-            : real(acct, input);
-        // the research engine goes down just after the first try of the book's exit, for 50 minutes
-        const tl = sim.today;
-        sim.today = (ms) => (ms > at(day, 10, 40, 12) && ms < at(day, 11, 30) ? null : tl(ms));
-      }
-    },
-  });
-  const sells = world.places.filter(([a, i]) => a === "owner" && i.symbol === "CCC" && i.side === "SELL");
-  assert.equal(sells.length, 2);
-  assert.ok(sells[0][1].rejected);
-  assert.equal(util.clock(util.istNow(sells[1][2]).minute), "10:40"); // retried 12 s later, in the outage
-  assert.ok(flat("owner"));
-});
-
-test("active: one at a time — the next trade waits for the previous one's close in the accounts", async () => {
-  await scenario({
-    activeMode: "live",
-    active: (day) => [
-      { symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) },
-      { symbol: "DDD", side: "short", openAt: at(day, 10, 40, 10) }, // the same scan exits CCC and opens DDD
-    ],
-  });
-  const mine = world.places.filter(([a, i]) => a === "owner" && (i.symbol === "CCC" || i.symbol === "DDD"));
-  assert.deepEqual(mine.map(([, i]) => `${i.side} ${i.symbol}`), ["BUY CCC", "SELL CCC", "SELL DDD", "BUY DDD"]);
-  assert.ok(mine[2][2] > mine[1][2], "DDD sent after CCC's close");
-  assert.equal(util.clock(util.istNow(mine[2][2]).minute), "10:40");
-  assert.ok(flat("owner"));
-});
-
-test("active: an exit that failed holds back the next trade (one at a time) until 15:15 closes it", async () => {
-  let reject = false;
-  await scenario({
-    activeMode: "live",
-    active: (day) => [
-      { symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) },
-      { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5) },
-    ],
-    onTick: async (t, day) => {
-      reject = t >= at(day, 10, 40) && t < at(day, 15, 0);
-      if (t === at(day, 9, 12)) {
-        const real = broker.placeOrderAs;
-        broker.placeOrderAs = async (acct, input) =>
-          reject && input.symbol === "CCC" && input.side === "SELL"
-            ? (world.places.push([acct, { ...input, rejected: true }, sim.now]), { ok: false, outcome: "rejected", orderId: null, status: null, filled: null, message: "RMS", httpStatus: 400 })
-            : real(acct, input);
-      }
-    },
-  });
-  assert.deepEqual(sent("owner").filter((x) => x.endsWith(" DDD")), []); // never opened on top of the unclosed CCC
-  assert.equal(timesOf("owner")["SELL CCC"], "15:15");
-  assert.ok(flat("owner"));
-});
-
-test("active: at most four a day in the accounts; a trade not followed takes none of the four", async () => {
-  await scenario({
-    activeMode: "live",
-    onTick: async (t, day) => {
-      if (t === at(day, 9, 12)) Object.assign(sim.prices, { EEE: 1000, FFF: 1000, GGG: 1000 });
-    },
-    active: (day) => [
-      { symbol: "AAA", side: "long", openAt: at(day, 10, 0, 5), closeAt: at(day, 10, 10, 5) }, // Book A's name: not followed
-      ...["CCC", "DDD", "EEE", "FFF", "GGG"].map((symbol, i) => ({ symbol, side: "long", openAt: at(day, 10, 20 + 20 * i, 5), closeAt: at(day, 10, 30 + 20 * i, 5) })),
-    ],
-  });
-  const mine = sent("owner").filter((x) => !x.endsWith(" AAA") && !x.endsWith(" BBB"));
-  assert.deepEqual(mine.map((x) => x.split(" ")[0] + " " + x.split(" ")[2]), ["BUY CCC", "SELL CCC", "BUY DDD", "SELL DDD", "BUY EEE", "SELL EEE", "BUY FFF", "SELL FFF"]);
-  assert.deepEqual(sent("owner").filter((x) => x.endsWith(" AAA")), [ENTRY, COVER]); // Book A untouched
   assert.ok(flat("owner"));
 });
 

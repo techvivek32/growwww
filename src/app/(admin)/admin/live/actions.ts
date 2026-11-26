@@ -10,7 +10,7 @@ import { rateLimit } from "@/lib/ratelimit";
 import { logAdminAccess } from "@/lib/adminAccess";
 import { houseLtp } from "@/lib/api/broker";
 import { canTakeOrders, checkAccounts, forgetReadings, tradingAccounts } from "@/lib/liveTrading/accounts";
-import { getSettings, ordersOfDay, setActiveMode, setBase, setExcluded, setMode, MAX_BASE, MIN_BASE, type LiveMode, type LiveOrder } from "@/lib/liveTrading/store";
+import { getSettings, ordersOfDay, setBase, setExcluded, setMode, MAX_BASE, MIN_BASE, type LiveMode, type LiveOrder } from "@/lib/liveTrading/store";
 import { adminOrderIn, cancelByAdmin, DUPLICATE_MS, exitIn, recentAdminSame } from "@/lib/liveTrading/orders";
 import { forgetPositions, picksOf, positionsOf } from "@/lib/liveTrading/watch";
 import { clock, istNow, pool, sleep } from "@/lib/liveTrading/util";
@@ -48,21 +48,6 @@ export async function liveSetMode(_prev: Msg, form: FormData): Promise<Msg> {
       mode === "live"
         ? "Automatic trading is ON: real orders go to every eligible account from the strategy's next step."
         : "Automatic trading is OFF: nothing new is opened. A position the strategy already opened today is still closed (market stop, 10:15, 15:15) — to close everything now, use Exit below.",
-  };
-}
-
-export async function liveSetActiveMode(_prev: Msg, form: FormData): Promise<Msg> {
-  if (!(await requireAdmin())) return { error: NOT_ADMIN };
-  // The active (auto) book's own switch: its trades sent to the accounts, entry and exit. OFF by default.
-  const mode = String(form.get("mode") ?? "") as LiveMode;
-  if (mode !== "off" && mode !== "live") return { error: "Turn the active book ON or OFF." };
-  await setActiveMode(mode, clientIp(await headers()));
-  revalidatePath(PATH);
-  return {
-    ok:
-      mode === "live"
-        ? "The active (auto) book is ON: each trade its 2-minute scan opens from now goes to the house account (and to clients whose signed agreement covers the active book), sized from its free money, and is closed when it closes, or at 15:15. It needs Automatic trading ON too."
-        : "The active (auto) book is OFF: nothing new is opened. A trade it already opened in the accounts is still closed when it closes, or at 15:15.",
   };
 }
 

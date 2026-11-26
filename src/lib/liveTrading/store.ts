@@ -335,6 +335,8 @@ export async function setMode(mode: LiveMode, ip: string): Promise<void> {
   });
 }
 
+/** The active (auto) book was removed on 26 Nov 2026: nothing reads this setting any more (the executor opens no
+ *  active trade whatever it says). Kept so old stored data and the tests can still set it. */
 export async function setActiveMode(mode: LiveMode, ip: string): Promise<void> {
   await mutate((s) => {
     const was = s.settings.activeMode ?? "off";

@@ -8,7 +8,6 @@ import {
   liveExitOne,
   livePreviewOrder,
   liveSetBase,
-  liveSetActiveMode,
   liveSetMode,
   type ExitResult,
   type Msg,
@@ -92,44 +91,6 @@ export function ModeForm({ on }: { on: boolean }) {
             {on
               ? "Real orders go to every eligible account: 09:20 entry, market stop, 10:15 flip, 15:15 close."
               : "Nothing new is opened. Turn it ON and everything runs by itself."}
-          </p>
-        </div>
-        <button type="submit" disabled={busy} className={on ? btnLine : btnBrand}>
-          {busy ? (on ? "Turning off…" : "Turning on…") : on ? "Turn OFF" : "Turn ON"}
-        </button>
-      </form>
-      <Note msg={state} />
-    </div>
-  );
-}
-
-const ACTIVE_ON_CHECK =
-  "Turn the ACTIVE (auto) book ON?\n\nIts rule is NOT backtested. Each trade its 2-minute market scan opens from now (up to 4 a day, 09:35–14:45) is sent as a REAL order to the house account — and to a client's account only once that client has signed an agreement version that describes the active book (3.6 does not) — sized from the account's free money (up to the trade size), and closed when the scan closes it or at 15:15. It needs Automatic trading ON too.";
-
-/** The active (auto) book's own switch: OFF by default. */
-export function ActiveModeForm({ on }: { on: boolean }) {
-  const [state, action, busy] = useActionState<Msg, FormData>(liveSetActiveMode, {});
-  const send = submitWith(action);
-  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
-    if (!on && !window.confirm(ACTIVE_ON_CHECK)) {
-      e.preventDefault();
-      return;
-    }
-    send(e);
-  };
-  return (
-    <div className="space-y-2">
-      <form onSubmit={onSubmit} className={`flex flex-wrap items-center justify-between gap-3 border p-4 ${on ? "border-up/50 bg-upsoft/30" : "border-line bg-surface"}`}>
-        <input type="hidden" name="mode" value={on ? "off" : "live"} />
-        <div>
-          <p className="flex items-center gap-2 text-[15px] font-semibold text-ink">
-            <span className={`h-2.5 w-2.5 rounded-full ${on ? "live-dot bg-up" : "bg-ink3"}`} />
-            Active (auto) book is {on ? "ON" : "OFF"}
-          </p>
-          <p className="mt-1 text-[12.5px] leading-snug text-ink3">
-            {on
-              ? "Market scanned every 2 minutes; each trade it opens (up to 4 a day, 09:35–14:45) goes to the house account (clients only once their signed agreement covers the active book), sized from its free money, and is closed when the scan closes it or at 15:15. Needs Automatic trading ON. Not backtested."
-              : "The 2-minute scan trades on paper only. Turn it ON to send its trades to the accounts too."}
           </p>
         </div>
         <button type="submit" disabled={busy} className={on ? btnLine : btnBrand}>

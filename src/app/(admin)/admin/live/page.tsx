@@ -12,7 +12,7 @@ import { isTradingDate } from "@/lib/market";
 import { listUsers } from "@/lib/users";
 import { OWNER_ID } from "@/lib/auth";
 import { liveCancelOrder, liveExclude, liveRefresh } from "./actions";
-import { BaseForm, LivePositions, ActiveModeForm, ModeForm, OrderFlow, type AccountOption } from "./LiveForms";
+import { BaseForm, LivePositions, ModeForm, OrderFlow, type AccountOption } from "./LiveForms";
 
 export const metadata: Metadata = { title: "Live trading · Admin · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -128,7 +128,6 @@ export default async function LiveTradingPage({ searchParams }: { searchParams: 
       <Card>
         <div className="space-y-4">
           <ModeForm on={on} />
-          <ActiveModeForm on={(settings.activeMode ?? "off") === "live"} />
           <BaseForm base={settings.base} />
         </div>
       </Card>
