@@ -65,9 +65,10 @@ export default function LiveTicks({ every = 1000, pageEvery = 10000 }: { every?:
       clearInterval(b);
     };
   }, [router, every, pageEvery]);
-  const items = t?.items ?? [];
-  // each book apart, with its own running figure: Book A, Book B, Active (auto), Manual (admin) — never one combined number
-  const ORDER = ["Book A", "Book B", "Active", "Manual"];
+  // Book B is left off the strip at the admin's request (it still runs as a paper book; its legs are in the day logs)
+  const items = (t?.items ?? []).filter((it) => it.book !== "Book B");
+  // each book apart, with its own running figure: Book A, Active (auto), Manual (admin) — never one combined number
+  const ORDER = ["Book A", "Active", "Manual"];
   const books = ORDER.filter((b) => items.some((it) => it.book === b)).concat([...new Set(items.map((it) => it.book))].filter((b) => !ORDER.includes(b)));
   return (
     <div className="rounded-xl border border-line bg-paper2 px-4 py-3">
