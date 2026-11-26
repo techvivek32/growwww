@@ -12,7 +12,7 @@ const path = require("node:path");
 const { createJiti } = require("jiti");
 
 const jiti = createJiti(__filename, { alias: { "@": path.join(__dirname, "..", "src") } });
-const { dayLines, istDate, windowOf } = jiti(path.join(__dirname, "..", "src", "lib", "balanceDays.ts"));
+const { dayLines, dayShare, istDate, windowOf } = jiti(path.join(__dirname, "..", "src", "lib", "balanceDays.ts"));
 
 const at = (iso) => Date.parse(`${iso}+05:30`); // an IST wall-clock time
 const row = (iso, cash, realised = null, why = "watch") => ({ userId: "u1", at: at(iso), cash, used: 0, realised, why });
@@ -99,6 +99,34 @@ test("realised P&L: the last reading after the close, else the last of the day",
   assert.equal(byDate(dayLines(rows, at("2026-11-26T23:00:00")))["2026-11-26"].realised, 1250);
   const noon = [seed, row("2026-11-26T12:00:00", 500135.05, 900)];
   assert.equal(byDate(dayLines(noon, at("2026-11-26T13:00:00")))["2026-11-26"].realised, 900);
+});
+
+test("a normal profit day: charges explain the gap, the share is 40% of the settled P&L", () => {
+  const rows = [row("2026-11-26T09:00:00", 500000), row("2026-11-26T16:00:00", 500000, 800), row("2026-11-27T02:00:00", 500500)];
+  const d = byDate(dayLines(rows, at("2026-11-27T08:00:00")))["2026-11-26"];
+  assert.equal(d.pnl, 500);
+  assert.equal(d.unexplained, null);
+  assert.equal(dayShare(d, 40), 200);
+});
+
+test("a deposit is not profit: flagged, and the share is on the trades' part only", () => {
+  // Rs 20,000 paid in on top of a day whose trades made Rs 800 before charges (Rs 500 after)
+  const rows = [row("2026-11-26T09:00:00", 500000), row("2026-11-26T16:00:00", 500000, 800), row("2026-11-27T02:00:00", 520500)];
+  const d = byDate(dayLines(rows, at("2026-11-27T08:00:00")))["2026-11-26"];
+  assert.equal(d.pnl, 20500);
+  assert.equal(d.unexplained, 19700);
+  assert.equal(dayShare(d, 40), 320);
+});
+
+test("a loss day: no share; a day with no realised figure: the share is on the settled P&L", () => {
+  const loss = [row("2026-11-26T09:00:00", 500000), row("2026-11-26T16:00:00", 500000, -200), row("2026-11-27T02:00:00", 499700)];
+  const l = byDate(dayLines(loss, at("2026-11-27T08:00:00")))["2026-11-26"];
+  assert.equal(l.pnl, -300);
+  assert.equal(dayShare(l, 40), 0);
+  const blind = [row("2026-11-26T09:00:00", 500000), row("2026-11-27T02:00:00", 501000)];
+  const b = byDate(dayLines(blind, at("2026-11-27T08:00:00")))["2026-11-26"];
+  assert.equal(b.unexplained, null);
+  assert.equal(dayShare(b, 40), 400);
 });
 
 console.log(`\n${n} tests passed`);

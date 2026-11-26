@@ -6,7 +6,7 @@ import { isReservedId } from "@/lib/auth";
 import { Card } from "@/components/ui";
 import { listUsers } from "@/lib/users";
 import { kycNames } from "@/lib/kyc";
-import { balanceRows, dayLines, istDate } from "@/lib/balances";
+import { balanceRows, dayLines, dayShare, istDate } from "@/lib/balances";
 
 export const metadata: Metadata = { title: "User · Vivek · MNHA Financials" };
 export const dynamic = "force-dynamic";
@@ -34,8 +34,6 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 /** A date `YYYY-MM-DD` shown as IST, read at noon so no zone can move it to another day. */
 const dayOf = (iso: string) => DAY.format(new Date(`${iso}T12:00:00+05:30`));
 
-const fee = (pnl: number | null) => (pnl !== null && pnl > 0 ? round2((pnl * OUR_PCT) / 100) : 0);
-
 /** Everything the page shows, read and worked out once, at request time. */
 async function load(userId: string) {
   const user = (await listUsers()).find((u) => u.id === userId);
@@ -59,7 +57,7 @@ async function load(userId: string) {
     above: latest && base ? round2(latest.cash - base.cash) : null,
     settled,
     totalPnl: round2(settled.reduce((t, d) => t + (d.pnl as number), 0)),
-    totalFee: round2(settled.reduce((t, d) => t + fee(d.pnl), 0)),
+    totalFee: round2(settled.reduce((t, d) => t + dayShare(d, OUR_PCT), 0)),
     today: istDate(now),
   };
 }
@@ -164,8 +162,18 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                                 Groww {signed(d.realised)} before charges
                               </p>
                             )}
+                            {d.unexplained !== null && (
+                              <p
+                                className="mt-0.5 text-[11px] font-medium text-warn"
+                                title="Trading alone cannot raise the balance more than the trades made. Money paid in is not profit: our share is worked out on the trades' part only. Check in Groww."
+                              >
+                                {signed(d.unexplained)} not from trades: a deposit?
+                              </p>
+                            )}
                           </td>
-                          <td className="tnum px-4 py-2.5 text-right text-[12.5px] whitespace-nowrap text-ink">{d.pnl !== null ? (fee(d.pnl) ? rs(fee(d.pnl)) : "—") : ""}</td>
+                          <td className="tnum px-4 py-2.5 text-right text-[12.5px] whitespace-nowrap text-ink">
+                            {d.pnl !== null ? (dayShare(d, OUR_PCT) ? rs(dayShare(d, OUR_PCT)) : "—") : ""}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

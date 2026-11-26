@@ -62,9 +62,28 @@ export interface DayLine {
   pnl: number | null;
   /** Groww's realised P&L for the day, before charges: the last reading of the day. */
   realised: number | null;
+  /** How much more the balance rose than the day's trades made (pnl − realised), when it did. Charges
+   *  only take away, so trading alone cannot do that: it is money paid in (a deposit), or a settlement
+   *  that is not this day's. null: nothing unexplained, or nothing to compare. */
+  unexplained: number | null;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Below this, a rise above the realised P&L is rounding, not money paid in. */
+const UNEXPLAINED_FROM = 1;
+
+/**
+ * The owner's share of one day: `pct` of a profit day, nothing on a loss day. When the balance rose more
+ * than the trades made (see `unexplained`), only the trades' part is shared: money paid in is not profit.
+ * Groww's realised figure is before charges, so on such a day the share can be a little high, never
+ * inflated by a deposit.
+ */
+export function dayShare(line: DayLine, pct: number): number {
+  if (line.pnl === null || line.pnl <= 0) return 0;
+  const basis = line.unexplained !== null && line.realised !== null ? Math.min(line.pnl, line.realised) : line.pnl;
+  return basis > 0 ? round2((basis * pct) / 100) : 0;
+}
 
 /** The trading days covered by these readings (oldest first in, latest first out). */
 export function dayLines(rows: BalanceRow[], now = Date.now()): DayLine[] {
@@ -94,7 +113,9 @@ export function dayLines(rows: BalanceRow[], now = Date.now()): DayLine[] {
     const afterClose = ofDay.filter((r) => r.at >= closeOf(d));
     const pick = afterClose.length ? afterClose : ofDay;
     const realised = pick.length ? pick[pick.length - 1].realised : null;
-    out.push({ date: d, start, end, pnl: start !== null && end !== null ? round2(end - start) : null, realised });
+    const pnl = start !== null && end !== null ? round2(end - start) : null;
+    const gap = pnl !== null && realised !== null ? round2(pnl - realised) : null;
+    out.push({ date: d, start, end, pnl, realised, unexplained: gap !== null && gap >= UNEXPLAINED_FROM ? gap : null });
   }
   return out.reverse();
 }

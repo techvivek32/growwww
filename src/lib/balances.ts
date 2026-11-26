@@ -7,7 +7,7 @@ import { balanceAs } from "./api/broker";
 import type { BalanceReading } from "./api/groww";
 import { istDate, istMinute, windowOf, type BalanceRow, type ReadingWhy } from "./balanceDays";
 
-export { dayLines, istDate, type BalanceRow, type DayLine, type ReadingWhy } from "./balanceDays";
+export { dayLines, dayShare, istDate, type BalanceRow, type DayLine, type ReadingWhy } from "./balanceDays";
 
 /**
  * The daily balance record behind each user's P&L on /admin/vivek/[id]: Groww's own figures, read on a
