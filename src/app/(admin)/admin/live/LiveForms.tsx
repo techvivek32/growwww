@@ -104,7 +104,7 @@ export function ModeForm({ on }: { on: boolean }) {
 }
 
 const ACTIVE_ON_CHECK =
-  "Turn the ACTIVE (auto) book ON?\n\nIts rule is NOT backtested. Each trade its 2-minute market scan opens from now (up to 4 a day, 09:35–14:45) is sent as a REAL order to every client's Groww account that has money, sized from that account's free money (up to the trade size), and closed when the scan closes it or at 15:15.";
+  "Turn the ACTIVE (auto) book ON?\n\nIts rule is NOT backtested. Each trade its 2-minute market scan opens from now (up to 4 a day, 09:35–14:45) is sent as a REAL order to the house account — and to a client's account only once that client has signed an agreement version that describes the active book (3.6 does not) — sized from the account's free money (up to the trade size), and closed when the scan closes it or at 15:15. It needs Automatic trading ON too.";
 
 /** The active (auto) book's own switch: OFF by default. */
 export function ActiveModeForm({ on }: { on: boolean }) {
@@ -128,7 +128,7 @@ export function ActiveModeForm({ on }: { on: boolean }) {
           </p>
           <p className="mt-1 text-[12.5px] leading-snug text-ink3">
             {on
-              ? "Market scanned every 2 minutes; each trade it opens (up to 4 a day, 09:35–14:45) goes to every account with money, sized from its own free money, and is closed when the scan closes it or at 15:15. Not backtested."
+              ? "Market scanned every 2 minutes; each trade it opens (up to 4 a day, 09:35–14:45) goes to the house account (clients only once their signed agreement covers the active book), sized from its free money, and is closed when the scan closes it or at 15:15. Needs Automatic trading ON. Not backtested."
               : "The 2-minute scan trades on paper only. Turn it ON to send its trades to the accounts too."}
           </p>
         </div>

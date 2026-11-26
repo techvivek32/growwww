@@ -61,7 +61,7 @@ export async function liveSetActiveMode(_prev: Msg, form: FormData): Promise<Msg
   return {
     ok:
       mode === "live"
-        ? "The active (auto) book is ON: each trade its 2-minute scan opens from now goes to every account with money (sized from its free money), and is closed when it closes, or at 15:15."
+        ? "The active (auto) book is ON: each trade its 2-minute scan opens from now goes to the house account (and to clients whose signed agreement covers the active book), sized from its free money, and is closed when it closes, or at 15:15. It needs Automatic trading ON too."
         : "The active (auto) book is OFF: nothing new is opened. A trade it already opened in the accounts is still closed when it closes, or at 15:15.",
   };
 }

@@ -559,6 +559,18 @@ async function fixActive(now: IstNow, settings: LiveSettings, mode: "live" | "sh
 
 /** Below this an account's free money buys too little to be worth the charges: it sits the trade out. */
 const ACTIVE_MIN_VALUE = 10_000;
+/**
+ * The User Agreement version from which section 4 describes the active book (several trades a day, sized from each
+ * account's free money). Version 3.6 describes only Book A, so until a client signs a version that covers the active
+ * book, its orders go to the house account alone.
+ */
+const ACTIVE_AGREEMENT_FROM = 3.7;
+const agreementNumber = (v: string | null | undefined): number => {
+  const m = /^\s*(\d+(?:\.\d+)?)/.exec(v ?? "");
+  return m ? Number(m[1]) : 0;
+};
+/** May this account take the active book's orders: the house account, or a client whose signed agreement covers it. */
+const activeCovered = (c: { owner: boolean; agreement: string | null }): boolean => c.owner || agreementNumber(c.agreement) >= ACTIVE_AGREEMENT_FROM;
 /** How fresh an account's funds reading must be to size an active-book trade from it. */
 const ACTIVE_FUNDS_MAX_AGE_MS = 60_000;
 
@@ -572,11 +584,10 @@ async function activeSizes(settings: LiveSettings, px: number): Promise<Record<s
   const out: Record<string, number> = {};
   for (const c of checks) {
     if (c.group !== "eligible" && c.group !== "low") continue;
-    if (settings.excluded.includes(c.id)) continue;
+    if (settings.excluded.includes(c.id) || !activeCovered(c)) continue;
     const value = Math.min(c.funds?.free ?? 0, settings.base);
-    if (value < ACTIVE_MIN_VALUE) continue;
     const q = sizeFor(value, px);
-    if (q >= 1) out[c.id] = q;
+    if (q >= 1 && q * px >= ACTIVE_MIN_VALUE) out[c.id] = q; // the minimum is of what is actually bought
   }
   return out;
 }
@@ -587,7 +598,7 @@ function allowForActive(now: IstNow, dayMode: "live" | "shadow"): (accountId: st
   return async (accountId) => {
     const settings = await getSettings();
     const m = settings.activeMode ?? "off";
-    if (m === "off" || (dayMode === "live" && m !== "live")) {
+    if (m === "off" || (dayMode === "live" && m !== "live") || settings.mode !== m) {
       await noteOnce(now, `active-stopped-${dayMode}`, "warn", "The active book was switched while its orders were going out: the rest were not sent.");
       return false;
     }
@@ -598,7 +609,7 @@ function allowForActive(now: IstNow, dayMode: "live" | "shadow"): (accountId: st
 /** The active book's fail-safe: with a position open in the accounts, this long without a sign of life from it (its
  *  heartbeat, or the research engine itself) closes the position rather than hold it unwatched. */
 const ACTIVE_SILENCE_S = 300;
-const A = { lastAlive: 0 };
+const A = { lastAlive: 0, sent: new Set<string>() };
 
 /**
  * The active (auto) book in the accounts: a trade it opens (its scan runs every 2 minutes) is opened in every account
@@ -662,8 +673,25 @@ async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSetti
     }
   }
 
-  // ---- opens
-  if (setting === "off" || !st || now.minute >= T.ACTIVE_ENTRY_CUTOFF) return;
+  // ---- opens: the active book's switch AND the main switch (Automatic trading OFF stops everything new)
+  if (setting === "off" || settings.mode !== setting || !st || now.minute >= T.ACTIVE_ENTRY_CUTOFF) {
+    if (setting !== "off" && settings.mode !== setting) await noteOnce(now, `active-main-${settings.mode}`, "info", `The active book is ${setting.toUpperCase()} but Automatic trading is ${settings.mode.toUpperCase()}: it opens nothing new.`);
+    return;
+  }
+  // a trade fixed before a restart, but not yet sent to every account, is sent to the rest (each order's id is fixed:
+  // an account that already has it sends nothing)
+  for (let i = 0; i < trades.length; i++) {
+    const n = (i + 1) as ActiveN;
+    const t = trades[i];
+    const plan = day.active?.opened[n];
+    if (!plan || A.sent.has(`${now.day}|${n}`) || day.active?.closed[n] || t.status !== "open" || `${t.symbol}|${t.entered_at}` !== plan.key) continue;
+    A.sent.add(`${now.day}|${n}`);
+    if (now.ms / 1000 - t.entered_at > ACTIVE_FOLLOW_S) continue;
+    const mode = day.active!.mode;
+    await pool(Object.keys(plan.sizes), 4, (accountId) =>
+      openLegIn({ day: now.day, action: `active-open-${n}`, leg: plan.leg, accountId, mode, symbol: plan.symbol, qty: plan.sizes[accountId], shadowPx: plan.px, allow: allowForActive(now, mode) }).catch(() => null),
+    );
+  }
   for (let i = 0; i < trades.length; i++) {
     const t = trades[i];
     const n = (i + 1) as ActiveN;
@@ -694,7 +722,7 @@ async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSetti
     const sizes = await activeSizes(settings, px);
     const ids = Object.keys(sizes);
     if (!ids.length) {
-      await skip(`no account has at least ${inr(ACTIVE_MIN_VALUE)} free that can take orders`);
+      await skip(`no account can take it (the house account, or a client whose agreement covers the active book, with at least ${inr(ACTIVE_MIN_VALUE)} free)`);
       continue;
     }
     const leg = `a${n}-${t.side}` as ActiveLeg;
@@ -709,6 +737,7 @@ async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSetti
     });
     const plan = day.active!.opened[n]!;
     const action = `active-open-${n}` as const;
+    A.sent.add(`${now.day}|${n}`);
     await pool(Object.keys(plan.sizes), 4, (accountId) =>
       openLegIn({ day: now.day, action, leg: plan.leg, accountId, mode: act.mode, symbol: plan.symbol, qty: plan.sizes[accountId], shadowPx: plan.px, allow: allowForActive(now, act.mode) }).catch((err) => {
         console.error(`[live] active open ${n} for ${accountId} failed:`, err instanceof Error ? err.message : err);

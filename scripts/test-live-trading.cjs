@@ -1116,8 +1116,13 @@ test("day: a holiday or weekend does nothing at all", async () => {
 const AQ = { owner: 498, m1: 498, m2: 99 }; // CCC at 1000: floor(min(free, 500000) / 1003); m2 has 100000 free
 const DQ = { owner: 997, m1: 997, m2: 199 }; // DDD at 500
 const act = (acct) => sent(acct).filter((x) => x.endsWith(" CCC") || x.endsWith(" DDD"));
+const COVERS = "3.7 · 2026-11-27"; // an agreement version that describes the active book
+const signed = (ids) => async (t, day) => {
+  if (t === at(day, 9, 12)) for (const c of sim.checks) if (ids.includes(c.id)) c.agreement = COVERS;
+};
+const timesOf = (acct) => Object.fromEntries(world.places.filter(([a]) => a === acct).map(([, i, when]) => [`${i.side} ${i.symbol}`, util.clock(util.istNow(when).minute)]));
 
-test("active: its trades go to every account with money, each sized from its own free money; closed when the book closes them, or at 15:15", async () => {
+test("active: under agreement 3.6 only the house account takes it; closed when the book closes it, or at 15:15", async () => {
   const d = dayOf(1);
   await scenario({
     activeMode: "live",
@@ -1126,26 +1131,42 @@ test("active: its trades go to every account with money, each sized from its own
       { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5) },
     ],
   });
-  for (const a of ["owner", "m1", "m2"]) {
-    assert.deepEqual(act(a), [`BUY ${AQ[a]} CCC`, `SELL ${AQ[a]} CCC`, `SELL ${DQ[a]} DDD`, `BUY ${DQ[a]} DDD`], a);
-    assert.ok(flat(a), `${a} flat`);
-  }
-  // Book A is untouched: the low-balance account still takes none of it
-  assert.deepEqual(sent("m2").filter((x) => x.endsWith(" AAA")), []);
-  assert.deepEqual(sent("m1").filter((x) => x.endsWith(" AAA")), [ENTRY, COVER]);
-  const t = Object.fromEntries(world.places.filter(([a]) => a === "m1").map(([, i, when]) => [`${i.side} ${i.symbol}`, util.clock(util.istNow(when).minute)]));
+  assert.deepEqual(act("owner"), [`BUY ${AQ.owner} CCC`, `SELL ${AQ.owner} CCC`, `SELL ${DQ.owner} DDD`, `BUY ${DQ.owner} DDD`]);
+  assert.deepEqual(act("m1"), []); // a client on 3.6: the agreement does not describe the active book
+  assert.deepEqual(act("m2"), []);
+  assert.deepEqual(sent("m1").filter((x) => x.endsWith(" AAA")), [ENTRY, COVER]); // Book A untouched
+  const t = timesOf("owner");
   assert.equal(t["BUY CCC"], "10:21");
   assert.equal(t["SELL CCC"], "10:40");
   assert.equal(t["SELL DDD"], "11:00");
   assert.equal(t["BUY DDD"], "15:15");
+  for (const a of ["owner", "m1", "m2"]) assert.ok(flat(a), `${a} flat`);
   const plan = await store.getDay(d, "");
   assert.ok(plan.active && plan.active.closed[1] && plan.active.closed[2]);
+});
+
+test("active: clients whose agreement covers it take part, each sized from its own free money (a low balance trades smaller)", async () => {
+  await scenario({
+    activeMode: "live",
+    onTick: signed(["m1", "m2"]),
+    active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }],
+  });
+  for (const a of ["owner", "m1", "m2"]) {
+    assert.deepEqual(act(a), [`BUY ${AQ[a]} CCC`, `SELL ${AQ[a]} CCC`], a);
+    assert.ok(flat(a), `${a} flat`);
+  }
+  assert.deepEqual(sent("m2").filter((x) => x.endsWith(" AAA")), []); // Book A still keeps low balances out
 });
 
 test("active: OFF sends nothing for it (Book A unchanged)", async () => {
   await scenario({ activeMode: "off", active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }] });
   for (const a of ["owner", "m1", "m2"]) assert.deepEqual(act(a), [], a);
   assert.deepEqual(sent("m1"), [ENTRY, COVER]);
+});
+
+test("active: ON while Automatic trading is OFF opens nothing", async () => {
+  await scenario({ mode: "off", activeMode: "live", active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }] });
+  assert.equal(world.places.length, 0);
 });
 
 test("active: switched OFF with a trade open — that trade is still closed, nothing new is opened", async () => {
@@ -1156,13 +1177,11 @@ test("active: switched OFF with a trade open — that trade is still closed, not
       { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5) },
     ],
     onTick: async (t, day) => {
-      if (t === at(day, 10, 30, 0) - ((at(day, 10, 30, 0) - at(day, 9, 12)) % 3000)) await store.setActiveMode("off", "test");
+      if (t >= at(day, 10, 30) && t < at(day, 10, 30) + 3000) await store.setActiveMode("off", "test");
     },
   });
-  for (const a of ["owner", "m1", "m2"]) {
-    assert.deepEqual(act(a), [`BUY ${AQ[a]} CCC`, `SELL ${AQ[a]} CCC`], a);
-    assert.ok(flat(a), `${a} flat`);
-  }
+  assert.deepEqual(act("owner"), [`BUY ${AQ.owner} CCC`, `SELL ${AQ.owner} CCC`]);
+  assert.ok(flat("owner"));
 });
 
 test("active: a trade seen too long after it opened is not followed; the next one is", async () => {
@@ -1176,21 +1195,18 @@ test("active: a trade seen too long after it opened is not followed; the next on
       if (t >= at(day, 10, 30) && t < at(day, 10, 30) + 3000) await store.setActiveMode("live", "test");
     },
   });
-  for (const a of ["owner", "m1", "m2"]) {
-    assert.deepEqual(act(a), [`SELL ${DQ[a]} DDD`, `BUY ${DQ[a]} DDD`], a);
-    assert.ok(flat(a), `${a} flat`);
-  }
+  assert.deepEqual(act("owner"), [`SELL ${DQ.owner} DDD`, `BUY ${DQ.owner} DDD`]);
+  assert.ok(flat("owner"));
 });
 
-test("active: an account below the minimum, kept out, or blocked takes no part", async () => {
+test("active: an account below the minimum, or blocked, takes no part", async () => {
   sim.blocked.add("m1");
   try {
     await scenario({
       activeMode: "live",
       onTick: async (t, day) => {
-        if (t === at(day, 9, 12)) {
-          sim.checks.find((c) => c.id === "m2").funds = { cash: 5000, used: 0, free: 5000 };
-        }
+        await signed(["m1", "m2"])(t, day);
+        if (t === at(day, 9, 12)) sim.checks.find((c) => c.id === "m2").funds = { cash: 5000, used: 0, free: 5000 };
       },
       active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }],
     });
@@ -1202,16 +1218,21 @@ test("active: an account below the minimum, kept out, or blocked takes no part",
   assert.deepEqual(act("m2"), []); // ₹5,000 free: below the minimum
 });
 
+test("active: never Book A's own name (the two would net out in one position)", async () => {
+  await scenario({ activeMode: "live", active: (day) => [{ symbol: "AAA", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }] });
+  assert.deepEqual(sent("owner"), [ENTRY, COVER]);
+});
+
 test("active: the book falls silent with a position open — the position is closed as a fail-safe 5 minutes later", async () => {
   await scenario({
     activeMode: "live",
     active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26) }],
     activeBeatUntil: (day) => at(day, 11, 0),
   });
-  const t = Object.fromEntries(world.places.filter(([a]) => a === "m1").map(([, i, when]) => [`${i.side} ${i.symbol}`, util.clock(util.istNow(when).minute)]));
+  const t = timesOf("owner");
   assert.equal(t["BUY CCC"], "10:21");
   assert.equal(t["SELL CCC"], "11:05");
-  for (const a of ["owner", "m1", "m2"]) assert.ok(flat(a), `${a} flat`);
+  assert.ok(flat("owner"));
 });
 
 test("active: an exit Groww keeps refusing is given up, then tried afresh at 15:15", async () => {
@@ -1230,13 +1251,12 @@ test("active: an exit Groww keeps refusing is given up, then tried afresh at 15:
       }
     },
   });
-  const m1 = world.places.filter(([a, i]) => a === "m1" && i.symbol === "CCC");
-  const refused = m1.filter(([, i]) => i.rejected).length;
-  const last = m1[m1.length - 1];
-  assert.equal(refused, 3); // the book's exit: three tries, then given up
+  const mine = world.places.filter(([a, i]) => a === "owner" && i.symbol === "CCC");
+  assert.equal(mine.filter(([, i]) => i.rejected).length, 3); // the book's exit: three tries, then given up
+  const last = mine[mine.length - 1];
   assert.equal(`${last[1].side} ${last[1].qty}`, "SELL 498");
   assert.equal(util.clock(util.istNow(last[2]).minute), "15:15"); // tried afresh at 15:15, and done
-  assert.ok(flat("m1"));
+  assert.ok(flat("owner"));
 });
 
 (async () => {
