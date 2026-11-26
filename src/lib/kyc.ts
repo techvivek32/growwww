@@ -319,6 +319,18 @@ export async function listKyc() {
     .sort((a, b) => b.submittedAt - a.submittedAt);
 }
 
+/** The name each user gave for identity verification, by user id: for lists that only need a name,
+ *  so nothing encrypted is decrypted to show one. */
+export async function kycNames(): Promise<Map<string, string>> {
+  const store = await read();
+  const out = new Map<string, string>();
+  for (const r of store.records) {
+    const name = r.fullName?.trim();
+    if (name) out.set(r.userId, name);
+  }
+  return out;
+}
+
 /** Full PAN for the owner during a review (verifying against the document). */
 export async function revealPan(userId: string): Promise<string | null> {
   const r = await getKyc(userId);
