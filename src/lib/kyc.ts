@@ -320,11 +320,13 @@ export async function listKyc() {
 }
 
 /** The name each user gave for identity verification, by user id: for lists that only need a name,
- *  so nothing encrypted is decrypted to show one. */
+ *  so nothing encrypted is decrypted to show one. A rejected submission's name is left out: it may not
+ *  be theirs. */
 export async function kycNames(): Promise<Map<string, string>> {
   const store = await read();
   const out = new Map<string, string>();
   for (const r of store.records) {
+    if (r.status === "rejected") continue;
     const name = r.fullName?.trim();
     if (name) out.set(r.userId, name);
   }

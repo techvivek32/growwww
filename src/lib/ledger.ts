@@ -108,10 +108,12 @@ export interface UserOrderStats {
   lastAt: number | null;
 }
 
-/** Per-user counts across the whole ledger. */
-export async function orderStatsByUser(): Promise<Map<string, UserOrderStats>> {
+/** Per-user counts across the whole ledger. `strict`: a ledger that cannot be read throws instead of
+ *  counting as empty, for a page whose whole answer is "who has traded" (an empty log would say nobody). */
+export async function orderStatsByUser({ strict = false }: { strict?: boolean } = {}): Promise<Map<string, UserOrderStats>> {
   const by = new Map<string, UserOrderStats>();
-  for (const e of (await read().catch(() => ({ entries: [] as LedgerEntry[] }))).entries) {
+  const store = strict ? await read() : await read().catch(() => ({ entries: [] as LedgerEntry[] }));
+  for (const e of store.entries) {
     const s = by.get(e.userId) ?? { userId: e.userId, placed: 0, rejected: 0, cancelled: 0, unknown: 0, lastAt: null };
     s[e.status]++;
     s.lastAt = Math.max(s.lastAt ?? 0, e.at);

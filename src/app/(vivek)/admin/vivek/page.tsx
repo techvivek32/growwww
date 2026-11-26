@@ -1,21 +1,28 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireAdminPage } from "@/lib/access";
-import { Card, PageHead, Pill } from "@/components/ui";
+import { Card, Pill } from "@/components/ui";
 import { listUsers } from "@/lib/users";
 import { orderStatsByUser } from "@/lib/ledger";
 import { kycNames } from "@/lib/kyc";
 
-export const metadata: Metadata = { title: "Vivek · Admin · MNHA Financials" };
+export const metadata: Metadata = { title: "Vivek · MNHA Financials" };
 export const dynamic = "force-dynamic";
 
 /**
  * The owner's own page (/admin/vivek, opened by its address, not from the menu): every user in short,
  * filtered into those whose Groww account has traded through MNHA and those whose has not.
  *
+ * A page of its own: it sits outside the (admin) route group, so it has none of the console's header
+ * or sidebar (the owner asked for nothing but the list). Its URL is still under /admin, so the proxy
+ * lets only the admin login in, and requireAdminPage() below checks again.
+ *
  * "Traded" means Groww accepted at least one order MNHA sent into that account (the user's own, the
- * admin's, or the strategy's): MNHA's order log, the same count as the dashboard's "Placed ≥1 order".
- * A rejected order is not a trade. Fills and money live at Groww.
+ * admin's, or the strategy's), from MNHA's order log. It is the same test as the dashboard's "Placed ≥1
+ * order" step, over every user; the funnel also needs a signed agreement and a connected Groww, so its
+ * number can be lower. A rejected order is not a trade. An "unknown" one (the send did not complete, so
+ * Groww may or may not have it) is not counted either, but is shown, so the owner can check it in Groww.
+ * Fills and money live at Groww.
  */
 
 type Show = "all" | "traded" | "not-traded";
@@ -36,7 +43,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ s
   const asked = Array.isArray(raw) ? raw[0] : raw;
   const show: Show = asked === "traded" || asked === "not-traded" ? asked : "all";
 
-  const [users, stats, nameFor] = await Promise.all([listUsers(), orderStatsByUser(), kycNames()]);
+  const [users, stats, nameFor] = await Promise.all([listUsers(), orderStatsByUser({ strict: true }), kycNames()]);
 
   const rows = users
     .map((u) => {
@@ -50,6 +57,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ s
         groww: u.hasBroker,
         placed,
         rejected: s?.rejected ?? 0,
+        unknown: s?.unknown ?? 0,
         lastAt: s?.lastAt ?? null,
         traded: placed > 0,
       };
@@ -65,8 +73,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ s
   const shown = show === "all" ? rows : rows.filter((r) => (show === "traded" ? r.traded : !r.traded));
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <PageHead title="Users" sub="Every user in short. Filter who has traded through MNHA and who has not." right={<Pill tone="violet">Admin</Pill>} />
+    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+      <h1 className="pub-display mb-6 text-[34px] leading-none text-ink sm:text-[40px]">Users</h1>
 
       <nav aria-label="Filter users" className="mb-5 flex flex-wrap items-center gap-2">
         {FILTERS.map((f) => {
@@ -124,6 +132,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ s
                     <td className="tnum px-4 py-2.5 text-right text-[12.5px] whitespace-nowrap">
                       {r.placed > 0 ? <span className="text-ink">{r.placed} placed</span> : <span className="text-ink3">—</span>}
                       {r.rejected > 0 && <span className="ml-2 text-[11.5px] text-warn">{r.rejected} rejected</span>}
+                      {r.unknown > 0 && (
+                        <span className="ml-2 text-[11.5px] text-warn" title="The send did not complete, so Groww may or may not have these orders: check them in Groww.">
+                          {r.unknown} unconfirmed
+                        </span>
+                      )}
                     </td>
                     <td className="tnum px-4 py-2.5 text-[12px] whitespace-nowrap text-ink2">{r.lastAt ? DAY_TIME.format(new Date(r.lastAt)) : "—"}</td>
                   </tr>
@@ -133,11 +146,6 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ s
           </div>
         )}
       </Card>
-
-      <p className="mt-4 text-[11.5px] leading-relaxed text-ink3">
-        Traded: Groww accepted at least one order MNHA sent into the account: the user&apos;s own, the admin&apos;s, or the
-        strategy&apos;s. A rejected order is not a trade. From MNHA&apos;s order log; fills and money are at Groww.
-      </p>
-    </div>
+    </main>
   );
 }
