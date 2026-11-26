@@ -258,6 +258,8 @@ export interface LiveToday {
   mstop_at: number;
   /** The active (auto) book's trades today, in order (empty on an older research engine). */
   active: ActiveTrade[];
+  /** The active book's last sign of life (epoch seconds), or null: its fail-safe watches it. */
+  active_beat: number | null;
 }
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -314,6 +316,7 @@ export async function liveToday(): Promise<LiveToday | null> {
               why: strOrNull(a.why),
             }))
         : [],
+      active_beat: numOrNull(j.active_beat),
     };
   } catch {
     return null;

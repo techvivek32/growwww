@@ -75,7 +75,8 @@ export type OrderAction =
   | "manual" // the admin's order to many accounts
   | "exit" // the admin's exit of a position
   | `active-open-${ActiveN}` // the active (auto) book's trade n: its opening order
-  | `active-close-${ActiveN}`; // the active book's trade n: its closing order (the book closed it, or 15:15)
+  | `active-close-${ActiveN}` // the active book's trade n: closed because the book closed it (or its fail-safe)
+  | `active-eod-${ActiveN}`; // the active book's trade n: whatever is left of it at 15:15
 
 export const ACTION_LABEL: Record<OrderAction, string> = {
   entry: "09:20 entry (short)",
@@ -94,6 +95,10 @@ export const ACTION_LABEL: Record<OrderAction, string> = {
   "active-close-2": "Active trade 2: close",
   "active-close-3": "Active trade 3: close",
   "active-close-4": "Active trade 4: close",
+  "active-eod-1": "Active trade 1: 15:15 close",
+  "active-eod-2": "Active trade 2: 15:15 close",
+  "active-eod-3": "Active trade 3: 15:15 close",
+  "active-eod-4": "Active trade 4: 15:15 close",
 };
 
 export type SendState =
@@ -176,6 +181,8 @@ export interface ActiveDay {
   closed: Partial<Record<ActiveN, number>>;
   /** Trade number → why it was not followed (seen too late, no account with money, ...). */
   skipped: Partial<Record<ActiveN, string>>;
+  /** Trade number → when its exit could not be done in every account (retried at 15:15 under its own action). */
+  exitFailed?: Partial<Record<ActiveN, number>>;
 }
 
 /** The research engine's decisions, kept once seen, so an outage after them cannot hold up a cover. */

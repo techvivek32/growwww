@@ -152,6 +152,10 @@ def main(argv: list[str] | None = None) -> int:
         from . import manual
 
         print(json.dumps(manual.watch(), default=str))
+    elif cmd == "active-fresh":
+        from . import active
+
+        print(json.dumps(active.start_fresh(), default=str))
     elif cmd == "active":
         from . import active
 

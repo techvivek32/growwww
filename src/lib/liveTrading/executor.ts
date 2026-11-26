@@ -595,92 +595,128 @@ function allowForActive(now: IstNow, dayMode: "live" | "shadow"): (accountId: st
   };
 }
 
+/** The active book's fail-safe: with a position open in the accounts, this long without a sign of life from it (its
+ *  heartbeat, or the research engine itself) closes the position rather than hold it unwatched. */
+const ACTIVE_SILENCE_S = 300;
+const A = { lastAlive: 0 };
+
 /**
  * The active (auto) book in the accounts: a trade it opens (its scan runs every 2 minutes) is opened in every account
  * with money, each sized from its own free money; a trade it closes is closed; whatever is still open is closed at
- * 15:15. Opens follow the active-book switch; closes never wait on it — getting out only takes risk away.
+ * 15:15 (under its own action, so a failed exit gets fresh tries then). Closes run first, and never wait on the switch
+ * — getting out only takes risk away. If the book falls silent with a position open, the position is closed.
  */
 async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSettings): Promise<void> {
   const setting = settings.activeMode ?? "off";
   const trades = (st?.active ?? []).slice(0, ACTIVE_MAX);
+  // the book's last sign of life is its own heartbeat time, not when we read it
+  if (st && st.active_beat !== null && st.active_beat * 1000 <= now.ms + 60_000) A.lastAlive = Math.max(A.lastAlive, st.active_beat * 1000);
   let day = await getDay(now.day, now.date);
-  if (setting !== "off" && st && now.minute < T.ACTIVE_ENTRY_CUTOFF) {
-    for (let i = 0; i < trades.length; i++) {
-      const t = trades[i];
+
+  // ---- closes first: the book's exits, the fail-safe, and 15:15
+  const act0 = day.active;
+  if (act0 && now.minute <= T.ACTIVE_TO) {
+    for (let i = 0; i < ACTIVE_MAX; i++) {
       const n = (i + 1) as ActiveN;
-      if (t.status !== "open" || day.active?.opened[n] || day.active?.skipped[n]) continue;
-      const act = await fixActive(now, settings, setting);
-      if (act.mode === "live" && setting !== "live") continue; // a live day never opens in shadow
-      const skip = async (why: string) => {
+      const plan = act0.opened[n];
+      if (!plan || act0.closed[n]) continue;
+      if (now.minute >= T.CLOSE_GIVE_UP) {
+        // Groww squares intraday positions off itself near 15:20: MNHA stops sending, as Book A does.
         day = await updateDay(now.day, now.date, (x) => {
-          if (x.active && !x.active.opened[n]) x.active.skipped[n] = why;
+          if (x.active && !x.active.closed[n]) x.active.closed[n] = Date.now();
           return structuredClone(x);
         });
-        await noteOnce(now, `active-skip|${n}`, "info", `Active trade ${n} (${t.side === "long" ? "BUY" : "SELL"} ${t.symbol}) not sent: ${why}.`);
-      };
-      if (now.ms / 1000 - t.entered_at > ACTIVE_FOLLOW_S) {
-        await skip(`it opened at ${clock(istMinuteOfEpoch(t.entered_at))}, too long ago to follow at its price`);
+        await noteOnce(now, `active-giveup|${n}`, "error", `Active trade ${n}: ${plan.symbol} not confirmed closed by 15:24 — check the positions below; Groww squares intraday positions off itself.`);
         continue;
       }
-      const px = await priceOf(t.symbol, t.entry);
-      if (px === null) {
-        await skip(`no price for ${t.symbol}`);
+      const t = trades[i];
+      const book = t && `${t.symbol}|${t.entered_at}` === plan.key ? t : null;
+      const eod = now.minute >= T.CLOSE_AT;
+      // since the last sign of life — or since this process started, when none has been seen since (a restart)
+      const aliveRef = A.lastAlive || E.startedAt || now.ms;
+      const silent = !eod && now.ms - aliveRef > ACTIVE_SILENCE_S * 1000 && !(book && book.status === "closed");
+      const bookClosed = book !== null && book.status === "closed";
+      let action: OrderAction;
+      if (eod) action = `active-eod-${n}`;
+      else if ((bookClosed || silent) && !act0.exitFailed?.[n]) action = `active-close-${n}`;
+      else continue;
+      if (silent) await noteOnce(now, `active-silent|${n}`, "warn", `The active book has not been heard from for ${Math.round(ACTIVE_SILENCE_S / 60)} minutes: its ${plan.symbol} is closed as a fail-safe rather than held unwatched.`);
+      const tally = await closeAll(now, day, action, plan.leg, { accounts: Object.keys(plan.sizes ?? {}), mode: act0.mode, plan });
+      if (!tally.converged) continue;
+      if (tally.failed > 0 && !eod) {
+        day = await updateDay(now.day, now.date, (x) => {
+          if (x.active) (x.active.exitFailed ??= {})[n] = Date.now();
+          return structuredClone(x);
+        });
+        const r = tallyText(tally, `Active trade ${n}: ${plan.symbol} closed.`);
+        await noteOnce(now, `active-exit-failed|${n}`, "error", `${r.text} It is tried again at 15:15.`);
         continue;
       }
-      const sizes = await activeSizes(settings, px);
-      const ids = Object.keys(sizes);
-      if (!ids.length) {
-        await skip(`no account has at least ${inr(ACTIVE_MIN_VALUE)} free that can take orders`);
-        continue;
-      }
-      const leg = `a${n}-${t.side}` as ActiveLeg;
-      const key = `${t.symbol}|${t.entered_at}`;
-      const total = ids.reduce((a, id) => a + sizes[id], 0);
-      day = await updateDay(now.day, now.date, (x) => {
-        if (x.active && !x.active.opened[n]) {
-          x.active.opened[n] = { symbol: t.symbol, qty: total, px, leg, key, sizes };
-          x.active.accounts = [...new Set([...x.active.accounts, ...ids])];
-        }
-        return structuredClone(x);
-      });
-      const plan = day.active!.opened[n]!;
-      const action = `active-open-${n}` as const;
-      await pool(Object.keys(plan.sizes), 4, (accountId) =>
-        openLegIn({ day: now.day, action, leg: plan.leg, accountId, mode: act.mode, symbol: plan.symbol, qty: plan.sizes[accountId], shadowPx: plan.px, allow: allowForActive(now, act.mode) }).catch((err) => {
-          console.error(`[live] active open ${n} for ${accountId} failed:`, err instanceof Error ? err.message : err);
-          return null;
-        }),
-      );
-      const each = Object.entries(plan.sizes).map(([id, q]) => `${acctToken(id)} ${q.toLocaleString("en-IN")}`).join(", ");
-      await noteOnce(
-        now,
-        `active-open|${n}`,
-        "info",
-        `Active trade ${n}${act.mode === "shadow" ? " (shadow)" : ""}: ${t.side === "long" ? "BUY" : "SELL"} ${plan.symbol} at about ${inr(plan.px)}, sized from each account's free money (${each}): ${await outcomes(now.day, action)}.`,
-      );
-    }
-  }
-  const act = day.active;
-  if (!act) return;
-  for (let i = 0; i < ACTIVE_MAX; i++) {
-    const n = (i + 1) as ActiveN;
-    const plan = act.opened[n];
-    if (!plan || act.closed[n]) continue;
-    const t = trades[i];
-    const book = t && `${t.symbol}|${t.entered_at}` === plan.key ? t : null;
-    const due = now.minute >= T.CLOSE_AT || (book !== null && book.status === "closed");
-    if (!due) continue;
-    const action = `active-close-${n}` as const;
-    const tally = await closeAll(now, day, action, plan.leg, { accounts: Object.keys(plan.sizes ?? {}), mode: act.mode, plan });
-    if (tally.converged) {
       day = await updateDay(now.day, now.date, (x) => {
         if (x.active) x.active.closed[n] = Date.now();
         return structuredClone(x);
       });
-      const why = book && book.status === "closed" ? `the active book closed it${book.why ? ` (${book.why})` : ""}` : "15:15 close";
+      const why = eod ? "15:15 close" : silent ? "fail-safe (the active book went silent)" : `the active book closed it${book?.why ? ` (${book.why})` : ""}`;
       const r = tallyText(tally, `Active trade ${n}: ${plan.symbol} closed — ${why}.`);
       await noteOnce(now, `active-close|${n}`, r.tone, r.text);
     }
+  }
+
+  // ---- opens
+  if (setting === "off" || !st || now.minute >= T.ACTIVE_ENTRY_CUTOFF) return;
+  for (let i = 0; i < trades.length; i++) {
+    const t = trades[i];
+    const n = (i + 1) as ActiveN;
+    if (t.status !== "open" || day.active?.opened[n] || day.active?.skipped[n]) continue;
+    const act = await fixActive(now, settings, setting);
+    if (act.mode === "live" && setting !== "live") continue; // a live day never opens in shadow
+    const skip = async (why: string) => {
+      day = await updateDay(now.day, now.date, (x) => {
+        if (x.active && !x.active.opened[n]) x.active.skipped[n] = why;
+        return structuredClone(x);
+      });
+      await noteOnce(now, `active-skip|${n}`, "info", `Active trade ${n} (${t.side === "long" ? "BUY" : "SELL"} ${t.symbol}) not sent: ${why}.`);
+    };
+    if (now.ms / 1000 - t.entered_at > ACTIVE_FOLLOW_S) {
+      await skip(`it opened at ${clock(istMinuteOfEpoch(t.entered_at))}, too long ago to follow at its price`);
+      continue;
+    }
+    const px = await priceOf(t.symbol, t.entry);
+    if (px === null) {
+      await skip(`no price for ${t.symbol}`);
+      continue;
+    }
+    const sizes = await activeSizes(settings, px);
+    const ids = Object.keys(sizes);
+    if (!ids.length) {
+      await skip(`no account has at least ${inr(ACTIVE_MIN_VALUE)} free that can take orders`);
+      continue;
+    }
+    const leg = `a${n}-${t.side}` as ActiveLeg;
+    const key = `${t.symbol}|${t.entered_at}`;
+    const total = ids.reduce((a, id) => a + sizes[id], 0);
+    day = await updateDay(now.day, now.date, (x) => {
+      if (x.active && !x.active.opened[n]) {
+        x.active.opened[n] = { symbol: t.symbol, qty: total, px, leg, key, sizes };
+        x.active.accounts = [...new Set([...x.active.accounts, ...ids])];
+      }
+      return structuredClone(x);
+    });
+    const plan = day.active!.opened[n]!;
+    const action = `active-open-${n}` as const;
+    await pool(Object.keys(plan.sizes), 4, (accountId) =>
+      openLegIn({ day: now.day, action, leg: plan.leg, accountId, mode: act.mode, symbol: plan.symbol, qty: plan.sizes[accountId], shadowPx: plan.px, allow: allowForActive(now, act.mode) }).catch((err) => {
+        console.error(`[live] active open ${n} for ${accountId} failed:`, err instanceof Error ? err.message : err);
+        return null;
+      }),
+    );
+    const each = Object.entries(plan.sizes).map(([id, q]) => `${acctToken(id)} ${q.toLocaleString("en-IN")}`).join(", ");
+    await noteOnce(
+      now,
+      `active-open|${n}`,
+      "info",
+      `Active trade ${n}${act.mode === "shadow" ? " (shadow)" : ""}: ${t.side === "long" ? "BUY" : "SELL"} ${plan.symbol} at about ${inr(plan.px)}, sized from each account's free money (${each}): ${await outcomes(now.day, action)}.`,
+    );
   }
 }
 

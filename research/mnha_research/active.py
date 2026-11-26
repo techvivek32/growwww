@@ -16,6 +16,7 @@ Separate from Book A (the tested rule) and Book B.
 
 from __future__ import annotations
 
+import json
 import time
 
 import numpy as np
@@ -23,6 +24,7 @@ import pandas as pd
 
 from . import config, ingest, live, manual
 from .sessions import ist_day
+from .validation import day_to_date
 
 BOOK_NAME = "active"
 POLL_S = 5
@@ -36,6 +38,44 @@ MIN_TURNOVER_CR, MIN_PRICE, MIN_MOVE = 20.0, 100.0, 1.0
 
 def log(msg: str) -> None:
     print(time.strftime("%Y-%m-%d %H:%M:%S"), "active", msg, flush=True)
+
+
+BEAT = config.DATA / "active_beat.json"
+FRESH = config.DATA / "active_fresh.json"
+
+
+def beat(day_iso: str) -> None:
+    """The active book's sign of life, for the website's executor: with a position open in the accounts, a silence of
+    5 minutes gets that position closed as a fail-safe."""
+    try:
+        tmp = BEAT.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"day": day_iso, "at": time.time()}))
+        tmp.replace(BEAT)
+    except Exception as e:  # noqa: BLE001
+        log(f"heartbeat write failed: {e}")
+
+
+def fresh_at(day_iso: str) -> float | None:
+    """When the admin restarted the book fresh today (its trades from then on count afresh), or None."""
+    try:
+        f = json.loads(FRESH.read_text())
+        return float(f["at"]) if f.get("day") == day_iso else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def start_fresh() -> dict:
+    """The admin's fresh start: close the book's open paper trade at the live price, and count its trades afresh from
+    now (the names already traded today stay out). The running session picks it up on its next pass."""
+    day_iso = day_to_date(live.today_ist()).isoformat()
+    closed = []
+    for r in manual._load():
+        if r.get("book") == BOOK_NAME and r["status"] == "open" and r["day"] == day_iso:
+            c = manual.close_trade(r["symbol"], "admin: fresh start", r["entry_time"])
+            closed.append({"symbol": c["symbol"], "net": c["net"]})
+    FRESH.write_text(json.dumps({"day": day_iso, "at": time.time()}))
+    log(f"fresh start: closed {closed}")
+    return {"closed": closed, "fresh_at": time.time()}
 
 
 def _ltps(syms: list[str]) -> dict[str, float]:
@@ -115,7 +155,19 @@ def session() -> dict:
         if r.get("book") == BOOK_NAME and r["status"] == "open" and r["day"] == date.isoformat():
             pos = {"symbol": r["symbol"], "side": -1 if r["side"] == "short" else 1, "entry": r["entry"], "qty": r["qty"], "best": r["entry"],
                    "mkt_at_entry": r.get("mkt_at_entry", 0.0), "entry_time": r["entry_time"]}
-    trades = sum(1 for r in manual._load() if r.get("book") == BOOK_NAME and r["day"] == date.isoformat())
+    def counted() -> int:  # today's trades, or those since the admin's fresh start
+        f = fresh_at(date.isoformat())
+        n_ = 0
+        for r in manual._load():
+            if r.get("book") != BOOK_NAME or r["day"] != date.isoformat():
+                continue
+            hh, mm, ss = (int(x) for x in r["entry_time"].split(":"))
+            at_ = live.today_ist() * 86_400 - config.IST_OFFSET_S + hh * 3600 + mm * 60 + ss
+            if f is None or at_ >= f:
+                n_ += 1
+        return n_
+
+    trades = counted()
     last_scan = 0.0
     cache: dict = {}
     # names already traded today (a restarted session must not pick them again)
@@ -128,11 +180,21 @@ def session() -> dict:
         log(f"exit {pos['symbol']}: {why}, net {r['net']:+.0f}")
         pos = None
 
+    last_beat = 0.0
+    seen_fresh = fresh_at(date.isoformat())
     while True:
         now = time.time()
         minute = live.minute_ist(now)
         if minute >= 15 * 60 + 20:
             break
+        if now - last_beat >= 10:
+            last_beat = now
+            beat(date.isoformat())
+            f = fresh_at(date.isoformat())
+            if f != seen_fresh:  # the admin's fresh start: count afresh
+                seen_fresh = f
+                trades = counted()
+                log(f"fresh start seen: {trades} trades counted from now")
         try:
             if pos and now - last_poll >= POLL_S:
                 last_poll = now

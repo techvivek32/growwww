@@ -1128,6 +1128,11 @@ def today_state(now: float | None = None) -> dict:
         except sqlite3.OperationalError:
             pass
     out["active"] = active_today(day)
+    try:  # the active book's heartbeat (active.py), for the executor's fail-safe
+        b = json.loads((config.DATA / "active_beat.json").read_text())
+        out["active_beat"] = float(b["at"]) if b.get("day") == day_to_date(day).isoformat() else None
+    except Exception:  # noqa: BLE001
+        out["active_beat"] = None
     return out
 
 
@@ -1150,10 +1155,15 @@ def active_today(day: int) -> list[dict]:
         rows = [r for r in manual._load() if r.get("book") == "active" and r.get("day") == date]
     except Exception:  # noqa: BLE001
         return []
+    try:  # the admin's fresh start: only the trades from then on are served (they are numbered afresh)
+        f = json.loads((config.DATA / "active_fresh.json").read_text())
+        fresh = float(f["at"]) if f.get("day") == date else None
+    except Exception:  # noqa: BLE001
+        fresh = None
     out = []
     for r in sorted(rows, key=lambda r: r.get("entry_time") or ""):
         at = epoch(r.get("entry_time"))
-        if at is None or not r.get("entry"):
+        if at is None or not r.get("entry") or (fresh is not None and at < fresh):
             continue
         out.append({"symbol": r["symbol"], "side": "short" if r.get("side") == "short" else "long", "status": "closed" if r.get("status") == "closed" else "open",
                     "entered_at": at, "entry": float(r["entry"]), "exited_at": epoch(r.get("exit_time")) if r.get("status") == "closed" else None,

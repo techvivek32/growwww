@@ -820,7 +820,7 @@ const sim = { now: 0, today: () => null, prices: {}, checks: [], trading: true, 
 const execMod = load("src/lib/liveTrading/executor.ts", {
   "server-only": {},
   "@/lib/trading": { tradePermission: async (id) => ({ allowed: !sim.blocked.has(id) }) },
-  "@/lib/notifications": { notify: async (u, n) => void world.notes.push([u, n]) },
+  "@/lib/notifications": { notify: async (u, n) => void world.notes.push([u, n]), notifyAdmin: async (n) => void world.notes.push(["admin", n]) },
   "@/lib/consent": { currentConsent: async () => ({ agreementVersion: "3.6" }) },
   "@/lib/auth": { OWNER_ID: "owner" },
   "@/lib/market": { isTradingDate: () => sim.trading },
@@ -881,10 +881,11 @@ function timeline(day, o) {
 }
 
 /** The active (auto) book's trades on a research timeline: open from openAt, closed from closeAt. */
-function withActive(tl, list) {
+function withActive(tl, list, beatUntil) {
   return (nowMs) => {
     const st = tl(nowMs);
     if (!st) return st;
+    st.active_beat = beatUntil !== undefined && nowMs > beatUntil ? sec(beatUntil) : sec(nowMs);
     st.active = list
       .filter((a) => nowMs >= a.openAt)
       .map((a) => {
@@ -913,7 +914,7 @@ async function scenario(o) {
   await store.setActiveMode(o.activeMode ?? "off", "test");
   const day = 30000 + (++dayN);
   sim.today = timeline(day, o);
-  if (o.active) sim.today = withActive(sim.today, o.active(day));
+  if (o.active) sim.today = withActive(sim.today, o.active(day), o.activeBeatUntil ? o.activeBeatUntil(day) : undefined);
   sim.onTick = o.onTick ? (t) => o.onTick(t, day) : null;
   try {
     await runDay(o.start ?? at(day, 9, 12), at(day, 15, 32));
@@ -1199,6 +1200,43 @@ test("active: an account below the minimum, kept out, or blocked takes no part",
   assert.deepEqual(act("owner"), [`BUY ${AQ.owner} CCC`, `SELL ${AQ.owner} CCC`]);
   assert.deepEqual(act("m1"), []); // its order address no longer works: the gate holds it back
   assert.deepEqual(act("m2"), []); // ₹5,000 free: below the minimum
+});
+
+test("active: the book falls silent with a position open — the position is closed as a fail-safe 5 minutes later", async () => {
+  await scenario({
+    activeMode: "live",
+    active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26) }],
+    activeBeatUntil: (day) => at(day, 11, 0),
+  });
+  const t = Object.fromEntries(world.places.filter(([a]) => a === "m1").map(([, i, when]) => [`${i.side} ${i.symbol}`, util.clock(util.istNow(when).minute)]));
+  assert.equal(t["BUY CCC"], "10:21");
+  assert.equal(t["SELL CCC"], "11:05");
+  for (const a of ["owner", "m1", "m2"]) assert.ok(flat(a), `${a} flat`);
+});
+
+test("active: an exit Groww keeps refusing is given up, then tried afresh at 15:15", async () => {
+  let reject = false;
+  await scenario({
+    activeMode: "live",
+    active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }],
+    onTick: async (t, day) => {
+      reject = t >= at(day, 10, 40) && t < at(day, 15, 0);
+      if (t === at(day, 9, 12)) {
+        const real = broker.placeOrderAs;
+        broker.placeOrderAs = async (acct, input) =>
+          reject && input.symbol === "CCC" && input.side === "SELL"
+            ? (world.places.push([acct, { ...input, rejected: true }, sim.now]), { ok: false, outcome: "rejected", orderId: null, status: null, filled: null, message: "RMS", httpStatus: 400 })
+            : real(acct, input);
+      }
+    },
+  });
+  const m1 = world.places.filter(([a, i]) => a === "m1" && i.symbol === "CCC");
+  const refused = m1.filter(([, i]) => i.rejected).length;
+  const last = m1[m1.length - 1];
+  assert.equal(refused, 3); // the book's exit: three tries, then given up
+  assert.equal(`${last[1].side} ${last[1].qty}`, "SELL 498");
+  assert.equal(util.clock(util.istNow(last[2]).minute), "15:15"); // tried afresh at 15:15, and done
+  assert.ok(flat("m1"));
 });
 
 (async () => {

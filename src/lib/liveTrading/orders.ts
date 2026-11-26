@@ -724,7 +724,7 @@ const STUCK_OPEN_MS = 60_000;
 export async function cancelStuckOpeners(day: number, onNote?: (text: string) => void): Promise<void> {
   const stuck = (await ordersOfDay(day)).filter(
     (o) =>
-      o.source === "auto" && (o.action === "entry" || o.action === "flip-long") && o.mode === "live" && o.state === "placed" &&
+      o.source === "auto" && (o.action === "entry" || o.action === "flip-long" || o.action.startsWith("active-open-")) && o.mode === "live" && o.state === "placed" &&
       !o.final && o.orderId && Date.now() - (o.sentAt ?? o.at) > STUCK_OPEN_MS,
   );
   for (const s0 of stuck) {
@@ -837,7 +837,7 @@ export async function liveExposure(accountId: string): Promise<"open" | "unconfi
   // An order whose outcome is not known cannot be called open or closed.
   if (mine.some((o) => o.mode === "live" && (o.state === "sending" || o.state === "unknown"))) return "unconfirmed";
   if (mine.some(working)) return "open";
-  for (const leg of ["short", "long"] as const) {
+  for (const leg of ALL_LEGS) {
     const st = legState(mine, accountId, leg, "live");
     if (st.possible <= 0 || !st.symbol) continue;
     // Only if Groww agrees it is still open (the holder may have closed it in the Groww app) —
