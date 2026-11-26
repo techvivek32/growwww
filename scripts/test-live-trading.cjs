@@ -1260,8 +1260,27 @@ test("active: an exit Groww keeps refusing is given up, then tried afresh at 15:
   assert.ok(flat("owner"));
 });
 
-test("active: matched by symbol and entry time, not place in the list — a renumbered list strands nothing and drops nothing", async () => {
+test("active: matched by symbol and entry time, not place in the list — a renumbered list drops nothing", async () => {
   const d = dayOf(1);
+  await scenario({
+    activeMode: "live",
+    active: (day) => [
+      { symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10), hideFrom: at(day, 10, 45) },
+      { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5), closeAt: at(day, 11, 40, 10) },
+    ],
+  });
+  const t = timesOf("owner");
+  assert.equal(t["BUY CCC"], "10:21");
+  assert.equal(t["SELL CCC"], "10:40");
+  assert.equal(t["SELL DDD"], "11:00"); // first in the list now, yet the accounts' trade 2 — not taken for trade 1
+  assert.equal(t["BUY DDD"], "11:40"); // closed when the book closed it
+  assert.ok(flat("owner"));
+  const plan = await store.getDay(d, "");
+  assert.equal(plan.active.opened[1].symbol, "CCC");
+  assert.equal(plan.active.opened[2].symbol, "DDD");
+});
+
+test("active: an open trade that drops out of the list is still closed at 15:15, and nothing opens on top of it", async () => {
   await scenario({
     activeMode: "live",
     active: (day) => [
@@ -1269,15 +1288,9 @@ test("active: matched by symbol and entry time, not place in the list — a renu
       { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5), closeAt: at(day, 11, 40, 10) },
     ],
   });
-  const t = timesOf("owner");
-  assert.equal(t["BUY CCC"], "10:21");
-  assert.equal(t["SELL DDD"], "11:00"); // first in the list now, yet the accounts' trade 2 — not taken for trade 1
-  assert.equal(t["BUY DDD"], "11:40"); // closed when the book closed it
-  assert.equal(t["SELL CCC"], "15:15"); // gone from the list: held to 15:15, still closed
+  assert.equal(timesOf("owner")["SELL CCC"], "15:15");
+  assert.deepEqual(sent("owner").filter((x) => x.endsWith(" DDD")), []);
   assert.ok(flat("owner"));
-  const plan = await store.getDay(d, "");
-  assert.equal(plan.active.opened[1].symbol, "CCC");
-  assert.equal(plan.active.opened[2].symbol, "DDD");
 });
 
 test("active: an exit once begun is carried through a research outage (not left to the fail-safe)", async () => {
@@ -1302,6 +1315,45 @@ test("active: an exit once begun is carried through a research outage (not left 
   assert.equal(sells.length, 2);
   assert.ok(sells[0][1].rejected);
   assert.equal(util.clock(util.istNow(sells[1][2]).minute), "10:40"); // retried 12 s later, in the outage
+  assert.ok(flat("owner"));
+});
+
+test("active: one at a time — the next trade waits for the previous one's close in the accounts", async () => {
+  await scenario({
+    activeMode: "live",
+    active: (day) => [
+      { symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) },
+      { symbol: "DDD", side: "short", openAt: at(day, 10, 40, 10) }, // the same scan exits CCC and opens DDD
+    ],
+  });
+  const mine = world.places.filter(([a, i]) => a === "owner" && (i.symbol === "CCC" || i.symbol === "DDD"));
+  assert.deepEqual(mine.map(([, i]) => `${i.side} ${i.symbol}`), ["BUY CCC", "SELL CCC", "SELL DDD", "BUY DDD"]);
+  assert.ok(mine[2][2] > mine[1][2], "DDD sent after CCC's close");
+  assert.equal(util.clock(util.istNow(mine[2][2]).minute), "10:40");
+  assert.ok(flat("owner"));
+});
+
+test("active: an exit that failed holds back the next trade (one at a time) until 15:15 closes it", async () => {
+  let reject = false;
+  await scenario({
+    activeMode: "live",
+    active: (day) => [
+      { symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) },
+      { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5) },
+    ],
+    onTick: async (t, day) => {
+      reject = t >= at(day, 10, 40) && t < at(day, 15, 0);
+      if (t === at(day, 9, 12)) {
+        const real = broker.placeOrderAs;
+        broker.placeOrderAs = async (acct, input) =>
+          reject && input.symbol === "CCC" && input.side === "SELL"
+            ? (world.places.push([acct, { ...input, rejected: true }, sim.now]), { ok: false, outcome: "rejected", orderId: null, status: null, filled: null, message: "RMS", httpStatus: 400 })
+            : real(acct, input);
+      }
+    },
+  });
+  assert.deepEqual(sent("owner").filter((x) => x.endsWith(" DDD")), []); // never opened on top of the unclosed CCC
+  assert.equal(timesOf("owner")["SELL CCC"], "15:15");
   assert.ok(flat("owner"));
 });
 

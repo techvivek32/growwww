@@ -722,8 +722,11 @@ async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSetti
       });
       await noteOnce(now, `active-skip|${key}`, "info", `Active trade (${what}) not sent: ${why}.`);
     };
+    // One at a time, as the agreement says: while an earlier active trade is not yet closed in every account, the next
+    // waits (looked at again each pass, within its follow window) — and is then sized with that margin free again.
+    const busy = Array.from({ length: ACTIVE_MAX }, (_, j) => (j + 1) as ActiveN).some((m) => day.active?.opened[m] && !day.active?.closed[m]);
     if (now.ms / 1000 - t.entered_at > ACTIVE_FOLLOW_S) {
-      await skip("too long ago to follow at its price");
+      await skip(busy ? "the previous active trade was not yet closed in every account (one trade at a time)" : "too long ago to follow at its price");
       continue;
     }
     if ([day.legs.short?.symbol, day.legs.long?.symbol].includes(t.symbol)) {
@@ -731,6 +734,7 @@ async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSetti
       await skip(`Book A holds ${t.symbol} today`);
       continue;
     }
+    if (busy) continue;
     // the accounts' own count: a trade they did not follow takes none of the four
     const free = Array.from({ length: ACTIVE_MAX }, (_, j) => (j + 1) as ActiveN).find((m) => !day.active?.opened[m]);
     if (free === undefined) {
