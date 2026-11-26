@@ -4,11 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 /** One click closes an open manual paper trade at the live price; the row re-renders from the research box. */
-export default function ManualExit({ symbol, entryTime }: { symbol: string; entryTime: string }) {
+export default function ManualExit({ symbol, entryTime, active = false }: { symbol: string; entryTime: string; active?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   async function exit() {
+    if (active && !window.confirm(`Exit ${symbol} now?\n\nThis is an ACTIVE (auto) book trade: when the Active book is ON on the Live trading page, its position in the clients' Groww accounts is closed too.`)) return;
     setBusy(true);
     setErr(null);
     try {

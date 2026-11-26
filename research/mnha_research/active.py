@@ -97,8 +97,8 @@ def scan(day: int, syms: list[str], cache: dict | None = None) -> tuple[pd.DataF
         got = cache["got"]
     else:
         got = live.fetch_range_day(syms + [config.BENCHMARK], day)
-        if cache is not None:
-            cache.update(bar=b, got=got)
+        if cache is not None and sum(1 for v in got.values() if v is not None) >= 0.8 * len(syms):
+            cache.update(bar=b, got=got)  # a thin fetch is not kept: the next scan fetches again
     q = _ltps(syms + [config.BENCHMARK])
     rows = []
     for s, df in got.items():
@@ -124,6 +124,18 @@ def scan(day: int, syms: list[str], cache: dict | None = None) -> tuple[pd.DataF
     df = pd.DataFrame(rows).set_index("symbol")
     st = df.drop(index=config.BENCHMARK, errors="ignore")
     return df, float(st.ret_920.median()) / 100
+
+
+def book_a_names(day: int) -> set[str]:
+    """Book A's names today (its 09:20 pick and its flip long): the active book never trades them, because in the
+    accounts the two books' orders in one symbol would net out in one intraday position."""
+    try:
+        from . import livex
+
+        r = livex._db().execute("SELECT pick, flip_symbol FROM livex_days WHERE day=?", (day,)).fetchone()
+        return {x for x in (r or ()) if x}
+    except Exception:  # noqa: BLE001
+        return set()
 
 
 def pick(df: pd.DataFrame, direction: int, exclude: set[str]) -> tuple[str, float, str] | None:
@@ -153,7 +165,7 @@ def session() -> dict:
     pos: dict | None = None  # {"symbol","side","entry","qty","best","mkt_at_entry","entry_time"}
     for r in manual._load():  # resume a position left open by an earlier run today
         if r.get("book") == BOOK_NAME and r["status"] == "open" and r["day"] == date.isoformat():
-            pos = {"symbol": r["symbol"], "side": -1 if r["side"] == "short" else 1, "entry": r["entry"], "qty": r["qty"], "best": r["entry"],
+            pos = {"symbol": r["symbol"], "side": -1 if r["side"] == "short" else 1, "entry": r["entry"], "qty": r["qty"], "best": r.get("best") or r["entry"],
                    "mkt_at_entry": r.get("mkt_at_entry", 0.0), "entry_time": r["entry_time"]}
     def counted() -> int:  # today's trades, or those since the admin's fresh start
         f = fresh_at(date.isoformat())
@@ -205,7 +217,13 @@ def session() -> dict:
                 q, _ = live.ltp([pos["symbol"]])
                 lt = q.get(pos["symbol"])
                 if lt:
-                    pos["best"] = max(pos["best"], lt) if pos["side"] > 0 else min(pos["best"], lt)
+                    best = max(pos["best"], lt) if pos["side"] > 0 else min(pos["best"], lt)
+                    if best != pos["best"]:  # kept in the record, so a restarted session trails from the same best price
+                        pos["best"] = best
+                        try:
+                            manual.update_open(pos["symbol"], BOOK_NAME, {"best": best})
+                        except Exception as e:  # noqa: BLE001
+                            log(f"best price not saved: {e}")
                     if minute >= SQUARE_OFF:
                         close("square-off 15:15")
                     elif pos["side"] * (lt - pos["best"]) / pos["best"] <= -TRAIL:
@@ -214,6 +232,9 @@ def session() -> dict:
                 last_scan = now
                 close_min = int(minute)
                 df, mkt = scan(day, syms, cache)
+                if len(df) < 0.8 * len(syms):  # too few names read: no decision on a thin market picture
+                    log(f"scan {int(minute) // 60:02d}:{int(minute) % 60:02d}: only {len(df)} of {len(syms)} names read; no decision this time")
+                    continue
                 if pos:
                     row = df.loc[pos["symbol"]] if pos["symbol"] in df.index else None
                     if row is not None and pos["side"] * row.close_vs_vwap < 0:
@@ -222,7 +243,7 @@ def session() -> dict:
                         close(f"market moved {100 * abs(mkt - pos['mkt_at_entry']):.2f}% against since entry")
                 if not pos and trades < MAX_TRADES and abs(mkt) >= 0.001:
                     direction = 1 if mkt > 0 else -1
-                    cand = pick(df, direction, traded)
+                    cand = pick(df, direction, traded | book_a_names(day))
                     if cand:
                         sym, px, why = cand
                         rec = manual.open_trade(sym, "long" if direction > 0 else "short", note=f"market median {mkt * 100:+.2f}% since 09:20; {why}",

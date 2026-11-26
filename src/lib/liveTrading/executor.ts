@@ -681,6 +681,11 @@ async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSetti
       await skip(`it opened at ${clock(istMinuteOfEpoch(t.entered_at))}, too long ago to follow at its price`);
       continue;
     }
+    if ([day.legs.short?.symbol, day.legs.long?.symbol].includes(t.symbol)) {
+      // in an account the two books' orders in one symbol would net out in one intraday position
+      await skip(`Book A holds ${t.symbol} today`);
+      continue;
+    }
     const px = await priceOf(t.symbol, t.entry);
     if (px === null) {
       await skip(`no price for ${t.symbol}`);

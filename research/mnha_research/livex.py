@@ -1127,7 +1127,11 @@ def today_state(now: float | None = None) -> dict:
             out["last_mark_at"] = mk[0] if mk else None
         except sqlite3.OperationalError:
             pass
-    out["active"] = active_today(day)
+    try:  # never let the active book's records blank Book A's feed
+        out["active"] = active_today(day)
+    except Exception as e:  # noqa: BLE001
+        out["active"] = []
+        log(f"active_today failed: {e}")
     try:  # the active book's heartbeat (active.py), for the executor's fail-safe
         b = json.loads((config.DATA / "active_beat.json").read_text())
         out["active_beat"] = float(b["at"]) if b.get("day") == day_to_date(day).isoformat() else None
@@ -1161,9 +1165,11 @@ def active_today(day: int) -> list[dict]:
     except Exception:  # noqa: BLE001
         fresh = None
     out = []
-    for r in sorted(rows, key=lambda r: r.get("entry_time") or ""):
+    for r in sorted(rows, key=lambda r: str(r.get("entry_time") or "")):
         at = epoch(r.get("entry_time"))
         if at is None or not r.get("entry") or (fresh is not None and at < fresh):
+            continue
+        if r.get("status") not in ("open", "closed") or not r.get("symbol"):
             continue
         out.append({"symbol": r["symbol"], "side": "short" if r.get("side") == "short" else "long", "status": "closed" if r.get("status") == "closed" else "open",
                     "entered_at": at, "entry": float(r["entry"]), "exited_at": epoch(r.get("exit_time")) if r.get("status") == "closed" else None,

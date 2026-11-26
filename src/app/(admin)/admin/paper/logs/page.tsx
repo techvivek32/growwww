@@ -209,7 +209,7 @@ function Trades({ log }: { log: DayLog }) {
               <td className={`${td} tnum text-right`}>{m.status === "closed" ? `₹${m.exit?.toFixed(2)}` : "open"} <span className="text-ink3">{m.exit_time?.slice(0, 5) ?? ""}</span></td>
               <td className={`${td} text-ink2`}>{m.why ?? (m.status === "open" ? "open" : "—")}</td>
               <td className={`${td} max-w-[34ch] text-[11.5px] text-ink3`}>{(m as { note?: string }).note ?? "—"}</td>
-              <td className={`${td} tnum text-right font-semibold ${tone(m.net)}`}>{m.status === "closed" ? inr(m.net) : <ManualExit symbol={m.symbol} entryTime={m.entry_time} />}</td>
+              <td className={`${td} tnum text-right font-semibold ${tone(m.net)}`}>{m.status === "closed" ? inr(m.net) : <ManualExit symbol={m.symbol} entryTime={m.entry_time} active={m.book === "active"} />}</td>
             </tr>
           ))}
         </tbody>
