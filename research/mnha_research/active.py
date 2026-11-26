@@ -7,16 +7,22 @@ One position at a time, ₹5 lakh, long or short, at most 4 trades a day. Every 
   * candidate = the most consistent trend in that direction: ≥ 1% since 09:20, R² of the price path high, on the
     right side of VWAP most of the day, within 0.3% of the day's high (long) / low (short), ₹20 crore+ traded,
     price ≥ ₹100. Entered at the live price.
-Management every 5 s on the LTP: trailing stop 0.8% from the best price since entry; and at bar closes: exit when the
-close crosses VWAP against the position, or when the market has moved 0.4% against the position since entry;
-square-off 15:15. Records go to data/manual_trades.json with book "active", so the paper page's card, Exit button
-and live strip show them. This rule is NOT backtested; it is the admin's idea, run on paper to find out.
+Management every 5 s on the LTP: trailing stop 0.8% from the best price since entry; and at each scan (every 2
+minutes, 09:35–14:45; after 14:45 only the trailing stop and the square-off): exit when the close crosses VWAP against
+the position, or when the market has moved 0.4% against the position since entry; square-off 15:15. The 5-minute bars
+download in the background (BarFeed): entries and the VWAP exit use bars at most one bar behind, as the old in-loop
+download did; the market-against exit needs only live prices.
+Records go to data/manual_trades.json with book "active", so the paper page's card, Exit button
+and live strip show them. The rule is the admin's idea. Backtested on 26 Nov 2026 in the lab (2020-07 → 2026-04, 1,437
+sessions, two independent builds, verified; ~/.mnha-lab/lab/exp/active_flat_*): it LOSES after costs, about −₹285 a
+trade (−₹13 lakh at ₹5 lakh a trade; −₹17–18 lakh with realistic stop fills), and trading flat markets too does not help.
 Separate from Book A (the tested rule) and Book B.
 """
 
 from __future__ import annotations
 
 import json
+import threading
 import time
 
 import numpy as np
@@ -91,7 +97,8 @@ def _ltps(syms: list[str]) -> dict[str, float]:
 
 def scan(day: int, syms: list[str], cache: dict | None = None) -> tuple[pd.DataFrame, float]:
     """Per-stock trend stats from today's 5-minute bars so far plus the live price (LTP) as the latest point, and the
-    market's median move since 09:20. Bars are fetched again only when a new 5-minute bar has closed (`cache`)."""
+    market's median move since 09:20. Bars are fetched again only when a new 5-minute bar has closed (`cache`).
+    The session itself uses BarFeed + rows_from instead, so that the download never holds up the loop."""
     b = int((live.minute_ist() - (9 * 60 + 20)) // 5)  # the bar that closed most recently
     if cache is not None and cache.get("bar") == b and cache.get("got") is not None:
         got = cache["got"]
@@ -99,7 +106,63 @@ def scan(day: int, syms: list[str], cache: dict | None = None) -> tuple[pd.DataF
         got = live.fetch_range_day(syms + [config.BENCHMARK], day)
         if cache is not None and sum(1 for v in got.values() if v is not None) >= 0.8 * len(syms):
             cache.update(bar=b, got=got)  # a thin fetch is not kept: the next scan fetches again
-    q = _ltps(syms + [config.BENCHMARK])
+    return rows_from(got, day, _ltps(syms + [config.BENCHMARK]))
+
+
+class BarFeed(threading.Thread):
+    """Today's 5-minute bars, kept fresh in the background: a full download takes about 2 minutes, and done inside the
+    loop it held up the 2-minute scan, the 5-second trailing-stop checks and the heartbeat. A download starts when a
+    new 5-minute bar has closed, only from 5 minutes before the first scan to the last one (nothing reads the bars
+    outside that window). A thin or failed download is kept out; it is tried again as soon as the next bar closes, or
+    sooner after a pause of 30 s, 60 s, then 2 minutes. The bars in use carry the bar their download started in, so the
+    session can tell how far behind they are."""
+
+    def __init__(self, day: int, syms: list[str], seed: "BarFeed | None" = None, clock=None):
+        super().__init__(daemon=True, name="active-bars")
+        self.day, self.syms = day, list(syms)
+        self.stop = threading.Event()
+        self._lock = threading.Lock()
+        self._clock = clock if clock is not None else (lambda: time.time())  # looked up on each call
+        self._got: dict | None = None
+        self._bar: int | None = None  # the 5-minute bar (index from 09:20) in which the download in use started
+        self._thin_bar: int | None = None
+        if seed is not None:  # a replacement feed starts from the last good bars, not from nothing
+            with seed._lock:
+                self._got, self._bar = seed._got, seed._bar
+
+    def snapshot(self) -> tuple[dict | None, int | None]:
+        """The bars in use and the bar their download started in (None, None before the first good one), together."""
+        with self._lock:
+            return self._got, self._bar
+
+    def run(self) -> None:
+        backoff, tried_bar, next_try = 0.0, None, 0.0
+        while not self.stop.is_set():
+            m = live.minute_ist()
+            if m > SCAN_TO:
+                return  # no scan reads the bars after the last one
+            b = int((m - (9 * 60 + 20)) // 5)  # the bar that closed most recently
+            if m >= SCAN_FROM - 5 and b != self._bar and (b != tried_bar or self._clock() >= next_try):
+                ok = False
+                try:
+                    got = live.fetch_range_day(self.syms + [config.BENCHMARK], self.day)
+                    if sum(1 for v in got.values() if v is not None) >= 0.8 * len(self.syms):
+                        with self._lock:
+                            self._got, self._bar = got, b
+                        ok = True
+                    elif self._thin_bar != b:
+                        self._thin_bar = b
+                        log(f"bar download thin ({len(got)} of {len(self.syms)} names); trying again")
+                except Exception as e:  # noqa: BLE001  the loop goes on with the last good bars
+                    log(f"bar download failed: {e}")
+                tried_bar = b
+                backoff = 0.0 if ok else min(max(30.0, 2 * backoff), float(SCAN_EVERY_S))
+                next_try = self._clock() + backoff
+            self.stop.wait(5.0)
+
+
+def rows_from(got: dict, day: int, q: dict[str, float]) -> tuple[pd.DataFrame, float]:
+    """The scan's per-stock rows from downloaded bars `got` and live prices `q`, and the market's median move."""
     rows = []
     for s, df in got.items():
         if df is None:
@@ -121,6 +184,8 @@ def scan(day: int, syms: list[str], cache: dict | None = None) -> tuple[pd.DataF
         rows.append({"symbol": s, "px": c[-1], "ret_920": (c[-1] / c[0] - 1) * 100, "r2": r2, "above_vwap": float(np.mean(c > vwap)),
                      "off_high": (c[-1] / c.max() - 1) * 100, "off_low": (c[-1] / c.min() - 1) * 100, "turnover_cr": float((c * v).sum() / 1e7),
                      "close_vs_vwap": float(c[-1] - vwap[-1])})
+    if not rows:  # e.g. too few bars yet: an empty picture, which the caller's coverage check turns into "no decision"
+        return pd.DataFrame(columns=["px", "ret_920", "r2", "above_vwap", "off_high", "off_low", "turnover_cr", "close_vs_vwap"], index=pd.Index([], name="symbol")), 0.0
     df = pd.DataFrame(rows).set_index("symbol")
     st = df.drop(index=config.BENCHMARK, errors="ignore")
     return df, float(st.ret_920.median()) / 100
@@ -181,7 +246,8 @@ def session() -> dict:
 
     trades = counted()
     last_scan = 0.0
-    cache: dict = {}
+    feed = BarFeed(day, syms)  # the bars download in the background: the scan, the stop checks and the heartbeat never wait
+    feed.start()
     # names already traded today (a restarted session must not pick them again)
     traded: set[str] = {r["symbol"] for r in manual._load() if r.get("book") == BOOK_NAME and r["day"] == date.isoformat()}
     last_poll = 0.0
@@ -231,17 +297,32 @@ def session() -> dict:
             if SCAN_FROM <= minute <= SCAN_TO and now - last_scan >= SCAN_EVERY_S:
                 last_scan = now
                 close_min = int(minute)
-                df, mkt = scan(day, syms, cache)
+                if not feed.is_alive() and minute < SCAN_TO - 1:  # never expected (its loop catches everything; it ends itself after the last scan)
+                    log("the bar download had stopped; restarted")
+                    feed = BarFeed(day, syms, seed=feed)
+                    feed.start()
+                got, bars_bar = feed.snapshot()
+                if got is None or bars_bar is None:
+                    log(f"scan {int(minute) // 60:02d}:{int(minute) % 60:02d}: today's bars are still downloading; no decision this time")
+                    continue
+                # How far behind the bars are: 0, or 1 while the current bar's download runs — what the old in-loop
+                # download allowed. Further behind (downloads failing), entries and the VWAP exit wait; the market-
+                # against exit needs only live prices (each name's 09:20 close is in any download) and still runs.
+                behind = int((minute - (9 * 60 + 20)) // 5) - bars_bar
+                df, mkt = rows_from(got, day, _ltps(syms + [config.BENCHMARK]))
                 if len(df) < 0.8 * len(syms):  # too few names read: no decision on a thin market picture
                     log(f"scan {int(minute) // 60:02d}:{int(minute) % 60:02d}: only {len(df)} of {len(syms)} names read; no decision this time")
                     continue
                 if pos:
                     row = df.loc[pos["symbol"]] if pos["symbol"] in df.index else None
-                    if row is not None and pos["side"] * row.close_vs_vwap < 0:
+                    if behind <= 1 and row is not None and pos["side"] * row.close_vs_vwap < 0:
                         close("close crossed VWAP against the position")
                     elif pos["side"] * (mkt - pos["mkt_at_entry"]) <= -MKT_AGAINST:
                         close(f"market moved {100 * abs(mkt - pos['mkt_at_entry']):.2f}% against since entry")
-                if not pos and trades < MAX_TRADES and abs(mkt) >= 0.001:
+                if behind > 1:
+                    if not pos:
+                        log(f"scan {close_min // 60:02d}:{close_min % 60:02d}: the bars are {behind} bars behind (downloads failing); no entry this time")
+                elif not pos and trades < MAX_TRADES and abs(mkt) >= 0.001:
                     direction = 1 if mkt > 0 else -1
                     cand = pick(df, direction, traded | book_a_names(day))
                     if cand:
@@ -265,6 +346,7 @@ def session() -> dict:
             log(f"error: {e}")
             time.sleep(15)
         time.sleep(1)
+    feed.stop.set()
     if pos:
         try:
             close("session end")
