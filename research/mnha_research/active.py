@@ -1,7 +1,7 @@
 """Active book (paper, no orders): scans the whole market all day and rotates into what is moving, as the admin
 asked on 25 Nov 2026 ("don't hold one 09:20 trade all day; if it is going wrong, exit and look for stocks going up").
 
-One position at a time, ₹5 lakh, long or short, at most 4 trades a day. Every 5-minute bar close (09:35–14:45):
+One position at a time, ₹5 lakh, long or short, at most 4 trades a day. Every 2 minutes (09:35–14:45), on the 5-minute bars so far plus the live price:
   * market direction = the median stock's move since 09:20 across the F&O universe (~400 names). Longs only when it
     is +0.10% or better, shorts only when −0.10% or worse; nothing new when the market is flat.
   * candidate = the most consistent trend in that direction: ≥ 1% since 09:20, R² of the price path high, on the
@@ -29,6 +29,7 @@ POLL_S = 5
 TRAIL = 0.008
 MKT_AGAINST = 0.004
 MAX_TRADES = 4
+SCAN_EVERY_S = 120  # the market is scanned every 2 minutes (the admin's instruction, 26 Nov 2026)
 SCAN_FROM, SCAN_TO, SQUARE_OFF = 9 * 60 + 35, 14 * 60 + 45, 15 * 60 + 15
 MIN_TURNOVER_CR, MIN_PRICE, MIN_MOVE = 20.0, 100.0, 1.0
 
@@ -37,9 +38,28 @@ def log(msg: str) -> None:
     print(time.strftime("%Y-%m-%d %H:%M:%S"), "active", msg, flush=True)
 
 
-def scan(day: int, syms: list[str]) -> tuple[pd.DataFrame, float]:
-    """Per-stock trend stats from today's 5-minute bars so far, and the market's median move since 09:20."""
-    got = live.fetch_range_day(syms + [config.BENCHMARK], day)
+def _ltps(syms: list[str]) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for i in range(0, len(syms), 50):
+        try:
+            q, _ = live.ltp(syms[i:i + 50])
+            out.update({k: float(v) for k, v in q.items() if v and v > 0})
+        except Exception as e:  # noqa: BLE001  a missing chunk only leaves those names on their last bar
+            log(f"ltp chunk failed: {e}")
+    return out
+
+
+def scan(day: int, syms: list[str], cache: dict | None = None) -> tuple[pd.DataFrame, float]:
+    """Per-stock trend stats from today's 5-minute bars so far plus the live price (LTP) as the latest point, and the
+    market's median move since 09:20. Bars are fetched again only when a new 5-minute bar has closed (`cache`)."""
+    b = int((live.minute_ist() - (9 * 60 + 20)) // 5)  # the bar that closed most recently
+    if cache is not None and cache.get("bar") == b and cache.get("got") is not None:
+        got = cache["got"]
+    else:
+        got = live.fetch_range_day(syms + [config.BENCHMARK], day)
+        if cache is not None:
+            cache.update(bar=b, got=got)
+    q = _ltps(syms + [config.BENCHMARK])
     rows = []
     for s, df in got.items():
         if df is None:
@@ -53,6 +73,9 @@ def scan(day: int, syms: list[str]) -> tuple[pd.DataFrame, float]:
         l = d["low"].to_numpy(float)
         v = d["volume"].to_numpy(float)
         vwap = np.cumsum((h + l + c) / 3 * v) / np.maximum(np.cumsum(v), 1)
+        lt = q.get(s)
+        if lt:  # the live price as the latest point (no volume yet: VWAP stays at the last bar's)
+            c, h, l, v, vwap = np.append(c, lt), np.append(h, lt), np.append(l, lt), np.append(v, 0.0), np.append(vwap, vwap[-1])
         x = np.arange(len(c))
         r2 = float(np.corrcoef(x, c)[0, 1] ** 2) if c.std() > 0 else 0.0
         rows.append({"symbol": s, "px": c[-1], "ret_920": (c[-1] / c[0] - 1) * 100, "r2": r2, "above_vwap": float(np.mean(c > vwap)),
@@ -93,7 +116,8 @@ def session() -> dict:
             pos = {"symbol": r["symbol"], "side": -1 if r["side"] == "short" else 1, "entry": r["entry"], "qty": r["qty"], "best": r["entry"],
                    "mkt_at_entry": r.get("mkt_at_entry", 0.0), "entry_time": r["entry_time"]}
     trades = sum(1 for r in manual._load() if r.get("book") == BOOK_NAME and r["day"] == date.isoformat())
-    done_bars: set[int] = set()
+    last_scan = 0.0
+    cache: dict = {}
     traded: set[str] = set()
     last_poll = 0.0
 
@@ -123,11 +147,10 @@ def session() -> dict:
                         close("square-off 15:15")
                     elif pos["side"] * (lt - pos["best"]) / pos["best"] <= -TRAIL:
                         close(f"trailing stop {TRAIL * 100:g}% from {pos['best']:.2f}")
-            b = int((minute - (9 * 60 + 20)) // 5)  # the bar that closed most recently
-            close_min = 9 * 60 + 20 + 5 * b
-            if b >= 0 and b not in done_bars and minute >= close_min + 15 / 60 and SCAN_FROM <= close_min <= SCAN_TO:
-                done_bars.add(b)
-                df, mkt = scan(day, syms)
+            if SCAN_FROM <= minute <= SCAN_TO and now - last_scan >= SCAN_EVERY_S:
+                last_scan = now
+                close_min = int(minute)
+                df, mkt = scan(day, syms, cache)
                 if pos:
                     row = df.loc[pos["symbol"]] if pos["symbol"] in df.index else None
                     if row is not None and pos["side"] * row.close_vs_vwap < 0:
@@ -149,9 +172,9 @@ def session() -> dict:
                         traded.add(sym)
                         log(f"{'BUY' if direction > 0 else 'SELL'} {sym} {rec['qty']} x {rec['entry']}: {rec['note']}")
                     else:
-                        log(f"bar {close_min // 60:02d}:{close_min % 60:02d}: market {mkt * 100:+.2f}%, no candidate")
+                        log(f"scan {close_min // 60:02d}:{close_min % 60:02d}: market {mkt * 100:+.2f}%, no candidate")
                 elif not pos:
-                    log(f"bar {close_min // 60:02d}:{close_min % 60:02d}: market {mkt * 100:+.2f}%, {'flat, no entry' if abs(mkt) < 0.001 else 'trade limit reached'}")
+                    log(f"scan {close_min // 60:02d}:{close_min % 60:02d}: market {mkt * 100:+.2f}%, {'flat, no entry' if abs(mkt) < 0.001 else 'trade limit reached'}")
             if pos and minute >= SQUARE_OFF:
                 close("square-off 15:15")
         except Exception as e:  # noqa: BLE001

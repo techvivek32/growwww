@@ -7,7 +7,7 @@ import { tradePermission } from "@/lib/trading";
 import { notify, notifyAdmin } from "@/lib/notifications";
 import { currentConsent } from "@/lib/consent";
 import { OWNER_ID } from "@/lib/auth";
-import { ACTION_LABEL, acctToken, addNote, getDay, getSettings, ordersOfDay, updateDay, type DaySignals, type DayState, type LegPlan, type LiveSettings, type OrderAction, type Leg } from "./store";
+import { ACTION_LABEL, ACTIVE_MAX, acctToken, addNote, getDay, getSettings, ordersOfDay, updateDay, type ActiveDay, type ActiveLeg, type ActiveN, type DaySignals, type DayState, type LegPlan, type LiveSettings, type OrderAction, type Leg } from "./store";
 import { cancelStuckOpeners, closeLegIn, followOrders, openLegIn, type CloseResult } from "./orders";
 import { clock, hm, inr, istMinuteOfEpoch, istNow, pool, type IstNow } from "./util";
 
@@ -50,7 +50,11 @@ const T = {
   /** Groww squares intraday positions off itself near 15:20; past this the close step reports and stops. */
   CLOSE_GIVE_UP: hm(15, 24),
   ACTIVE_TO: hm(15, 32),
+  /** The active (auto) book opens nothing after 14:45; a trade it opened is followed only up to here. */
+  ACTIVE_ENTRY_CUTOFF: hm(14, 50),
 };
+/** An active-book trade seen later than this after it opened is not followed (the price has moved on). */
+const ACTIVE_FOLLOW_S = 180;
 const ACTIVE_TICK_MS = 3_000;
 const IDLE_TICK_MS = 60_000;
 /** Quantity = base ÷ (price × 1.003), rounded down: the fill stays within the base even if the price moves a little. */
@@ -214,7 +218,11 @@ export async function step(): Promise<number> {
   const settings = await getSettings();
   const day = await getDay(now.day, now.date);
   const { open, close } = modesFor(settings, day);
-  if (!open && !close) return ACTIVE_TICK_MS;
+  const activeOn = (settings.activeMode ?? "off") !== "off" || Boolean(day.active);
+  if (!open && !close) {
+    if (activeOn) await activeStep(now, await research(now), settings);
+    return ACTIVE_TICK_MS;
+  }
   if (!open && day.mode !== null) {
     await noteOnce(now, `no-open-${settings.mode}`, "warn", `Switched to ${settings.mode} during the day: nothing new is opened; what the strategy opened today is still closed (market stop, 10:15 cover, 15:15).`);
   }
@@ -236,6 +244,7 @@ export async function step(): Promise<number> {
   if (open) await flipStep(now, signals, settings, open);
   else if (!day.done.flip && now.minute >= T.FLIP_CUTOFF) await finish(now, "flip", "info", "No flip buy today: the strategy was switched off.");
   if (close) await closeStep(now);
+  if (activeOn) await activeStep(now, st, settings);
   return ACTIVE_TICK_MS;
 }
 
@@ -360,12 +369,20 @@ async function fixDay(now: IstNow, settings: LiveSettings, mode: "live" | "shado
  * layer still refuses any order an account's address cannot carry).
  */
 function allowFor(now: IstNow, dayMode: "live" | "shadow"): (accountId: string) => Promise<boolean> {
+  const gates = allowForAccount(now, dayMode);
   return async (accountId) => {
     const [settings, day] = await Promise.all([getSettings(), getDay(now.day, now.date)]);
     if (effectiveMode(settings, day) !== dayMode) {
       await noteOnce(now, `stopped-${dayMode}`, "warn", "The strategy was switched while its orders were going out: the rest were not sent.");
       return false;
     }
+    return gates(accountId, settings);
+  };
+}
+
+/** The per-account gates of an opening order: not kept out, and (live) its order address and agreement still good. */
+function allowForAccount(now: IstNow, dayMode: "live" | "shadow"): (accountId: string, settings: LiveSettings) => Promise<boolean> {
+  return async (accountId, settings) => {
     if (settings.excluded.includes(accountId)) {
       await noteOnce(now, `skip-out|${accountId}`, "info", `${acctToken(accountId)} was kept out while orders were going out: not sent there.`);
       return false;
@@ -470,10 +487,10 @@ function tallyText(t: CloseTally, ok: string): { tone: "info" | "error"; text: s
 }
 
 /** Close one leg in every account of the day; converged when no account has anything left to do. */
-async function closeAll(now: IstNow, day: DayState, action: OrderAction, leg: Leg): Promise<CloseTally> {
-  const accounts = day.accounts ?? [];
-  const mode = day.mode;
-  const plan = leg === "short" ? day.legs.short : day.legs.long;
+async function closeAll(now: IstNow, day: DayState, action: OrderAction, leg: Leg, own?: { accounts: string[]; mode: "live" | "shadow"; plan: LegPlan }): Promise<CloseTally> {
+  const accounts = own ? own.accounts : (day.accounts ?? []);
+  const mode = own ? own.mode : day.mode;
+  const plan = own ? own.plan : leg === "short" ? day.legs.short : day.legs.long;
   if (!accounts.length || !mode || !plan) return { converged: true, failed: 0, accounts: 0 };
   const shadowPx = mode === "shadow" ? await priceOf(plan.symbol, plan.px) : null;
   const label = acctToken; // named when shown: no email is written into the notes
@@ -525,6 +542,146 @@ async function closeAll(now: IstNow, day: DayState, action: OrderAction, leg: Le
     failed: results.filter((r) => r === "gave-up" || r === "unclear" || r === "offline").length,
     accounts: accounts.length,
   };
+}
+
+/* ------------------------------------------------------------ the active (auto) book in the accounts */
+
+/** Fix today's active-book day once: its mode (a live day never opens in shadow) and the ceiling per account. */
+async function fixActive(now: IstNow, settings: LiveSettings, mode: "live" | "shadow"): Promise<ActiveDay> {
+  const day = await getDay(now.day, now.date);
+  if (day.active) return day.active;
+  const d = await updateDay(now.day, now.date, (x) => {
+    x.active ??= { mode, accounts: [], base: settings.base, fixedAt: Date.now(), opened: {}, closed: {}, skipped: {} };
+    return structuredClone(x);
+  });
+  return d.active!;
+}
+
+/** Below this an account's free money buys too little to be worth the charges: it sits the trade out. */
+const ACTIVE_MIN_VALUE = 10_000;
+/** How fresh an account's funds reading must be to size an active-book trade from it. */
+const ACTIVE_FUNDS_MAX_AGE_MS = 60_000;
+
+/**
+ * Each account's quantity for an active-book trade, from its OWN free money (cash minus margin in use), never more
+ * than the base value per account: an account with less trades smaller instead of sitting out; one with less than
+ * ACTIVE_MIN_VALUE free, or not connected / not sendable / unsigned / kept out, takes no part.
+ */
+async function activeSizes(settings: LiveSettings, px: number): Promise<Record<string, number>> {
+  const checks = await checkAccounts(settings, { maxAgeMs: ACTIVE_FUNDS_MAX_AGE_MS });
+  const out: Record<string, number> = {};
+  for (const c of checks) {
+    if (c.group !== "eligible" && c.group !== "low") continue;
+    if (settings.excluded.includes(c.id)) continue;
+    const value = Math.min(c.funds?.free ?? 0, settings.base);
+    if (value < ACTIVE_MIN_VALUE) continue;
+    const q = sizeFor(value, px);
+    if (q >= 1) out[c.id] = q;
+  }
+  return out;
+}
+
+/** Like allowFor, for the active book's opening orders: its own switch, then the same account gates. */
+function allowForActive(now: IstNow, dayMode: "live" | "shadow"): (accountId: string) => Promise<boolean> {
+  const gates = allowForAccount(now, dayMode);
+  return async (accountId) => {
+    const settings = await getSettings();
+    const m = settings.activeMode ?? "off";
+    if (m === "off" || (dayMode === "live" && m !== "live")) {
+      await noteOnce(now, `active-stopped-${dayMode}`, "warn", "The active book was switched while its orders were going out: the rest were not sent.");
+      return false;
+    }
+    return gates(accountId, settings);
+  };
+}
+
+/**
+ * The active (auto) book in the accounts: a trade it opens (its scan runs every 2 minutes) is opened in every account
+ * with money, each sized from its own free money; a trade it closes is closed; whatever is still open is closed at
+ * 15:15. Opens follow the active-book switch; closes never wait on it — getting out only takes risk away.
+ */
+async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSettings): Promise<void> {
+  const setting = settings.activeMode ?? "off";
+  const trades = (st?.active ?? []).slice(0, ACTIVE_MAX);
+  let day = await getDay(now.day, now.date);
+  if (setting !== "off" && st && now.minute < T.ACTIVE_ENTRY_CUTOFF) {
+    for (let i = 0; i < trades.length; i++) {
+      const t = trades[i];
+      const n = (i + 1) as ActiveN;
+      if (t.status !== "open" || day.active?.opened[n] || day.active?.skipped[n]) continue;
+      const act = await fixActive(now, settings, setting);
+      if (act.mode === "live" && setting !== "live") continue; // a live day never opens in shadow
+      const skip = async (why: string) => {
+        day = await updateDay(now.day, now.date, (x) => {
+          if (x.active && !x.active.opened[n]) x.active.skipped[n] = why;
+          return structuredClone(x);
+        });
+        await noteOnce(now, `active-skip|${n}`, "info", `Active trade ${n} (${t.side === "long" ? "BUY" : "SELL"} ${t.symbol}) not sent: ${why}.`);
+      };
+      if (now.ms / 1000 - t.entered_at > ACTIVE_FOLLOW_S) {
+        await skip(`it opened at ${clock(istMinuteOfEpoch(t.entered_at))}, too long ago to follow at its price`);
+        continue;
+      }
+      const px = await priceOf(t.symbol, t.entry);
+      if (px === null) {
+        await skip(`no price for ${t.symbol}`);
+        continue;
+      }
+      const sizes = await activeSizes(settings, px);
+      const ids = Object.keys(sizes);
+      if (!ids.length) {
+        await skip(`no account has at least ${inr(ACTIVE_MIN_VALUE)} free that can take orders`);
+        continue;
+      }
+      const leg = `a${n}-${t.side}` as ActiveLeg;
+      const key = `${t.symbol}|${t.entered_at}`;
+      const total = ids.reduce((a, id) => a + sizes[id], 0);
+      day = await updateDay(now.day, now.date, (x) => {
+        if (x.active && !x.active.opened[n]) {
+          x.active.opened[n] = { symbol: t.symbol, qty: total, px, leg, key, sizes };
+          x.active.accounts = [...new Set([...x.active.accounts, ...ids])];
+        }
+        return structuredClone(x);
+      });
+      const plan = day.active!.opened[n]!;
+      const action = `active-open-${n}` as const;
+      await pool(Object.keys(plan.sizes), 4, (accountId) =>
+        openLegIn({ day: now.day, action, leg: plan.leg, accountId, mode: act.mode, symbol: plan.symbol, qty: plan.sizes[accountId], shadowPx: plan.px, allow: allowForActive(now, act.mode) }).catch((err) => {
+          console.error(`[live] active open ${n} for ${accountId} failed:`, err instanceof Error ? err.message : err);
+          return null;
+        }),
+      );
+      const each = Object.entries(plan.sizes).map(([id, q]) => `${acctToken(id)} ${q.toLocaleString("en-IN")}`).join(", ");
+      await noteOnce(
+        now,
+        `active-open|${n}`,
+        "info",
+        `Active trade ${n}${act.mode === "shadow" ? " (shadow)" : ""}: ${t.side === "long" ? "BUY" : "SELL"} ${plan.symbol} at about ${inr(plan.px)}, sized from each account's free money (${each}): ${await outcomes(now.day, action)}.`,
+      );
+    }
+  }
+  const act = day.active;
+  if (!act) return;
+  for (let i = 0; i < ACTIVE_MAX; i++) {
+    const n = (i + 1) as ActiveN;
+    const plan = act.opened[n];
+    if (!plan || act.closed[n]) continue;
+    const t = trades[i];
+    const book = t && `${t.symbol}|${t.entered_at}` === plan.key ? t : null;
+    const due = now.minute >= T.CLOSE_AT || (book !== null && book.status === "closed");
+    if (!due) continue;
+    const action = `active-close-${n}` as const;
+    const tally = await closeAll(now, day, action, plan.leg, { accounts: Object.keys(plan.sizes ?? {}), mode: act.mode, plan });
+    if (tally.converged) {
+      day = await updateDay(now.day, now.date, (x) => {
+        if (x.active) x.active.closed[n] = Date.now();
+        return structuredClone(x);
+      });
+      const why = book && book.status === "closed" ? `the active book closed it${book.why ? ` (${book.why})` : ""}` : "15:15 close";
+      const r = tallyText(tally, `Active trade ${n}: ${plan.symbol} closed — ${why}.`);
+      await noteOnce(now, `active-close|${n}`, r.tone, r.text);
+    }
+  }
 }
 
 /** Tell the account holder, once per day and reason, that MNHA could not close its strategy position. */

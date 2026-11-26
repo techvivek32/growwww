@@ -1127,6 +1127,37 @@ def today_state(now: float | None = None) -> dict:
             out["last_mark_at"] = mk[0] if mk else None
         except sqlite3.OperationalError:
             pass
+    out["active"] = active_today(day)
+    return out
+
+
+def active_today(day: int) -> list[dict]:
+    """The active (auto) book's trades on `day`, in order, for the website's executor to send to the accounts
+    (entered_at and exited_at in epoch seconds). Read-only; an unreadable file gives an empty list."""
+    from . import manual
+
+    base = day * 86_400 - config.IST_OFFSET_S
+    date = day_to_date(day).isoformat()
+
+    def epoch(hms: str | None) -> float | None:
+        try:
+            h, m, s_ = (int(x) for x in str(hms).split(":"))
+            return float(base + h * 3600 + m * 60 + s_)
+        except Exception:  # noqa: BLE001
+            return None
+
+    try:
+        rows = [r for r in manual._load() if r.get("book") == "active" and r.get("day") == date]
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    for r in sorted(rows, key=lambda r: r.get("entry_time") or ""):
+        at = epoch(r.get("entry_time"))
+        if at is None or not r.get("entry"):
+            continue
+        out.append({"symbol": r["symbol"], "side": "short" if r.get("side") == "short" else "long", "status": "closed" if r.get("status") == "closed" else "open",
+                    "entered_at": at, "entry": float(r["entry"]), "exited_at": epoch(r.get("exit_time")) if r.get("status") == "closed" else None,
+                    "exit": r.get("exit"), "why": r.get("why")})
     return out
 
 

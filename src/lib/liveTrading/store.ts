@@ -32,6 +32,8 @@ export const MAX_BASE = 5_000_000;
 
 export interface LiveSettings {
   mode: LiveMode;
+  /** The active (auto) book's trades sent to the accounts: off unless the admin turns it on (absent = off). */
+  activeMode?: LiveMode;
   base: number;
   /** Accounts the admin keeps out of the automatic strategy. */
   excluded: string[];
@@ -48,8 +50,20 @@ export interface SettingsChange {
 /** How an account is written into notes and the change log: a token the page turns into its name. */
 export const acctToken = (id: string) => `{{acct:${id}}}`;
 
-/** The strategy's two legs: the 09:20 short, and the 10:15 flip's long. */
-export type Leg = "short" | "long";
+/** The active (auto) book's trades of a day, in order: at most four. */
+export type ActiveN = 1 | 2 | 3 | 4;
+export const ACTIVE_MAX = 4;
+/** An active-book trade's leg: its number and direction ("a2-long" is the day's second active trade, a buy). */
+export type ActiveLeg = `a${ActiveN}-short` | `a${ActiveN}-long`;
+
+/** The strategy's two legs (the 09:20 short, and the 10:15 flip's long), and the active book's trades. */
+export type Leg = "short" | "long" | ActiveLeg;
+
+/** True for a leg opened by selling (the 09:20 short, or an active-book short). */
+export const isShortLeg = (leg: Leg): boolean => leg === "short" || leg.endsWith("-short");
+
+/** Every leg a day can hold, for matching a position to the leg that opened it. */
+export const ALL_LEGS: Leg[] = ["short", "long", ...([1, 2, 3, 4] as ActiveN[]).flatMap((n) => [`a${n}-short`, `a${n}-long`] as ActiveLeg[])];
 
 export type OrderAction =
   | "entry" // 09:20: sell the pick short
@@ -59,7 +73,9 @@ export type OrderAction =
   | "close-short" // 15:15: buy back what is left of the short
   | "close-long" // 15:15: sell what is left of the long
   | "manual" // the admin's order to many accounts
-  | "exit"; // the admin's exit of a position
+  | "exit" // the admin's exit of a position
+  | `active-open-${ActiveN}` // the active (auto) book's trade n: its opening order
+  | `active-close-${ActiveN}`; // the active book's trade n: its closing order (the book closed it, or 15:15)
 
 export const ACTION_LABEL: Record<OrderAction, string> = {
   entry: "09:20 entry (short)",
@@ -70,6 +86,14 @@ export const ACTION_LABEL: Record<OrderAction, string> = {
   "close-long": "15:15 close: sell",
   manual: "Admin order",
   exit: "Admin exit",
+  "active-open-1": "Active trade 1: open",
+  "active-open-2": "Active trade 2: open",
+  "active-open-3": "Active trade 3: open",
+  "active-open-4": "Active trade 4: open",
+  "active-close-1": "Active trade 1: close",
+  "active-close-2": "Active trade 2: close",
+  "active-close-3": "Active trade 3: close",
+  "active-close-4": "Active trade 4: close",
 };
 
 export type SendState =
@@ -139,6 +163,21 @@ export interface LegPlan {
   px: number;
 }
 
+export interface ActiveDay {
+  mode: "live" | "shadow";
+  /** Every account that took an active-book order today. */
+  accounts: string[];
+  /** The ceiling per account (the base value) when the day was fixed. */
+  base: number;
+  fixedAt: number;
+  /** Trade number → what was sent to open it: qty is the total, sizes each account's own quantity (from its free money). */
+  opened: Partial<Record<ActiveN, LegPlan & { leg: ActiveLeg; key: string; sizes: Record<string, number> }>>;
+  /** Trade number → when its close converged in every account. */
+  closed: Partial<Record<ActiveN, number>>;
+  /** Trade number → why it was not followed (seen too late, no account with money, ...). */
+  skipped: Partial<Record<ActiveN, string>>;
+}
+
 /** The research engine's decisions, kept once seen, so an outage after them cannot hold up a cover. */
 export interface DaySignals {
   skip?: boolean;
@@ -164,6 +203,8 @@ export interface DayState {
    *  the 10:15 flip's cover of the short, kept apart from the flip's buy so a late
    *  or failed buy can never leave the short open. */
   done: { entry?: number; stop?: number; flipCover?: number; flip?: number; close?: number };
+  /** The active (auto) book in the accounts today. Absent: nothing of it was sent today. */
+  active?: ActiveDay;
   signals: DaySignals;
   notes: DayNote[];
 }
@@ -273,6 +314,16 @@ export async function setMode(mode: LiveMode, ip: string): Promise<void> {
     if (s.settings.mode === mode) return;
     s.changes.push({ at: Date.now(), ip, what: `Mode ${s.settings.mode} → ${mode}` });
     s.settings.mode = mode;
+    s.settings.updatedAt = Date.now();
+  });
+}
+
+export async function setActiveMode(mode: LiveMode, ip: string): Promise<void> {
+  await mutate((s) => {
+    const was = s.settings.activeMode ?? "off";
+    if (was === mode) return;
+    s.changes.push({ at: Date.now(), ip, what: `Active (auto) book ${was} → ${mode}` });
+    s.settings.activeMode = mode;
     s.settings.updatedAt = Date.now();
   });
 }

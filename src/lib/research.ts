@@ -217,6 +217,19 @@ export async function liveSummary(): Promise<ResearchState> {
  * the 09:20 pick, the 10:15 flip when it was decided live, and the market stop.
  * The website's live executor trades these in the eligible accounts.
  */
+/** One active (auto) book trade, as the research engine recorded it. */
+export interface ActiveTrade {
+  symbol: string;
+  side: "long" | "short";
+  status: "open" | "closed";
+  /** Epoch seconds. */
+  entered_at: number;
+  entry: number;
+  exited_at: number | null;
+  exit: number | null;
+  why: string | null;
+}
+
 export interface LiveToday {
   as_of: number;
   /** IST day number (days since 1970-01-01 in IST). */
@@ -243,6 +256,8 @@ export interface LiveToday {
   last_mark_at: number | null;
   book: number;
   mstop_at: number;
+  /** The active (auto) book's trades today, in order (empty on an older research engine). */
+  active: ActiveTrade[];
 }
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -285,6 +300,20 @@ export async function liveToday(): Promise<LiveToday | null> {
       last_mark_at: numOrNull(j.last_mark_at),
       book: numOrNull(j.book) ?? 500_000,
       mstop_at: numOrNull(j.mstop_at) ?? 0.005,
+      active: Array.isArray(j.active)
+        ? (j.active as Record<string, unknown>[])
+            .filter((a) => a && typeof a.symbol === "string" && (a.side === "long" || a.side === "short") && (a.status === "open" || a.status === "closed") && isNum(a.entered_at) && isNum(a.entry))
+            .map((a) => ({
+              symbol: a.symbol as string,
+              side: a.side as "long" | "short",
+              status: a.status as "open" | "closed",
+              entered_at: a.entered_at as number,
+              entry: a.entry as number,
+              exited_at: numOrNull(a.exited_at),
+              exit: numOrNull(a.exit),
+              why: strOrNull(a.why),
+            }))
+        : [],
     };
   } catch {
     return null;

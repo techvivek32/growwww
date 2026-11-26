@@ -856,7 +856,10 @@ const sec = (ms) => ms / 1000;
 
 /** Run the loop from `from` to `to` (ms), every 3 s. */
 async function runDay(from, to) {
-  for (sim.now = from; sim.now <= to; sim.now += 3000) await execMod.step();
+  for (sim.now = from; sim.now <= to; sim.now += 3000) {
+    if (sim.onTick) await sim.onTick(sim.now);
+    await execMod.step();
+  }
 }
 
 /** A research timeline: the decision at 09:20:25, optional stop, flip, heartbeats. */
@@ -877,6 +880,21 @@ function timeline(day, o) {
   };
 }
 
+/** The active (auto) book's trades on a research timeline: open from openAt, closed from closeAt. */
+function withActive(tl, list) {
+  return (nowMs) => {
+    const st = tl(nowMs);
+    if (!st) return st;
+    st.active = list
+      .filter((a) => nowMs >= a.openAt)
+      .map((a) => {
+        const closed = a.closeAt !== undefined && nowMs >= a.closeAt;
+        return { symbol: a.symbol, side: a.side, status: closed ? "closed" : "open", entered_at: sec(a.openAt), entry: sim.prices[a.symbol] ?? 100, exited_at: closed ? sec(a.closeAt) : null, exit: null, why: closed ? "trailing stop" : null };
+      });
+    return st;
+  };
+}
+
 const ACCOUNTS = [
   { id: "owner", label: "House", owner: true, group: "eligible", funds: { cash: 900000, used: 0, free: 900000 } },
   { id: "m1", label: "m1@x", owner: false, group: "eligible", funds: { cash: 600000, used: 0, free: 600000 } },
@@ -889,11 +907,14 @@ async function scenario(o) {
   await reset();
   exchange();
   Date.now = () => sim.now;
-  sim.prices = { AAA: 1000, BBB: 500 };
+  sim.prices = { AAA: 1000, BBB: 500, CCC: 1000, DDD: 500 };
   sim.checks = ACCOUNTS.map((a) => ({ ...a }));
   await store.setMode(o.mode ?? "live", "test");
+  await store.setActiveMode(o.activeMode ?? "off", "test");
   const day = 30000 + (++dayN);
   sim.today = timeline(day, o);
+  if (o.active) sim.today = withActive(sim.today, o.active(day));
+  sim.onTick = o.onTick ? (t) => o.onTick(t, day) : null;
   try {
     await runDay(o.start ?? at(day, 9, 12), at(day, 15, 32));
     if (o.after) await o.after(day);
@@ -1088,6 +1109,96 @@ test("day: a holiday or weekend does nothing at all", async () => {
     sim.trading = true;
   }
   assert.equal(world.places.length, 0);
+});
+
+/* ------------------------------------------------- the active (auto) book in the accounts */
+const AQ = { owner: 498, m1: 498, m2: 99 }; // CCC at 1000: floor(min(free, 500000) / 1003); m2 has 100000 free
+const DQ = { owner: 997, m1: 997, m2: 199 }; // DDD at 500
+const act = (acct) => sent(acct).filter((x) => x.endsWith(" CCC") || x.endsWith(" DDD"));
+
+test("active: its trades go to every account with money, each sized from its own free money; closed when the book closes them, or at 15:15", async () => {
+  const d = dayOf(1);
+  await scenario({
+    activeMode: "live",
+    active: (day) => [
+      { symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) },
+      { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5) },
+    ],
+  });
+  for (const a of ["owner", "m1", "m2"]) {
+    assert.deepEqual(act(a), [`BUY ${AQ[a]} CCC`, `SELL ${AQ[a]} CCC`, `SELL ${DQ[a]} DDD`, `BUY ${DQ[a]} DDD`], a);
+    assert.ok(flat(a), `${a} flat`);
+  }
+  // Book A is untouched: the low-balance account still takes none of it
+  assert.deepEqual(sent("m2").filter((x) => x.endsWith(" AAA")), []);
+  assert.deepEqual(sent("m1").filter((x) => x.endsWith(" AAA")), [ENTRY, COVER]);
+  const t = Object.fromEntries(world.places.filter(([a]) => a === "m1").map(([, i, when]) => [`${i.side} ${i.symbol}`, util.clock(util.istNow(when).minute)]));
+  assert.equal(t["BUY CCC"], "10:21");
+  assert.equal(t["SELL CCC"], "10:40");
+  assert.equal(t["SELL DDD"], "11:00");
+  assert.equal(t["BUY DDD"], "15:15");
+  const plan = await store.getDay(d, "");
+  assert.ok(plan.active && plan.active.closed[1] && plan.active.closed[2]);
+});
+
+test("active: OFF sends nothing for it (Book A unchanged)", async () => {
+  await scenario({ activeMode: "off", active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }] });
+  for (const a of ["owner", "m1", "m2"]) assert.deepEqual(act(a), [], a);
+  assert.deepEqual(sent("m1"), [ENTRY, COVER]);
+});
+
+test("active: switched OFF with a trade open — that trade is still closed, nothing new is opened", async () => {
+  await scenario({
+    activeMode: "live",
+    active: (day) => [
+      { symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) },
+      { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5) },
+    ],
+    onTick: async (t, day) => {
+      if (t === at(day, 10, 30, 0) - ((at(day, 10, 30, 0) - at(day, 9, 12)) % 3000)) await store.setActiveMode("off", "test");
+    },
+  });
+  for (const a of ["owner", "m1", "m2"]) {
+    assert.deepEqual(act(a), [`BUY ${AQ[a]} CCC`, `SELL ${AQ[a]} CCC`], a);
+    assert.ok(flat(a), `${a} flat`);
+  }
+});
+
+test("active: a trade seen too long after it opened is not followed; the next one is", async () => {
+  await scenario({
+    activeMode: "off",
+    active: (day) => [
+      { symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) },
+      { symbol: "DDD", side: "short", openAt: at(day, 11, 0, 5) },
+    ],
+    onTick: async (t, day) => {
+      if (t >= at(day, 10, 30) && t < at(day, 10, 30) + 3000) await store.setActiveMode("live", "test");
+    },
+  });
+  for (const a of ["owner", "m1", "m2"]) {
+    assert.deepEqual(act(a), [`SELL ${DQ[a]} DDD`, `BUY ${DQ[a]} DDD`], a);
+    assert.ok(flat(a), `${a} flat`);
+  }
+});
+
+test("active: an account below the minimum, kept out, or blocked takes no part", async () => {
+  sim.blocked.add("m1");
+  try {
+    await scenario({
+      activeMode: "live",
+      onTick: async (t, day) => {
+        if (t === at(day, 9, 12)) {
+          sim.checks.find((c) => c.id === "m2").funds = { cash: 5000, used: 0, free: 5000 };
+        }
+      },
+      active: (day) => [{ symbol: "CCC", side: "long", openAt: at(day, 10, 21, 26), closeAt: at(day, 10, 40, 10) }],
+    });
+  } finally {
+    sim.blocked.delete("m1");
+  }
+  assert.deepEqual(act("owner"), [`BUY ${AQ.owner} CCC`, `SELL ${AQ.owner} CCC`]);
+  assert.deepEqual(act("m1"), []); // its order address no longer works: the gate holds it back
+  assert.deepEqual(act("m2"), []); // ₹5,000 free: below the minimum
 });
 
 (async () => {

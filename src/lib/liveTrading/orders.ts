@@ -14,6 +14,9 @@ import {
   openOrders,
   ordersOfDay,
   patchOrder,
+  ALL_LEGS,
+  isShortLeg,
+  type ActiveN,
   type Leg,
   type LiveOrder,
   type OrderAction,
@@ -435,7 +438,7 @@ export function legState(
   leg: Leg,
   mode: "live" | "shadow",
 ): { open: number; possible: number; openWorking: boolean; symbol: string | null } {
-  const opening: Side = leg === "short" ? "SELL" : "BUY";
+  const opening: Side = isShortLeg(leg) ? "SELL" : "BUY";
   let filledOpen = 0;
   let possibleOpen = 0;
   let filledClose = 0;
@@ -634,7 +637,7 @@ export async function closeLegIn(args: {
     const orders = await ordersOfDay(day);
     const st = legState(orders, accountId, leg, mode);
     if (!st.symbol || st.possible <= 0) return "done";
-    const side: Side = leg === "short" ? "BUY" : "SELL";
+    const side: Side = isShortLeg(leg) ? "BUY" : "SELL";
     const tries = orders.filter((o) => o.accountId === accountId && o.action === action && o.mode === mode);
     const last = tries[tries.length - 1];
     if (last && working(last)) return "wait"; // this step's close is still on its way
@@ -657,7 +660,7 @@ export async function closeLegIn(args: {
       if (row && row.net === null) return "unclear";
       const net = readNet(accountId, key, row ? (row.net as number) : 0);
       if (net === "stale") return "wait";
-      const room = leg === "short" ? Math.max(0, -net) : Math.max(0, net);
+      const room = isShortLeg(leg) ? Math.max(0, -net) : Math.max(0, net);
       const settled = reserve === 0 && !st.openWorking;
       if (settled && room < st.open) args.onOutside?.(st.open - room, st.symbol);
       qty = Math.min(st.possible, room - reserve);
@@ -739,7 +742,7 @@ export async function cancelStuckOpeners(day: number, onNote?: (text: string) =>
  *  `allow` is asked just before sending (the admin may have switched to Off). */
 export async function openLegIn(args: {
   day: number;
-  action: "entry" | "flip-long";
+  action: "entry" | "flip-long" | `active-open-${ActiveN}`;
   leg: Leg;
   accountId: string;
   mode: "live" | "shadow";
@@ -762,7 +765,7 @@ export async function openLegIn(args: {
       batch: null,
       accountId: args.accountId,
       symbol: args.symbol,
-      side: args.leg === "short" ? "SELL" : "BUY",
+      side: isShortLeg(args.leg) ? "SELL" : "BUY",
       qty: args.qty,
       product: "MIS",
       type: "MARKET",
@@ -846,7 +849,7 @@ export async function liveExposure(accountId: string): Promise<"open" | "unconfi
     if (raw === null) return "unconfirmed";
     const net = readNet(accountId, { segment: "CASH", exchange: "NSE", symbol: st.symbol, product: "MIS" }, raw);
     if (net === "stale") return "unconfirmed";
-    if (leg === "short" ? net < 0 : net > 0) return "open";
+    if (isShortLeg(leg) ? net < 0 : net > 0) return "open";
   }
   return null;
 }
@@ -1035,9 +1038,9 @@ export async function exitIn(args: { batch: string; day: number; accountId: stri
       // executor does not try to close it again.
       let leg: Leg | null = null;
       if (row.segment === "CASH" && row.product === "MIS" && row.exchange === "NSE") {
-        for (const l of ["short", "long"] as const) {
+        for (const l of ALL_LEGS) {
           const st = legState(today, accountId, l, "live");
-          if (st.symbol === row.symbol && st.open > 0 && row.side === (l === "short" ? "BUY" : "SELL")) leg = l;
+          if (st.symbol === row.symbol && st.open > 0 && row.side === (isShortLeg(l) ? "BUY" : "SELL")) leg = l;
         }
       }
       const { id, ref } = adminKey(batch, accountId, `${row.segment}:${row.exchange}:${row.symbol}:${row.product}`);
