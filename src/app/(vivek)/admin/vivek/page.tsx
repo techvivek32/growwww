@@ -125,10 +125,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ s
                     },
                   ].filter((c): c is { text: string; tone: string; title: string | undefined } => Boolean(c));
                   return (
-                    <tr key={r.id} className="border-b border-line last:border-0">
+                    <tr key={r.id} className="border-b border-line transition-colors last:border-0 hover:bg-surfaceh">
                       <td className="tnum px-4 py-2.5 align-top text-[12px] text-ink3">{i + 1}</td>
                       <td className="max-w-[260px] px-4 py-2.5 align-top">
-                        <p className="truncate text-[13px] text-ink" title={r.email}>{r.email}</p>
+                        <Link
+                          href={`/admin/vivek/${encodeURIComponent(r.id)}`}
+                          className="block truncate text-[13px] font-medium text-ink underline decoration-line2 underline-offset-4 hover:decoration-ink"
+                          title={`${r.email}: open day-by-day P&L`}
+                        >
+                          {r.email}
+                        </Link>
                         {r.name && <p className="truncate text-[11.5px] text-ink3" title={r.name}>{r.name}</p>}
                       </td>
                       <td className="px-4 py-2.5 align-top whitespace-nowrap">
