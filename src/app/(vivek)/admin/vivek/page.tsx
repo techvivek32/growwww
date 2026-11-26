@@ -98,49 +98,65 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ s
       <Card pad={false}>
         {shown.length === 0 ? (
           <p className="px-5 py-10 text-center text-[13.5px] text-ink3">
-            {show === "traded" ? "No user has traded yet." : show === "not-traded" ? "Every user has traded." : "No users yet."}
+            {rows.length === 0 ? "No users yet." : show === "traded" ? "No user has traded yet." : "Every user has traded."}
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-left">
+            <table className="w-full min-w-[640px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-line font-mono text-[10.5px] tracking-[0.08em] text-ink3 uppercase">
                   <th className="w-10 px-4 py-3 font-medium">#</th>
                   <th className="px-4 py-3 font-medium">User</th>
-                  <th className="px-4 py-3 font-medium">Joined</th>
-                  <th className="px-4 py-3 font-medium">Groww</th>
                   <th className="px-4 py-3 font-medium">Trade</th>
-                  <th className="px-4 py-3 text-right font-medium">Orders</th>
+                  <th className="px-4 py-3 font-medium">Groww</th>
+                  <th className="px-4 py-3 font-medium">Joined</th>
                   <th className="px-4 py-3 font-medium">Last order (IST)</th>
                 </tr>
               </thead>
               <tbody>
-                {shown.map((r, i) => (
-                  <tr key={r.id} className="border-b border-line last:border-0">
-                    <td className="tnum px-4 py-2.5 text-[12px] text-ink3">{i + 1}</td>
-                    <td className="max-w-[280px] px-4 py-2.5">
-                      <p className="truncate text-[13px] text-ink" title={r.email}>{r.email}</p>
-                      {r.name && <p className="truncate text-[11.5px] text-ink3" title={r.name}>{r.name}</p>}
-                    </td>
-                    <td className="tnum px-4 py-2.5 text-[12px] whitespace-nowrap text-ink2">{DAY.format(new Date(r.joined))}</td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">
-                      {r.groww ? <Pill tone="up">Connected</Pill> : <Pill tone="neutral">Not connected</Pill>}
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">
-                      {r.traded ? <Pill tone="up">Traded</Pill> : <Pill tone="neutral">Not traded</Pill>}
-                    </td>
-                    <td className="tnum px-4 py-2.5 text-right text-[12.5px] whitespace-nowrap">
-                      {r.placed > 0 ? <span className="text-ink">{r.placed} placed</span> : <span className="text-ink3">—</span>}
-                      {r.rejected > 0 && <span className="ml-2 text-[11.5px] text-warn">{r.rejected} rejected</span>}
-                      {r.unknown > 0 && (
-                        <span className="ml-2 text-[11.5px] text-warn" title="The send did not complete, so Groww may or may not have these orders: check them in Groww.">
-                          {r.unknown} unconfirmed
-                        </span>
-                      )}
-                    </td>
-                    <td className="tnum px-4 py-2.5 text-[12px] whitespace-nowrap text-ink2">{r.lastAt ? DAY_TIME.format(new Date(r.lastAt)) : "—"}</td>
-                  </tr>
-                ))}
+                {shown.map((r, i) => {
+                  const counts = [
+                    r.placed > 0 && { text: `${r.placed} placed`, tone: "text-ink2", title: undefined },
+                    r.rejected > 0 && { text: `${r.rejected} rejected`, tone: "text-warn", title: undefined },
+                    r.unknown > 0 && {
+                      text: `${r.unknown} unconfirmed`,
+                      tone: "text-warn",
+                      title: "The send did not complete, so Groww may or may not have these orders: check them in Groww.",
+                    },
+                  ].filter((c): c is { text: string; tone: string; title: string | undefined } => Boolean(c));
+                  return (
+                    <tr key={r.id} className="border-b border-line last:border-0">
+                      <td className="tnum px-4 py-2.5 align-top text-[12px] text-ink3">{i + 1}</td>
+                      <td className="max-w-[260px] px-4 py-2.5 align-top">
+                        <p className="truncate text-[13px] text-ink" title={r.email}>{r.email}</p>
+                        {r.name && <p className="truncate text-[11.5px] text-ink3" title={r.name}>{r.name}</p>}
+                      </td>
+                      <td className="px-4 py-2.5 align-top whitespace-nowrap">
+                        {r.traded ? (
+                          <Pill tone="up">
+                            <span title="Groww accepted at least one order MNHA sent into this account. Accepted is not always filled: fills are in Groww.">Traded</span>
+                          </Pill>
+                        ) : (
+                          <Pill tone="neutral">Not traded</Pill>
+                        )}
+                        {counts.length > 0 && (
+                          <p className="tnum mt-1 text-[11.5px]">
+                            {counts.map((c, k) => (
+                              <span key={c.text} className={`${c.tone} ${k ? "ml-2" : ""}`} title={c.title}>
+                                {c.text}
+                              </span>
+                            ))}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 align-top whitespace-nowrap">
+                        {r.groww ? <Pill tone="up">Connected</Pill> : <Pill tone="neutral">Not connected</Pill>}
+                      </td>
+                      <td className="tnum px-4 py-2.5 align-top text-[12px] whitespace-nowrap text-ink2">{DAY.format(new Date(r.joined))}</td>
+                      <td className="tnum px-4 py-2.5 align-top text-[12px] whitespace-nowrap text-ink2">{r.lastAt ? DAY_TIME.format(new Date(r.lastAt)) : "—"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
