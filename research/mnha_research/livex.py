@@ -849,8 +849,7 @@ def ticks() -> dict:
         for L in _legs_today(con, day, tuple(r)):
             if not L["closed"]:
                 items.append({"book": "Book A", "leg": L["label"], "side": L["side"], "symbol": L["symbol"], "entry": round(L["entry"], 2), "qty": L["qty"]})
-    for leg_, sym, side, qty, entry in con.execute("SELECT leg, symbol, side, qty, entry FROM livex_fast WHERE day=? AND exit IS NULL", (day,)):
-        items.append({"book": "Book B", "leg": leg_, "side": int(side), "symbol": sym, "entry": round(float(entry), 2), "qty": int(qty)})
+    # Book B is left off the strip at the admin's request (26 Nov); it still runs as a paper book (day logs show it)
     p = config.DATA / "manual_trades.json"
     if p.exists():
         from . import manual as _manual
