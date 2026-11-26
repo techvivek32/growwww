@@ -118,7 +118,8 @@ def session() -> dict:
     trades = sum(1 for r in manual._load() if r.get("book") == BOOK_NAME and r["day"] == date.isoformat())
     last_scan = 0.0
     cache: dict = {}
-    traded: set[str] = set()
+    # names already traded today (a restarted session must not pick them again)
+    traded: set[str] = {r["symbol"] for r in manual._load() if r.get("book") == BOOK_NAME and r["day"] == date.isoformat()}
     last_poll = 0.0
 
     def close(why: str) -> None:
