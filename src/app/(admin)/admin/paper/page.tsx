@@ -152,15 +152,17 @@ function LiveNow({ mark, marks, today, events }: { mark: LivexMark | null; marks
           <table className="w-full">
             <thead>
               <tr className="border-b border-line">
-                <th className={th}>Leg</th><th className={th}>Trade</th><th className={`${th} text-right`}>Entry</th><th className={th}>Status</th><th className={`${th} text-right`}>P&L</th>
+                <th className={th}>Leg</th><th className={th}>Trade</th><th className={`${th} text-right`}>Qty</th><th className={`${th} text-right`}>Entry</th><th className={`${th} text-right`}>Value</th><th className={th}>Status</th><th className={`${th} text-right`}>P&L</th>
               </tr>
             </thead>
             <tbody>
               {legs.map((l) => (
                 <tr key={`${l.leg}-${l.symbol}`} className="border-b border-line last:border-0">
                   <td className={td}>{LEG_TITLE[l.leg] ?? l.label}</td>
-                  <td className={td}><span className={`font-semibold ${l.side < 0 ? "text-down" : "text-up"}`}>{l.side < 0 ? "SELL" : "BUY"}</span> {l.qty} {l.symbol}</td>
+                  <td className={td}><span className={`font-semibold ${l.side < 0 ? "text-down" : "text-up"}`}>{l.side < 0 ? "SELL" : "BUY"}</span> {l.symbol}</td>
+                  <td className={`${td} tnum text-right font-semibold`}>{l.qty.toLocaleString("en-IN")}</td>
                   <td className={`${td} tnum text-right`}>₹{l.entry.toFixed(2)}</td>
+                  <td className={`${td} tnum text-right text-ink2`}>{inr(l.qty * l.entry)}</td>
                   <td className={`${td} text-ink2`}>{l.closed ? `closed${l.exit != null ? ` at ₹${l.exit.toFixed(2)}` : ""} · ${l.how ?? "—"}` : squared ? "squared off 15:15 · settling" : `open · now ₹${l.ltp?.toFixed(2) ?? "—"}`}</td>
                   <td className={`${td} tnum text-right font-semibold ${l.pnl == null ? "text-ink3" : l.pnl >= 0 ? "text-up" : "text-down"}`}>{l.pnl == null ? "—" : inr(l.pnl)}</td>
                 </tr>
