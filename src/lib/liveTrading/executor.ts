@@ -611,15 +611,21 @@ function allowForActive(now: IstNow, dayMode: "live" | "shadow"): (accountId: st
 const ACTIVE_SILENCE_S = 300;
 const A = { lastAlive: 0, sent: new Set<string>() };
 
+/** What ties a trade of the active book to the accounts' position: its symbol and entry time. */
+const activeKey = (t: { symbol: string; entered_at: number }) => `${t.symbol}|${t.entered_at}`;
+
 /**
  * The active (auto) book in the accounts: a trade it opens (its scan runs every 2 minutes) is opened in every account
  * with money, each sized from its own free money; a trade it closes is closed; whatever is still open is closed at
  * 15:15 (under its own action, so a failed exit gets fresh tries then). Closes run first, and never wait on the switch
  * — getting out only takes risk away. If the book falls silent with a position open, the position is closed.
+ * The accounts take at most four of its trades a day, each matched to the book's trade by symbol and entry time.
  */
 async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSettings): Promise<void> {
   const setting = settings.activeMode ?? "off";
-  const trades = (st?.active ?? []).slice(0, ACTIVE_MAX);
+  // every trade the book made today, in order — matched by key, never by place in the list (a fresh start renumbers)
+  const trades = st?.active ?? [];
+  const byKey = new Map(trades.map((t) => [activeKey(t), t]));
   // the book's last sign of life is its own heartbeat time, not when we read it
   if (st && st.active_beat !== null && st.active_beat * 1000 <= now.ms + 60_000) A.lastAlive = Math.max(A.lastAlive, st.active_beat * 1000);
   let day = await getDay(now.day, now.date);
@@ -640,18 +646,27 @@ async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSetti
         await noteOnce(now, `active-giveup|${n}`, "error", `Active trade ${n}: ${plan.symbol} not confirmed closed by 15:24 — check the positions below; Groww squares intraday positions off itself.`);
         continue;
       }
-      const t = trades[i];
-      const book = t && `${t.symbol}|${t.entered_at}` === plan.key ? t : null;
+      const book = byKey.get(plan.key) ?? null;
       const eod = now.minute >= T.CLOSE_AT;
+      const bookClosed = book !== null && book.status === "closed";
       // since the last sign of life — or since this process started, when none has been seen since (a restart)
       const aliveRef = A.lastAlive || E.startedAt || now.ms;
-      const silent = !eod && now.ms - aliveRef > ACTIVE_SILENCE_S * 1000 && !(book && book.status === "closed");
-      const bookClosed = book !== null && book.status === "closed";
+      const silent = !eod && !bookClosed && now.ms - aliveRef > ACTIVE_SILENCE_S * 1000;
+      // A close once begun is remembered: a research outage right after the book's exit cannot stop it.
+      let closing = act0.closing?.[n] ?? null;
+      if (!closing && !eod && (bookClosed || silent)) {
+        const why = bookClosed ? `the active book closed it${book?.why ? ` (${book.why})` : ""}` : "fail-safe (the active book went silent)";
+        day = await updateDay(now.day, now.date, (x) => {
+          if (x.active) (x.active.closing ??= {})[n] ??= why;
+          return structuredClone(x);
+        });
+        closing = day.active?.closing?.[n] ?? why;
+        if (silent) await noteOnce(now, `active-silent|${n}`, "warn", `The active book has not been heard from for ${Math.round(ACTIVE_SILENCE_S / 60)} minutes: its ${plan.symbol} is closed as a fail-safe rather than held unwatched.`);
+      }
       let action: OrderAction;
       if (eod) action = `active-eod-${n}`;
-      else if ((bookClosed || silent) && !act0.exitFailed?.[n]) action = `active-close-${n}`;
+      else if (closing && !act0.exitFailed?.[n]) action = `active-close-${n}`;
       else continue;
-      if (silent) await noteOnce(now, `active-silent|${n}`, "warn", `The active book has not been heard from for ${Math.round(ACTIVE_SILENCE_S / 60)} minutes: its ${plan.symbol} is closed as a fail-safe rather than held unwatched.`);
       const tally = await closeAll(now, day, action, plan.leg, { accounts: Object.keys(plan.sizes ?? {}), mode: act0.mode, plan });
       if (!tally.converged) continue;
       if (tally.failed > 0 && !eod) {
@@ -667,7 +682,7 @@ async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSetti
         if (x.active) x.active.closed[n] = Date.now();
         return structuredClone(x);
       });
-      const why = eod ? "15:15 close" : silent ? "fail-safe (the active book went silent)" : `the active book closed it${book?.why ? ` (${book.why})` : ""}`;
+      const why = eod ? "15:15 close" : closing ?? "closed";
       const r = tallyText(tally, `Active trade ${n}: ${plan.symbol} closed — ${why}.`);
       await noteOnce(now, `active-close|${n}`, r.tone, r.text);
     }
@@ -680,11 +695,12 @@ async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSetti
   }
   // a trade fixed before a restart, but not yet sent to every account, is sent to the rest (each order's id is fixed:
   // an account that already has it sends nothing)
-  for (let i = 0; i < trades.length; i++) {
+  for (let i = 0; i < ACTIVE_MAX; i++) {
     const n = (i + 1) as ActiveN;
-    const t = trades[i];
     const plan = day.active?.opened[n];
-    if (!plan || A.sent.has(`${now.day}|${n}`) || day.active?.closed[n] || t.status !== "open" || `${t.symbol}|${t.entered_at}` !== plan.key) continue;
+    if (!plan || A.sent.has(`${now.day}|${n}`) || day.active?.closed[n] || day.active?.closing?.[n]) continue;
+    const t = byKey.get(plan.key);
+    if (!t || t.status !== "open") continue;
     A.sent.add(`${now.day}|${n}`);
     if (now.ms / 1000 - t.entered_at > ACTIVE_FOLLOW_S) continue;
     const mode = day.active!.mode;
@@ -692,21 +708,22 @@ async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSetti
       openLegIn({ day: now.day, action: `active-open-${n}`, leg: plan.leg, accountId, mode, symbol: plan.symbol, qty: plan.sizes[accountId], shadowPx: plan.px, allow: allowForActive(now, mode) }).catch(() => null),
     );
   }
-  for (let i = 0; i < trades.length; i++) {
-    const t = trades[i];
-    const n = (i + 1) as ActiveN;
-    if (t.status !== "open" || day.active?.opened[n] || day.active?.skipped[n]) continue;
+  const taken = (key: string) => Object.values(day.active?.opened ?? {}).some((p) => p?.key === key);
+  for (const t of trades) {
+    const key = activeKey(t);
+    if (t.status !== "open" || taken(key) || day.active?.skippedKeys?.[key]) continue;
     const act = await fixActive(now, settings, setting);
     if (act.mode === "live" && setting !== "live") continue; // a live day never opens in shadow
+    const what = `${t.side === "long" ? "BUY" : "SELL"} ${t.symbol}, opened ${clock(istMinuteOfEpoch(t.entered_at))}`;
     const skip = async (why: string) => {
       day = await updateDay(now.day, now.date, (x) => {
-        if (x.active && !x.active.opened[n]) x.active.skipped[n] = why;
+        if (x.active) (x.active.skippedKeys ??= {})[key] ??= why;
         return structuredClone(x);
       });
-      await noteOnce(now, `active-skip|${n}`, "info", `Active trade ${n} (${t.side === "long" ? "BUY" : "SELL"} ${t.symbol}) not sent: ${why}.`);
+      await noteOnce(now, `active-skip|${key}`, "info", `Active trade (${what}) not sent: ${why}.`);
     };
     if (now.ms / 1000 - t.entered_at > ACTIVE_FOLLOW_S) {
-      await skip(`it opened at ${clock(istMinuteOfEpoch(t.entered_at))}, too long ago to follow at its price`);
+      await skip("too long ago to follow at its price");
       continue;
     }
     if ([day.legs.short?.symbol, day.legs.long?.symbol].includes(t.symbol)) {
@@ -714,6 +731,13 @@ async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSetti
       await skip(`Book A holds ${t.symbol} today`);
       continue;
     }
+    // the accounts' own count: a trade they did not follow takes none of the four
+    const free = Array.from({ length: ACTIVE_MAX }, (_, j) => (j + 1) as ActiveN).find((m) => !day.active?.opened[m]);
+    if (free === undefined) {
+      await skip(`the accounts already took ${ACTIVE_MAX} active trades today, the most the agreement describes`);
+      continue;
+    }
+    const n = free;
     const px = await priceOf(t.symbol, t.entry);
     if (px === null) {
       await skip(`no price for ${t.symbol}`);
@@ -726,16 +750,16 @@ async function activeStep(now: IstNow, st: LiveToday | null, settings: LiveSetti
       continue;
     }
     const leg = `a${n}-${t.side}` as ActiveLeg;
-    const key = `${t.symbol}|${t.entered_at}`;
     const total = ids.reduce((a, id) => a + sizes[id], 0);
     day = await updateDay(now.day, now.date, (x) => {
-      if (x.active && !x.active.opened[n]) {
+      if (x.active && !x.active.opened[n] && !Object.values(x.active.opened).some((p) => p?.key === key)) {
         x.active.opened[n] = { symbol: t.symbol, qty: total, px, leg, key, sizes };
         x.active.accounts = [...new Set([...x.active.accounts, ...ids])];
       }
       return structuredClone(x);
     });
-    const plan = day.active!.opened[n]!;
+    const plan = day.active?.opened[n];
+    if (!plan || plan.key !== key) continue; // that number was taken meanwhile: this trade is looked at again next pass
     const action = `active-open-${n}` as const;
     A.sent.add(`${now.day}|${n}`);
     await pool(Object.keys(plan.sizes), 4, (accountId) =>

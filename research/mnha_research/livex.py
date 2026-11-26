@@ -1142,7 +1142,11 @@ def today_state(now: float | None = None) -> dict:
 
 def active_today(day: int) -> list[dict]:
     """The active (auto) book's trades on `day`, in order, for the website's executor to send to the accounts
-    (entered_at and exited_at in epoch seconds). Read-only; an unreadable file gives an empty list."""
+    (entered_at and exited_at in epoch seconds). Read-only; an unreadable file gives an empty list.
+
+    Every trade of the day is served, those before an admin's fresh start too: the executor matches a trade to the
+    accounts' position by symbol and entry time, so a trade the fresh start closed must stay visible (closed) for the
+    accounts to close it as well; the accounts take at most four a day whatever the book's own count."""
     from . import manual
 
     base = day * 86_400 - config.IST_OFFSET_S
@@ -1159,15 +1163,10 @@ def active_today(day: int) -> list[dict]:
         rows = [r for r in manual._load() if r.get("book") == "active" and r.get("day") == date]
     except Exception:  # noqa: BLE001
         return []
-    try:  # the admin's fresh start: only the trades from then on are served (they are numbered afresh)
-        f = json.loads((config.DATA / "active_fresh.json").read_text())
-        fresh = float(f["at"]) if f.get("day") == date else None
-    except Exception:  # noqa: BLE001
-        fresh = None
     out = []
     for r in sorted(rows, key=lambda r: str(r.get("entry_time") or "")):
         at = epoch(r.get("entry_time"))
-        if at is None or not r.get("entry") or (fresh is not None and at < fresh):
+        if at is None or not r.get("entry"):
             continue
         if r.get("status") not in ("open", "closed") or not r.get("symbol"):
             continue

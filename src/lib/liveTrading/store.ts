@@ -175,12 +175,22 @@ export interface ActiveDay {
   /** The ceiling per account (the base value) when the day was fixed. */
   base: number;
   fixedAt: number;
-  /** Trade number → what was sent to open it: qty is the total, sizes each account's own quantity (from its free money). */
+  /**
+   * Trade number (the accounts' own count: at most four a day) → what was sent to open it: qty is the total, sizes each
+   * account's own quantity (from its free money). `key` (symbol|entry time) ties it to the book's trade — never its
+   * place in the book's list, which an admin's fresh start can change.
+   */
   opened: Partial<Record<ActiveN, LegPlan & { leg: ActiveLeg; key: string; sizes: Record<string, number> }>>;
   /** Trade number → when its close converged in every account. */
   closed: Partial<Record<ActiveN, number>>;
-  /** Trade number → why it was not followed (seen too late, no account with money, ...). */
+  /** Trade number → why its close began (the book closed it, or the fail-safe). A close once begun is carried
+   *  through, even while the research engine cannot be read. */
+  closing?: Partial<Record<ActiveN, string>>;
+  /** Unused since trades are matched by key (days written before that may still hold it). */
   skipped: Partial<Record<ActiveN, string>>;
+  /** The book's trade (its key) → why the accounts did not follow it (seen too late, Book A's name, no account with
+   *  money, four already today, ...). A trade not followed takes none of the four. */
+  skippedKeys?: Record<string, string>;
   /** Trade number → when its exit could not be done in every account (retried at 15:15 under its own action). */
   exitFailed?: Partial<Record<ActiveN, number>>;
 }
