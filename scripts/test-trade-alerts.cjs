@@ -71,6 +71,25 @@ const t = async (name, fn) => { await fn(); pass++; console.log("ok -", name); }
     assert.equal(A.bookADrafts(lt(), base, at("15:31")).length, 0);
     assert.equal(A.bookADrafts(lt({ date: "2026-11-27" }), base, at("15:16")).length, 0); // yesterday's state
   });
+  await t("automatic trading: its own steps say no action needed; a step it does not do stays an instruction", () => {
+    const on = { open: true, short: true, long: true };
+    const e = A.bookADrafts(lt(), base, at("09:21"), on);
+    assert.equal(e[0].title, "SELL ANGELONE @ ₹363.80 (automatic)");
+    assert.match(e[0].body, /no action needed/);
+    const flip = { at: at("10:16") / 1000, do: true, symbol: "MAZDOCK", px: 1910 };
+    const f = A.bookADrafts(lt({ flip }), base, at("10:16"), on);
+    assert.match(f[0].title, /\(automatic\)$/);
+    // switched OFF before 10:15 with the short held: the executor covers it, the buy is the admin's
+    const half = A.bookADrafts(lt({ flip }), base, at("10:16"), { open: false, short: true, long: false });
+    assert.doesNotMatch(half[0].title, /automatic/);
+    assert.match(half[0].body, /covers the short itself; the BUY is yours/);
+    // 27 Nov: switched OFF after the flip, both legs held: the 15:15 alert must not ask for a SELL by hand
+    const sq = A.bookADrafts(lt({ flip }), base, at("15:15"), { open: false, short: true, long: true });
+    assert.equal(sq[0].title, "15:15 square-off (automatic)");
+    assert.match(sq[0].body, /no action needed/);
+    const manual = A.bookADrafts(lt({ flip }), base, at("15:15"));
+    assert.equal(manual[0].title, "SQUARE OFF now (15:15)");
+  });
   await t("watchlist: highest level only, once a day a direction, both directions", () => {
     const done = {};
     let d = A.watchDrafts([{ symbol: "PNB", last: 98, prevClose: 100 }, { symbol: "ITC", last: 401, prevClose: 400 }], done, "2026-11-30");

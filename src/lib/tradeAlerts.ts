@@ -20,6 +20,9 @@ import type { LiveToday } from "@/lib/research";
  *  - Watchlist moves: a stock in any of the watchlists 2%, 3% or 5% away from yesterday's close. Each level fires once a
  *    day per direction, and only the highest level reached is sent, so a jump straight to 5% sends one alert, not three.
  *
+ * Automatic or by hand: while Automatic trading opens or holds a leg (`auto`), its alerts say so ("(automatic) …
+ *   no action needed"), so nobody trades by hand what the executor already does. Without that, a SELL by hand next to
+ *   the executor's own exit would leave a fresh short.
  * Every alert is written to data/trade-alerts.json, which the /admin/alerts page lists. It is also sent to the admin with
  * notifyAdmin, which puts it in the notification feed and on the admin's phone, as an urgent push.
  * - No repeats: each alert has a key, so neither a retry nor a restart sends it twice.
@@ -69,8 +72,18 @@ export function istClock(ms: number): { date: string; minute: number } {
   return { date: d.toISOString().slice(0, 10), minute: d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60 };
 }
 
+/** What Automatic trading does itself today. `open`: it opens Book A's legs (the switch is LIVE). `short` / `long`: it
+ *  holds or will hold that leg, so it also closes it (the executor closes a leg it opened even after the switch goes OFF). */
+export interface AutoState {
+  open: boolean;
+  short: boolean;
+  long: boolean;
+}
+export const NO_AUTO: AutoState = { open: false, short: false, long: false };
+const AUTO_NOTE = " Automatic trading does this itself: no action needed (don't also trade it by hand).";
+
 /** The Book A alerts that today's decisions call for at `nowMs`. Pure: the caller records them and drops repeats. */
-export function bookADrafts(lt: LiveToday, base: number, nowMs: number): AlertDraft[] {
+export function bookADrafts(lt: LiveToday, base: number, nowMs: number, auto: AutoState = NO_AUTO): AlertDraft[] {
   const { date, minute } = istClock(nowMs);
   if (lt.date !== date) return [];
   const now = nowMs / 1000;
@@ -95,10 +108,11 @@ export function bookADrafts(lt: LiveToday, base: number, nowMs: number): AlertDr
       key: key("entry"),
       tone: "down",
       symbol: pick,
-      title: `SELL ${pick} @ ${rs(px)}`,
+      title: `SELL ${pick} @ ${rs(px)}${auto.open ? " (automatic)" : ""}`,
       body:
         `Book A, 09:20: short about ${Math.floor(base / px).toLocaleString("en-IN")} shares (${rupees(base)}), intraday (MIS). ` +
-        `Cover if the market rises ${(lt.mstop_at * 100).toFixed(1)}% from 09:20, at 10:15 on a flip day, otherwise at 15:15.`,
+        `Cover if the market rises ${(lt.mstop_at * 100).toFixed(1)}% from 09:20, at 10:15 on a flip day, otherwise at 15:15.` +
+        (auto.open ? AUTO_NOTE : ""),
     });
   }
   if (traded && lt.mstop && fresh(lt.mstop.at)) {
@@ -107,31 +121,38 @@ export function bookADrafts(lt: LiveToday, base: number, nowMs: number): AlertDr
       key: key("mstop"),
       tone: "warn",
       symbol: pick,
-      title: `COVER ${pick} now (market stop)`,
-      body: `The average stock is up${mv} since 09:20: Book A covers the ${pick} short here.`,
+      title: `COVER ${pick} now (market stop)${auto.short ? " (automatic)" : ""}`,
+      body: `The average stock is up${mv} since 09:20: Book A covers the ${pick} short here.` + (auto.short ? AUTO_NOTE : ""),
     });
   }
   if (traded && lt.flip && fresh(lt.flip.at)) {
     const f = lt.flip;
     if (f.do) {
       const coverNote = lt.mstop ? ` (the ${pick} short is already covered by the market stop)` : `: cover the ${pick} short`;
+      const both = (lt.mstop || auto.short) && auto.open;
+      const who = both
+        ? AUTO_NOTE
+        : auto.short && !lt.mstop
+          ? " Automatic trading covers the short itself; the BUY is yours to place."
+          : "";
       out.push(
         f.symbol && f.px
           ? {
               key: key("flip"),
               tone: "up",
               symbol: f.symbol,
-              title: `COVER ${pick}, BUY ${f.symbol} @ ${rs(f.px)}`,
+              title: `COVER ${pick}, BUY ${f.symbol} @ ${rs(f.px)}${both ? " (automatic)" : ""}`,
               body:
                 `10:15 flip, the market is strong${coverNote}, and buy about ${Math.floor(base / f.px).toLocaleString("en-IN")} ` +
-                `${f.symbol} (${rupees(base)}), held to 15:15.`,
+                `${f.symbol} (${rupees(base)}), held to 15:15.` +
+                who,
             }
           : {
               key: key("flip"),
               tone: "warn",
               symbol: pick,
-              title: `COVER ${pick} (10:15 flip)`,
-              body: `10:15 flip, the market is strong${coverNote}. No stock to buy today.`,
+              title: `COVER ${pick} (10:15 flip)${auto.short && !lt.mstop ? " (automatic)" : ""}`,
+              body: `10:15 flip, the market is strong${coverNote}. No stock to buy today.` + (auto.short && !lt.mstop ? AUTO_NOTE : ""),
             },
       );
     } else if (!lt.mstop) {
@@ -147,11 +168,20 @@ export function bookADrafts(lt: LiveToday, base: number, nowMs: number): AlertDr
   if (traded && minute >= 15 * 60 + 15 && minute < 15 * 60 + 30) {
     const flipped = !!lt.flip?.do;
     const legs = [
-      !lt.mstop && !flipped ? `BUY back ${pick} (cover the short)` : null,
-      flipped && lt.flip?.symbol ? `SELL ${lt.flip.symbol} (close the long)` : null,
-    ].filter((x): x is string => !!x);
+      !lt.mstop && !flipped ? { text: `BUY back ${pick} (cover the short)`, auto: auto.short } : null,
+      flipped && lt.flip?.symbol ? { text: `SELL ${lt.flip.symbol} (close the long)`, auto: auto.long } : null,
+    ].filter((x): x is { text: string; auto: boolean } => !!x);
     if (legs.length) {
-      out.push({ key: key("close"), tone: "warn", symbol: null, title: "SQUARE OFF now (15:15)", body: `Book A closes the day: ${legs.join("; ")}.` });
+      const all = legs.every((l) => l.auto);
+      out.push({
+        key: key("close"),
+        tone: all ? "neutral" : "warn",
+        symbol: null,
+        title: all ? "15:15 square-off (automatic)" : "SQUARE OFF now (15:15)",
+        body:
+          `Book A closes the day: ${legs.map((l) => l.text + (l.auto && !all ? " — automatic, no action needed" : "")).join("; ")}.` +
+          (all ? AUTO_NOTE : ""),
+      });
     }
   }
   return out.map((d) => ({ ...d, date, kind: "bookA" as const }));
@@ -277,9 +307,14 @@ async function tick(): Promise<void> {
     const { date, minute } = istClock(now);
     const { isTradingDate } = await import("@/lib/market");
     if (!isTradingDate(date) || minute < 9 * 60 + 14 || minute > 15 * 60 + 35) return;
-    const [{ liveToday }, { getSettings }] = await Promise.all([import("@/lib/research"), import("@/lib/liveTrading/store")]);
+    const [{ liveToday }, store] = await Promise.all([import("@/lib/research"), import("@/lib/liveTrading/store")]);
     const lt = await liveToday();
-    if (lt) await emit(bookADrafts(lt, (await getSettings()).base, now));
+    if (lt) {
+      const [settings, [day]] = await Promise.all([store.getSettings(), store.recentDays(1)]);
+      const held = day && day.date === date && day.mode === "live" && (day.accounts?.length ?? 0) > 0 ? day.legs : {};
+      const open = settings.mode === "live";
+      await emit(bookADrafts(lt, settings.base, now, { open, short: open || !!held.short, long: open || !!held.long }));
+    }
     if (now - S.lastWatch >= 60_000 && minute >= 9 * 60 + 15 && minute <= 15 * 60 + 30) {
       S.lastWatch = now;
       const [{ getWatchlists }, groww] = await Promise.all([import("@/lib/watchlists"), import("@/lib/api/groww")]);
