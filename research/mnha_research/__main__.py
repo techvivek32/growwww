@@ -28,8 +28,6 @@
   live-parity   replay past sessions through the live code and compare with the backtest (--days)
   active         the admin's all-day scan-and-rotate paper book (active.py; not Book A)
   livex-session  the whole paper day in one process (09:12-15:30 IST): decide, 5-second stop checks, flip, settle
-  fno-open / fno-close / fno-squareoff / fno-mark  F&O PAPER legs mirroring Book A (fno.py; no orders):
-                 fno-open --symbols MAZDOCK --kind FUT|CE|PE --side long|short
   news / news-check  09:14: the morning news list: Business Today company news before the open, per stock (no trades)
   livex-train / livex-decide / livex-flip / livex-mark / livex-settle / livex-report / livex-replay (--days)
                 the 2026 strategy: ENS3 one-stock short, regime skip, 0.5% market stop, 10:15 flip (paper, no orders)
@@ -62,10 +60,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--if-missing", action="store_true", help="live-train / livex-train: keep a year already frozen")
     p.add_argument("--no-wait", action="store_true", help="live-decide: do not wait for 09:21")
     p.add_argument("--mode", help="livex-reverse: cover | reverse")
-    p.add_argument("--kind", help="fno-open: FUT | CE | PE")
-    p.add_argument("--side", help="fno-open: long | short")
-    p.add_argument("--note", help="fno-open: a note on the record")
-    p.add_argument("--contract", help="fno-close: the trading symbol to close (all when omitted)")
     a = p.parse_args(argv)
     db.migrate()
 
@@ -159,21 +153,6 @@ def main(argv: list[str] | None = None) -> int:
         from . import manual
 
         print(json.dumps(manual.watch(), default=str))
-    elif cmd.startswith("fno-"):
-        from . import fno
-
-        if cmd == "fno-open":
-            out = fno.open_paper(a.symbols or "", a.kind or "FUT", a.side or "long", a.note or "")
-        elif cmd == "fno-close":
-            out = fno.close(a.contract, "admin exit")
-        elif cmd == "fno-squareoff":
-            out = fno.squareoff()
-        elif cmd == "fno-mark":
-            out = fno.mark()
-        else:
-            p.print_help()
-            return 2
-        print(json.dumps(out, default=str, indent=1))
     elif cmd in ("news", "news-check"):
         from . import news
 
