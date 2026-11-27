@@ -14,4 +14,7 @@ export async function register() {
   // the executor, so a filesystem read here can never delay a square-off.
   const { startAlertSweep } = await import("@/lib/push/sweep");
   startAlertSweep();
+  // The admin's stock alerts in the live market (Book A's signals, watchlist moves): read-only, its own 15-second loop.
+  const { startTradeAlerts } = await import("@/lib/tradeAlerts");
+  startTradeAlerts();
 }

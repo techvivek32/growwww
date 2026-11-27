@@ -40,7 +40,8 @@ export type NotifRoute =
   | "admin:fees"
   | "admin:members"
   | "admin:live"
-  | "admin:report";
+  | "admin:report"
+  | "admin:alerts";
 
 export interface Notif {
   id: string;
@@ -84,6 +85,8 @@ const URGENT_ADMIN_ROUTES: ReadonlySet<string> = new Set(["admin:orders", "admin
  *  and could sit in Doze until the phone woke, while the client's phone had
  *  already buzzed about the same order. */
 function isUrgent(kind: NotifKind, tone: NotifTone, route?: NotifRoute): boolean {
+  // A stock alert (src/lib/tradeAlerts.ts) is an instruction with a time on it: "SELL X now" a minute late is worse than none.
+  if (route === "admin:alerts") return true;
   if (kind === "order") return tone === "down" || tone === "warn";
   if (kind === "broker") return tone === "down";
   if (kind === "system" && route && URGENT_ADMIN_ROUTES.has(route)) {

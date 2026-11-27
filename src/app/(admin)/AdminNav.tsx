@@ -36,6 +36,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
   {
     title: "Trading",
     items: [
+      { label: "Stock alerts", href: "/admin/alerts", icon: I("M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"), live: true },
       { label: "Live trading", href: "/admin/live", icon: I("M13 2L3 14h9l-1 8 10-12h-9l1-8z"), live: true },
       { label: "Order addresses", href: "/admin/addresses", icon: I("M12 22s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12zM12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z") },
       { label: "Order log", href: "/admin/orders", icon: I("M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01") },
