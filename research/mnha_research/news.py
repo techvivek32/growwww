@@ -1,16 +1,14 @@
-"""The NEWS paper book: company news published before the open → paper trades. NO ORDER IS EVER SENT FROM HERE.
+"""The morning NEWS LIST: company news published before the open. No trade, paper or real, is made from here.
 
-09:14 IST (timer mnha-news, Mon-Fri):
-  - Read every Business Today story whose sitemap time (lastmod) falls after the previous session's 15:30 and at or before
-    09:15 today. lastmod is at or after publication, so nothing published after the open slips in.
-  - Link each headline to the liquid F&O stocks Book A trades (news_terms.ALIASES) and score it good / bad by its words.
-    A story naming more than 3 stocks ("stocks to watch" lists) counts as a mention only, not for good / bad.
-09:20, once the session's first bar exists (no trade on a holiday): open paper trades in book "news":
-  - BUY up to 3 good-news stocks and SHORT up to 3 bad-news stocks, ₹5L / 3 each;
-  - 1% stop, out on a 0.5% NIFTY move against, square-off 15:15. manual.watch runs these exits.
-The book is visible on the admin's paper page with the other paper trades. The website's executor serves only the
-"active" book to real accounts (livex.active_today), so these trades never reach a real account.
-The rule is under test in the lab (exp/news, pre-registered 27 Nov 2026). It stays paper-only unless it passes there and on paper.
+09:14 IST (timer mnha-news, Mon-Fri), the job:
+  - reads every Business Today story whose sitemap time (lastmod) falls after the previous session's 15:30 and at or before
+    09:15 today. lastmod is at or after publication, so nothing published after the open slips in;
+  - links each headline to the liquid F&O stocks Book A trades (news_terms.ALIASES) and scores it good / bad by its words.
+    A story naming more than 3 stocks ("stocks to watch" lists) counts as a mention only;
+  - writes the list to data/news_today.json and a line to data/news.log, for the owner to read.
+History: from 27 Nov 2026 this job also opened paper trades at 09:20 (buy up to 3 good-news, short up to 3 bad-news stocks).
+The owner stopped them the same day: the lab test (exp/news, pre-registered) found that buying good pre-open news lost
+−3.4% a month 2023-26 and that no news rule beat Book A. Their two paper trades stay in data/manual_trades.json (book "news").
 The owner chose this source on 27 Nov 2026: businesstoday.in/markets/stocks. Its robots.txt allows the sitemaps read here."""
 
 from __future__ import annotations
@@ -21,7 +19,7 @@ import re
 import time
 import urllib.request
 
-from . import config, live, manual
+from . import config, live
 from .news_terms import ALIASES, EXCL, score
 from .validation import day_to_date
 
@@ -29,10 +27,8 @@ SITEMAP = "https://www.businesstoday.in/rssfeeds/date-wise-story-sitemap.xml?yyy
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
 OUT = config.DATA / "news_today.json"
 LOG = config.DATA / "news.log"
-K = 3  # names per side
-SLOT = manual.BOOK / K
+K = 3  # names per side in the list's good / bad picks
 MAX_SYMS = 3  # a story naming more stocks than this is a list, not news about one company
-STOP = 0.01
 _PATS = [(s, ["-" + p + "-" for p in ps], ["-" + e + "-" for e in EXCL.get(s, [])]) for s, ps in ALIASES.items()]
 
 
@@ -111,63 +107,27 @@ def picks(sig: dict[str, dict], k: int = K) -> tuple[list[str], list[str]]:
     return longs, shorts
 
 
-def _session_open(today: dt.date) -> bool:
-    try:
-        d = live.fetch_today([config.BENCHMARK], today)
-        df = d.get(config.BENCHMARK)
-        return df is not None and len(df) > 0
-    except Exception:  # noqa: BLE001
-        return False
-
-
 def _write(rec: dict) -> None:
     tmp = OUT.with_suffix(".tmp")
     tmp.write_text(json.dumps(rec, indent=1, default=str))
     tmp.replace(OUT)
 
 
-def run(trade: bool = True) -> dict:
-    """The day's news check; with trade=True also waits for 09:20 and opens the paper trades (never twice a day)."""
+def run() -> dict:
+    """The day's morning news list (no trades). Run between 09:00 and 09:15:30 it first waits for 09:15:30, so the
+    stories up to 09:15 are in the sitemap."""
     today = day_to_date(live.today_ist())
     if today.weekday() >= 5:
         return {"day": today.isoformat(), "status": "weekend"}
     prev = day_to_date(live.last_session_day())
     lo, hi = f"{prev.isoformat()}T15:30:00", f"{today.isoformat()}T09:15:00"
-    if trade:
-        while live.minute_ist() < 9 * 60 + 15.5:  # the 09:15 stories are in the sitemap a few seconds later
-            time.sleep(5)
+    while 9 * 60 <= live.minute_ist() < 9 * 60 + 15.5:
+        time.sleep(5)
     st = stories(lo, hi)
     sig = signals(st)
-    longs, shorts = picks(sig)
+    good, bad = picks(sig)
     rec = {"day": today.isoformat(), "window": [lo, hi], "stories": len(st), "linked": sum(1 for r in st if r["stocks"]),
-           "signals": sig, "buy": longs, "short": shorts, "trades": [], "status": "checked"}
+           "signals": sig, "good": good, "bad": bad, "status": "list only (no trades)"}
     _write(rec)
-    log(f"news {today}: {len(st)} pre-open stories, {rec['linked']} about our stocks; BUY {longs or '-'}; SHORT {shorts or '-'}")
-    if not trade:
-        return rec
-    if any(r.get("book") == "news" and r.get("day") == today.isoformat() for r in manual._load()):
-        rec["status"] = "already traded today"
-        _write(rec)
-        return rec
-    while live.minute_ist() < 9 * 60 + 20.5:
-        time.sleep(2)
-    while not _session_open(today):  # the 09:15-09:20 bar is the proof of a session; a holiday never gets one
-        if live.minute_ist() >= 9 * 60 + 35:
-            rec["status"] = "no session (holiday?)"
-            _write(rec)
-            log(f"news {today}: no session, no trade")
-            return rec
-        time.sleep(15)
-    for side, syms in (("long", longs), ("short", shorts)):
-        for s in syms:
-            note = f"News book: {'good' if side == 'long' else 'bad'} news before the open: {sig[s]['headlines'][0][12:]}"[:300]
-            try:
-                t = manual.open_trade(s, side, note=note, stop_pct=STOP, book="news", value=SLOT)
-                rec["trades"].append({"symbol": s, "side": side, "entry": t["entry"], "qty": t["qty"], "time": t["entry_time"]})
-                log(f"paper {'BUY' if side == 'long' else 'SHORT'} {t['qty']} {s} @ {t['entry']} ({note})")
-            except Exception as e:  # noqa: BLE001
-                rec["trades"].append({"symbol": s, "side": side, "error": str(e)[:200]})
-                log(f"paper {side} {s} not opened: {e}")
-    rec["status"] = "traded"
-    _write(rec)
+    log(f"news {today}: {len(st)} pre-open stories, {rec['linked']} about our stocks; good news {good or '-'}; bad news {bad or '-'} (list only)")
     return rec

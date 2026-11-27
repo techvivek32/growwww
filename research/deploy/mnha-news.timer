@@ -1,5 +1,5 @@
 [Unit]
-Description=MNHA news paper book: company news before the open (09:14 IST, Mon-Fri)
+Description=MNHA morning news list: company news before the open (09:14 IST, Mon-Fri)
 
 [Timer]
 OnCalendar=Mon..Fri *-*-* 03:44:00 UTC

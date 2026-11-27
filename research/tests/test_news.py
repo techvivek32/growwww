@@ -1,4 +1,4 @@
-"""The NEWS paper book's pure parts: sitemap parsing, the pre-open window, headline → stock links, scores, picks."""
+"""The morning news list's pure parts: sitemap parsing, the pre-open window, headline → stock links, scores, picks."""
 import datetime as dt
 
 from mnha_research import news
@@ -51,4 +51,4 @@ def test_signals_and_picks():
 
 def test_weekend_is_skipped(monkeypatch):
     monkeypatch.setattr(news.live, "today_ist", lambda: (dt.date(2026, 11, 28) - dt.date(1970, 1, 1)).days)
-    assert news.run(trade=True)["status"] == "weekend"
+    assert news.run()["status"] == "weekend"
