@@ -85,7 +85,9 @@ def _watch() -> None:
         pass
 
 
-def open_trade(symbol: str, side: str, note: str = "", stop_pct: float = 0.01, book: str = "manual", watch: bool = True) -> dict:
+def open_trade(symbol: str, side: str, note: str = "", stop_pct: float = 0.01, book: str = "manual", watch: bool = True,
+               value: float = BOOK) -> dict:
+    """Open a paper trade at the live price: `value` rupees (₹5L by default), the stop `stop_pct` away."""
     symbol = symbol.upper().strip()
     side = "short" if side.lower().startswith("s") else "long"
     if any(r["symbol"] == symbol and r["status"] == "open" for r in _load()):
@@ -95,7 +97,7 @@ def open_trade(symbol: str, side: str, note: str = "", stop_pct: float = 0.01, b
         raise ValueError(f"no live price for {symbol}")
     px, sd = q[symbol], (-1 if side == "short" else 1)
     entry = round(px * (1 + _slip(px) * sd), 2)
-    qty = int(BOOK // entry)
+    qty = int(value // entry)
     t = _ist(at)
     rec = {"day": t[:10], "book": book, "side": side, "symbol": symbol, "entry_time": t[11:], "ltp_at_entry": px, "entry": entry, "qty": qty,
            "notional": round(entry * qty, 2), "stop": round(entry * (1 - stop_pct * sd), 2),

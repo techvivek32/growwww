@@ -1,0 +1,13 @@
+[Unit]
+Description=MNHA news paper book: Business Today pre-open company news, paper trades at 09:20 (no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/mnha-research.env
+WorkingDirectory=/opt/mnha-research
+ExecStart=/opt/mnha-research/.venv/bin/python -m mnha_research news
+StandardOutput=append:/opt/mnha-research/data/news.out
+StandardError=append:/opt/mnha-research/data/news.out
+TimeoutStartSec=40min

@@ -28,6 +28,8 @@
   live-parity   replay past sessions through the live code and compare with the backtest (--days)
   active         the admin's all-day scan-and-rotate paper book (active.py; not Book A)
   livex-session  the whole paper day in one process (09:12-15:30 IST): decide, 5-second stop checks, flip, settle
+  news           09:14: Business Today company news before the open → the NEWS paper book at 09:20 (no orders);
+                 news-check prints today's pre-open news signals without trading
   livex-train / livex-decide / livex-flip / livex-mark / livex-settle / livex-report / livex-replay (--days)
                 the 2026 strategy: ENS3 one-stock short, regime skip, 0.5% market stop, 10:15 flip (paper, no orders)
   all         universe → probe → ingest → quality → research → alpha
@@ -152,6 +154,10 @@ def main(argv: list[str] | None = None) -> int:
         from . import manual
 
         print(json.dumps(manual.watch(), default=str))
+    elif cmd in ("news", "news-check"):
+        from . import news
+
+        print(json.dumps(news.run(trade=cmd == "news"), default=str, indent=1))
     elif cmd == "active-fresh":
         from . import active
 
