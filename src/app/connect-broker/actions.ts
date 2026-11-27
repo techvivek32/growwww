@@ -1,7 +1,9 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { setBroker } from "@/lib/users";
+import { recordLinkedBalance } from "@/lib/balances";
 import { currentUserId, inAdminView } from "@/lib/session";
 import { logAdminAccess } from "@/lib/adminAccess";
 import { clientIp } from "@/lib/clientIp";
@@ -128,6 +130,9 @@ export async function connectBroker(_prev: FormState, formData: FormData): Promi
   // this member leaves from it, and the trading gate reads it.
   const saved = await setBroker(userId, key.value, secret.value, { ucc: probe.ucc, staticIp: ip, ipConfirmed: true });
   if (!saved) return { error: "Could not save the connection. Try again." };
+  // The balance the account is linked with, for the owner's P&L page. After the reply, so the
+  // connection is never slowed or failed by it.
+  after(() => recordLinkedBalance(userId));
   if (!byAdmin) await recordConsentChange(userId, "groww", true); // only the client's own reconnect restores a withdrawn consent
   if (byAdmin) {
     await logAdminAccess({ kind: "connect-broker", userId, ip: clientIp(await headers()) })

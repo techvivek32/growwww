@@ -14,6 +14,11 @@ export async function register() {
   // the executor, so a filesystem read here can never delay a square-off.
   const { startAlertSweep } = await import("@/lib/push/sweep");
   startAlertSweep();
+  // Each connected account's Groww balance every quarter hour, for the daily P&L on /admin/vivek
+  // (Groww keeps no balance history of its own). Reads only: it never places an order. Its own loop,
+  // like the sweep, so a slow Groww read here can never delay the executor.
+  const { startBalanceWatch } = await import("@/lib/balances");
+  startBalanceWatch();
   // The admin's stock alerts in the live market (Book A's signals, watchlist moves): read-only, its own 15-second loop.
   const { startTradeAlerts } = await import("@/lib/tradeAlerts");
   startTradeAlerts();

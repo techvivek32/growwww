@@ -5,6 +5,7 @@ import { deleteConsents } from "@/lib/consent";
 import { deleteConsentMedia } from "@/lib/consentMedia";
 import { deleteMembership } from "@/lib/membership";
 import { deleteOrders } from "@/lib/ledger";
+import { deleteBalances } from "@/lib/balances";
 import { deleteNotifications } from "@/lib/notifications";
 import { deleteDevices } from "@/lib/push/devices";
 import { scrubAdminAccessDetails } from "@/lib/adminAccess";
@@ -33,6 +34,7 @@ export async function eraseAccount(userId: string): Promise<string[]> {
     ["agreement media", deleteConsentMedia],
     ["membership", deleteMembership],
     ["order log", deleteOrders],
+    ["balance record", deleteBalances],
     // Before the notifications themselves: an erased account must stop being
     // pushed to on a phone it never signed out of, and a device left
     // registered would keep receiving anything emitted during the erasure.

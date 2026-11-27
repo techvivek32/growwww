@@ -548,6 +548,16 @@ export async function fundsAs(accountId: string): Promise<groww.Funds | null> {
   }
 }
 
+/** A named account's balance reading for the daily P&L record (null: not connected, or not read). */
+export async function balanceAs(accountId: string): Promise<groww.BalanceReading | null> {
+  try {
+    return await runAsAccount(accountId, () => groww.getBalanceReadingStrict());
+  } catch (err) {
+    console.error(`[broker] balance read failed for ${accountId}:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 /** A named account's open positions in one segment (null: could not be read). */
 export async function positionsAs(accountId: string, segment: "CASH" | "FNO"): Promise<groww.OpenPosition[] | null> {
   try {

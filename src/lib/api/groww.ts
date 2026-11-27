@@ -488,6 +488,39 @@ export async function getFundsStrict(): Promise<Funds | null> {
   return { cash: p.clear_cash, used, free: Math.max(0, p.clear_cash - used) };
 }
 
+/** One reading for the daily P&L record (lib/balances), in Groww's own figures. */
+export interface BalanceReading {
+  /** Clear cash: the settled balance. It does not move while the day's trades run; Groww settles them
+   *  into it later (seen 26 Nov 2026: unchanged at 16:38 after a day of intraday trades). */
+  cash: number;
+  /** Margin in use right now (net_margin_used). */
+  used: number;
+  /** The day's realised P&L summed over the CASH and F&O positions, before charges, as Groww reports
+   *  it; null when the positions could not be read. Groww's positions are the current day's. */
+  realised: number | null;
+}
+
+/** A balance reading, or null unless Groww reported clear cash: a missing figure is never a zero. */
+export async function getBalanceReadingStrict(): Promise<BalanceReading | null> {
+  const m = await getEnvelope<{ clear_cash?: unknown; net_margin_used?: unknown }>("/v1/margins/detail/user");
+  const cash = m.payload?.clear_cash;
+  if (!m.ok || typeof cash !== "number" || !Number.isFinite(cash)) return null;
+  const u = m.payload?.net_margin_used;
+  const used = typeof u === "number" && Number.isFinite(u) ? Math.max(0, u) : 0;
+  let realised: number | null = 0;
+  for (const segment of ["CASH", "FNO"] as const) {
+    const r = await getEnvelope<{ positions?: { realised_pnl?: unknown }[] }>(`/v1/positions/user?segment=${segment}`);
+    if (!r.ok) {
+      realised = null;
+      break;
+    }
+    for (const p of r.payload?.positions ?? []) {
+      if (typeof p.realised_pnl === "number" && Number.isFinite(p.realised_pnl)) realised += p.realised_pnl;
+    }
+  }
+  return { cash, used, realised: realised === null ? null : Math.round(realised * 100) / 100 };
+}
+
 /* --------------------------------------------------------------- holdings */
 
 interface GrowwHolding {
